@@ -1,0 +1,68 @@
+{
+    "name": "Double Jeu",
+    "short_name": "DoubleJeu",
+    "description": "Des jeux intimes et complices pour les couples à distance",
+    "lang": "fr",
+    "id": "/",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#121212",
+    "theme_color": "#E63946",
+    "categories": ["lifestyle", "games"],
+    "icons": [
+        {
+            "src": "/icons/icon-96.png",
+            "sizes": "96x96",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Vérité ou Action",
+            "short_name": "Vérité",
+            "url": "/jeux/verite-action"
+        },
+        {
+            "name": "Mission Secrète",
+            "short_name": "Mission",
+            "url": "/jeux/mission-secrete"
+        },
+        {
+            "name": "Météo du Couple",
+            "short_name": "Météo",
+            "url": "/jeux/meteo-du-couple"
+        },
+        {
+            "name": "Mots Croisés du Couple",
+            "short_name": "Mots croisés",
+            "url": "/jeux/mots-croises"
+        }
+    ]
+}
