@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['couple_id', 'sender_id', 'body', 'read_at'])]
+#[Fillable(['couple_id', 'sender_id', 'body', 'reply_to_id', 'read_at'])]
 class Message extends Model
 {
     use HasFactory;
@@ -27,6 +27,11 @@ class Message extends Model
     public function sender(): BelongsTo
     {
         return $this->belongsTo(User::class, 'sender_id');
+    }
+
+    public function replyTo(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'reply_to_id');
     }
 
     public function isRead(): bool

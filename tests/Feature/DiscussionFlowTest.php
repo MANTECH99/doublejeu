@@ -93,6 +93,60 @@ class DiscussionFlowTest extends TestCase
         $this->assertSame('Trois', $partial['messages'][0]['body']);
     }
 
+    public function test_partner_can_reply_to_a_message(): void
+    {
+        // Alice écrit un message auquel Bob répondra.
+        $base = $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['body' => 'Rendez-vous à 20h ?'])
+            ->assertOk()
+            ->json();
+
+        // Bob répond en citant ce message.
+        $this->actingAs($this->bob)
+            ->postJson(route('discussion.send'), [
+                'body' => 'Parfait pour moi !',
+                'reply_to_id' => $base['id'],
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('messages', [
+            'couple_id' => $this->couple->id,
+            'sender_id' => $this->bob->id,
+            'body' => 'Parfait pour moi !',
+            'reply_to_id' => $base['id'],
+        ]);
+
+        // On ne peut pas répondre à un message d'un autre couple.
+        $u1 = User::factory()->create();
+        $u2 = User::factory()->create();
+        $other = Couple::create([
+            'code_unique' => Couple::generateCode(),
+            'user1_id' => $u1->id,
+            'user2_id' => $u2->id,
+            'streak' => 0,
+            'score_total' => 0,
+        ]);
+        $foreign = Message::create(['couple_id' => $other->id, 'sender_id' => $u1->id, 'body' => 'très loin']);
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), [
+                'body' => 'On ne sait pas',
+                'reply_to_id' => $foreign->id,
+            ])
+            ->assertStatus(422);
+
+        // Le fetch renvoie le message cité avec son contenu.
+        $fetch = $this->actingAs($this->alice)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $reply = collect($fetch['messages'])->firstWhere('body', 'Parfait pour moi !');
+        $this->assertNotNull($reply['reply_to']);
+        $this->assertSame('Rendez-vous à 20h ?', $reply['reply_to']['body']);
+        $this->assertSame('Alice', $reply['reply_to']['sender_name']);
+    }
+
     public function test_validation_and_authorization(): void
     {
         // Contenu vide refusé.

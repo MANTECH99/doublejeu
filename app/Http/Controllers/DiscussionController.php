@@ -40,7 +40,7 @@ class DiscussionController extends Controller
 
         $messages = Message::where('couple_id', $couple->id)
             ->when($apresId > 0, fn ($q) => $q->where('id', '>', $apresId))
-            ->with('sender:id,name')
+            ->with(['sender:id,name', 'replyTo:id,body,sender_id'])
             ->orderBy('id')
             ->limit(100)
             ->get()
@@ -52,6 +52,12 @@ class DiscussionController extends Controller
                 'lu' => $m->isRead(),
                 'created_at' => $m->created_at->format('H:i'),
                 'date' => $m->created_at->format('Y-m-d'),
+                'reply_to' => $m->replyTo ? [
+                    'id' => $m->replyTo->id,
+                    'sender_id' => $m->replyTo->sender_id,
+                    'sender_name' => $m->replyTo->sender?->name ?? 'Ancien·ne partenaire',
+                    'body' => $m->replyTo->body,
+                ] : null,
             ]);
 
         $nonLus = Message::where('couple_id', $couple->id)
@@ -78,12 +84,22 @@ class DiscussionController extends Controller
 
         $data = $request->validate([
             'body' => ['required', 'string', 'max:2000'],
+            'reply_to_id' => ['nullable', 'integer'],
         ]);
+
+        $replyToId = $data['reply_to_id'] ?? null;
+        if ($replyToId !== null) {
+            $exists = Message::where('id', $replyToId)->where('couple_id', $couple->id)->exists();
+            if (! $exists) {
+                return response()->json(['error' => 'Ce message n\'existe plus.'], 422);
+            }
+        }
 
         $message = Message::create([
             'couple_id' => $couple->id,
             'sender_id' => $request->user()->id,
             'body' => $data['body'],
+            'reply_to_id' => $replyToId,
         ]);
 
         ActivityService::touch($request->user());

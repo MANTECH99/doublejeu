@@ -45,6 +45,15 @@
             </div>
         </div>
 
+        {{-- Barre "répondre à…" (affichée quand on répond à un message) --}}
+        <div class="disc-replybar" id="disc-replybar" style="display:none">
+            <div class="disc-reply-info">
+                <div class="disc-reply-name" id="disc-reply-name">Répondre</div>
+                <div class="disc-reply-body" id="disc-reply-body"></div>
+            </div>
+            <button class="disc-reply-close" id="disc-reply-close" aria-label="Annuler la réponse">✕</button>
+        </div>
+
         {{-- Composer (fixe, juste au-dessus de la barre de navigation) --}}
         <div class="disc-composer" id="disc-composer">
             <input
@@ -72,15 +81,21 @@
     const INPUT_EL = document.getElementById('disc-input');
     const SEND_BTN = document.getElementById('disc-send');
     const STATUS_EL = document.getElementById('disc-status');
+    const REPLYBAR_EL = document.getElementById('disc-replybar');
+    const REPLY_NAME_EL = document.getElementById('disc-reply-name');
+    const REPLY_BODY_EL = document.getElementById('disc-reply-body');
+    const REPLY_CLOSE_EL = document.getElementById('disc-reply-close');
     const STATE_URL = '{{ route("discussion.fetch") }}';
     const SEND_URL = '{{ route("discussion.send") }}';
     const MY_ID = {{ $me->id }};
+    const PARTNER_NAME = @json($partenaire->name);
 
     // Ensemble des id déjà rendus pour éviter tout doublon.
     const renderedIds = new Set();
     let lastMessageId = 0;
     let lastDate = '';
     let sending = false;
+    let replyTarget = null; // {id, sender_name, body}
 
     function scrollToBottom(smooth) {
         if (smooth) {
@@ -107,6 +122,88 @@
         return el.innerHTML;
     }
 
+    /* ---------- Répondre à un message ---------- */
+    function setReply(msg) {
+        replyTarget = msg ? { id: msg.id, sender_name: msg.sender_name, body: msg.body } : null;
+        if (replyTarget) {
+            REPLY_NAME_EL.textContent = '↩️ Répondre à ' + (replyTarget.sender_name || '…');
+            REPLY_BODY_EL.textContent = replyTarget.body;
+            REPLYBAR_EL.style.display = 'flex';
+            INPUT_EL.focus();
+        } else {
+            REPLYBAR_EL.style.display = 'none';
+        }
+    }
+    REPLY_CLOSE_EL.addEventListener('click', () => setReply(null));
+
+    function openActionMenu(msg, e) {
+        const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + msg.id + '"]');
+
+        // Fond sombre + flou derrière, seul le message sélectionné reste net.
+        const backdrop = document.createElement('div');
+        backdrop.className = 'disc-backdrop';
+        backdrop.addEventListener('click', removeActionMenu);
+        backdrop.addEventListener('touchmove', (ev) => ev.preventDefault(), { passive: false });
+        document.body.appendChild(backdrop);
+
+        if (wrap) {
+            wrap.classList.add('disc-selected');
+            wrap.style.zIndex = '70';
+        }
+        MESSAGES_EL.classList.add('disc-overlay');
+
+        const menu = document.createElement('div');
+        menu.className = 'disc-action-menu';
+        const reply = document.createElement('button');
+        reply.className = 'disc-action-btn';
+        reply.textContent = '↩️ Répondre';
+        reply.addEventListener('click', () => { setReply(msg); removeActionMenu(); });
+        menu.appendChild(reply);
+        const close = document.createElement('button');
+        close.className = 'disc-action-close';
+        close.textContent = 'Annuler';
+        close.addEventListener('click', removeActionMenu);
+        menu.appendChild(close);
+        document.body.appendChild(menu);
+
+        // Place le menu juste sous la bulle sélectionnée (comme WhatsApp).
+        placeMenuBelow(menu, wrap, msg);
+    }
+
+    function placeMenuBelow(menu, wrap, msg) {
+        const menuW = 220;
+        const menuH = 120; // hauteur approximative du menu
+        const gap = 6;
+
+        let top, left;
+        if (wrap) {
+            const rect = wrap.getBoundingClientRect();
+            // Collé juste sous la bulle (en restant dans l'écran en bas).
+            top = Math.min(rect.bottom + gap, window.innerHeight - menuH - 12);
+            top = Math.max(top, 12);
+            // Aligné à gauche de la bulle, sans déborder à droite.
+            left = Math.min(Math.max(rect.left, 12), window.innerWidth - menuW - 12);
+        } else {
+            top = window.innerHeight / 2;
+            left = (window.innerWidth - menuW) / 2;
+        }
+
+        menu.style.top = Math.round(top) + 'px';
+        menu.style.left = Math.round(left) + 'px';
+        menu.style.transform = 'translateY(0)';
+        menu.style.width = menuW + 'px';
+    }
+
+    function removeActionMenu() {
+        document.querySelectorAll('.disc-backdrop').forEach(el => el.remove());
+        document.querySelectorAll('.disc-action-menu').forEach(el => el.remove());
+        MESSAGES_EL.querySelectorAll('.disc-bubble-wrap.disc-selected').forEach(el => {
+            el.classList.remove('disc-selected');
+            el.style.zIndex = '';
+        });
+        MESSAGES_EL.classList.remove('disc-overlay');
+    }
+
     function buildBubble(msg) {
         if (renderedIds.has(msg.id)) {
             return;
@@ -130,10 +227,28 @@
 
         const wrap = document.createElement('div');
         wrap.className = 'disc-bubble-wrap ' + (isMe ? 'me' : 'them');
+        wrap.dataset.id = msg.id;
 
         const bubble = document.createElement('div');
         bubble.className = 'disc-bubble ' + (isMe ? 'me' : 'them');
-        bubble.textContent = msg.body;
+
+        // Message cité (réponse) au-dessus du texte.
+        if (msg.reply_to) {
+            const quoted = document.createElement('div');
+            quoted.className = 'disc-quoted';
+            const qName = document.createElement('div');
+            qName.className = 'disc-quoted-name';
+            const meSaid = String(msg.reply_to.sender_id) === String(MY_ID);
+            const who = meSaid ? 'Toi' : (msg.reply_to.sender_name || '…');
+            qName.textContent = '↪️ ' + who + ' : ' + escHtml(msg.reply_to.body);
+            quoted.appendChild(qName);
+            bubble.appendChild(quoted);
+        }
+
+        const bodyText = document.createElement('span');
+        bodyText.className = 'disc-bubble-text';
+        bodyText.textContent = msg.body;
+        bubble.appendChild(bodyText);
 
         const meta = document.createElement('div');
         meta.className = 'disc-meta ' + (isMe ? 'me' : 'them');
@@ -154,6 +269,54 @@
         wrap.appendChild(bubble);
         wrap.appendChild(meta);
         MESSAGES_EL.appendChild(wrap);
+
+        // Clic long / menu contextuel / swipe → répondre.
+        wrap.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            openActionMenu(msg, e);
+        });
+        attachSwipeReply(wrap, msg);
+    }
+
+    /* Swipe vers la droite → répondre directement à ce message. */
+    function attachSwipeReply(wrap, msg) {
+        let startX = null;
+        let startY = null;
+        let touchTimer = null;
+        let longPressFired = false;
+
+        wrap.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            longPressFired = false;
+            clearTimeout(touchTimer);
+            touchTimer = setTimeout(() => { longPressFired = true; openActionMenu(msg); }, 500);
+        }, { passive: true });
+        wrap.addEventListener('touchend', (e) => {
+            clearTimeout(touchTimer);
+            if (startX === null || longPressFired) { startX = null; return; }
+            const touch = e.changedTouches[0];
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+            // Déplacement net vers la droite, très peu vertical.
+            if (dx > 60 && Math.abs(dy) < 40) setReply(msg);
+            startX = null;
+        }, { passive: true });
+        wrap.addEventListener('touchcancel', () => { clearTimeout(touchTimer); startX = null; });
+    }
+
+    // Met à jour le statut "lu" (✓✓) des bulles déjà affichées.
+    function syncReadState(messages) {
+        for (const msg of messages) {
+            if (!renderedIds.has(msg.id)) continue;
+            const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + msg.id + '"]');
+            if (!wrap) continue;
+            const check = wrap.querySelector('.disc-check');
+            if (!check) continue;
+            const isLu = !!msg.lu;
+            check.textContent = isLu ? '✓✓' : '✓';
+            check.classList.toggle('lu', isLu);
+        }
     }
 
     function wasAtBottom() {
@@ -162,7 +325,9 @@
 
     async function fetchMessages() {
         try {
-            const url = STATE_URL + '?after=' + lastMessageId + '&_=' + Date.now();
+            // On récupère les derniers messages à chaque poll : cela permet aussi
+            // de rafraîchir le statut "lu" (✓✓) des bulles déjà affichées.
+            const url = STATE_URL + '?after=0&_=' + Date.now();
             const res = await fetch(url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
@@ -170,12 +335,13 @@
             const data = await res.json();
 
             const bottom = wasAtBottom();
-            const hasIncoming = (data.messages || []).some(m => String(m.sender_id) !== String(MY_ID));
+            const hasIncoming = (data.messages || []).some(m => String(m.sender_id) !== String(MY_ID) && !renderedIds.has(m.id));
 
             if (data.messages && data.messages.length > 0) {
                 for (const msg of data.messages) {
                     buildBubble(msg);
                 }
+                syncReadState(data.messages);
                 if (bottom || hasIncoming) scrollToBottom(true);
             }
 
@@ -215,11 +381,12 @@
                     'X-Requested-With': 'XMLHttpRequest',
                     'Accept': 'application/json',
                 },
-                body: JSON.stringify({ body }),
+                body: JSON.stringify({ body, reply_to_id: replyTarget ? replyTarget.id : null }),
             });
 
             if (res.ok) {
                 const data = await res.json();
+                const replyingId = replyTarget ? replyTarget.id : null;
                 const wasDown = wasAtBottom();
                 buildBubble({
                     id: data.id,
@@ -228,8 +395,15 @@
                     lu: false,
                     created_at: data.created_at,
                     date: new Date().toISOString().slice(0, 10),
+                    reply_to: replyingId ? {
+                        id: replyingId,
+                        sender_id: null,
+                        sender_name: replyTarget.sender_name,
+                        body: replyTarget.body,
+                    } : null,
                 });
                 if (wasDown) scrollToBottom(true);
+                setReply(null);
                 INPUT_EL.value = '';
                 SEND_BTN.disabled = true;
             } else {
