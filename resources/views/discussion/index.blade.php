@@ -324,6 +324,9 @@
     }
 
     async function fetchMessages() {
+        // Le refresh (?) force le navigateur à recharger les données, utile pour
+        // diagnostiquer un affichage vide après un déploiement.
+        const hard = new URLSearchParams(location.search).has('refresh');
         try {
             // On récupère les derniers messages à chaque poll : cela permet aussi
             // de rafraîchir le statut "lu" (✓✓) des bulles déjà affichées.
@@ -331,8 +334,17 @@
             const res = await fetch(url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
-            if (!res.ok) return;
-            const data = await res.json();
+            if (!res.ok) {
+                if (hard) console.error('discussion:fetch HTTP', res.status, res.statusText);
+                return;
+            }
+            let data;
+            try {
+                data = await res.json();
+            } catch (jsonErr) {
+                if (hard) console.error('discussion:fetch json', jsonErr);
+                return;
+            }
 
             const bottom = wasAtBottom();
             const hasIncoming = (data.messages || []).some(m => String(m.sender_id) !== String(MY_ID) && !renderedIds.has(m.id));
@@ -347,7 +359,12 @@
 
             updateOnline(data.partenaire);
             updateBadge(data.nonLus || 0);
-        } catch (e) { /* silencieux */ }
+            if (hard && (!data.messages || data.messages.length === 0)) {
+                console.warn('discussion:fetch OK mais aucun message dans la réponse');
+            }
+        } catch (e) {
+            if (hard) console.error('discussion:fetch exception', e);
+        }
     }
 
     function updateBadge(count) {
