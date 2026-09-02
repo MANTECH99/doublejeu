@@ -88,7 +88,7 @@
     @stack('head')
 
     <script>
-        window.VAPID_PUBLIC_KEY = @json(env('VAPID_PUBLIC_KEY', ''));
+        window.VAPID_PUBLIC_KEY = @json(config('services.webpush.public_key', ''));
     </script>
 </head>
 <body data-auth="1">
