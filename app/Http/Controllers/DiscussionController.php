@@ -38,27 +38,39 @@ class DiscussionController extends Controller
 
         $apresId = (int) $request->query('after', 0);
 
-        $messages = Message::where('couple_id', $couple->id)
-            ->when($apresId > 0, fn ($q) => $q->where('id', '>', $apresId))
-            ->with(['sender:id,name', 'replyTo:id,body,sender_id'])
-            ->orderBy('id')
-            ->limit(100)
-            ->get()
-            ->map(fn (Message $m) => [
-                'id' => $m->id,
-                'sender_id' => $m->sender_id,
-                'sender_name' => $m->sender?->name ?? 'Ancien·ne partenaire',
-                'body' => $m->body,
-                'lu' => $m->isRead(),
-                'created_at' => $m->created_at->format('H:i'),
-                'date' => $m->created_at->format('Y-m-d'),
-                'reply_to' => $m->replyTo ? [
-                    'id' => $m->replyTo->id,
-                    'sender_id' => $m->replyTo->sender_id,
-                    'sender_name' => $m->replyTo->sender?->name ?? 'Ancien·ne partenaire',
-                    'body' => $m->replyTo->body,
-                ] : null,
-            ]);
+        $query = Message::where('couple_id', $couple->id)
+            ->with(['sender:id,name', 'replyTo:id,body,sender_id']);
+
+        if ($apresId > 0) {
+            // Poll incrémental : seuls les nouveaux messages depuis le dernier id.
+            $messages = (clone $query)
+                ->where('id', '>', $apresId)
+                ->orderBy('id')
+                ->get();
+        } else {
+            // Chargement initial : tout l'historique, du plus ancien au plus récent.
+            $messages = (clone $query)
+                ->orderByDesc('id')
+                ->get()
+                ->reverse()
+                ->values();
+        }
+
+        $messages = $messages->map(fn (Message $m) => [
+            'id' => $m->id,
+            'sender_id' => $m->sender_id,
+            'sender_name' => $m->sender?->name ?? 'Ancien·ne partenaire',
+            'body' => $m->body,
+            'lu' => $m->isRead(),
+            'created_at' => $m->created_at->format('H:i'),
+            'date' => $m->created_at->format('Y-m-d'),
+            'reply_to' => $m->replyTo ? [
+                'id' => $m->replyTo->id,
+                'sender_id' => $m->replyTo->sender_id,
+                'sender_name' => $m->replyTo->sender?->name ?? 'Ancien·ne partenaire',
+                'body' => $m->replyTo->body,
+            ] : null,
+        ]);
 
         $nonLus = Message::where('couple_id', $couple->id)
             ->where('sender_id', '!=', $request->user()->id)

@@ -93,6 +93,23 @@ class DiscussionFlowTest extends TestCase
         $this->assertSame('Trois', $partial['messages'][0]['body']);
     }
 
+    public function test_fetch_returns_all_messages_in_chronological_order_on_initial_load(): void
+    {
+        // Tout l'historique est renvoyé au chargement initial, du plus ancien au plus récent.
+        for ($i = 1; $i <= 110; $i++) {
+            Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'm-'.$i]);
+        }
+
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $this->assertCount(110, $fetch['messages']);
+        $this->assertSame('m-1', $fetch['messages'][0]['body'], 'Le plus ancien message est attendu en premier.');
+        $this->assertSame('m-110', $fetch['messages'][109]['body'], 'Le tout dernier message doit être présent.');
+    }
+
     public function test_partner_can_reply_to_a_message(): void
     {
         // Alice écrit un message auquel Bob répondra.
