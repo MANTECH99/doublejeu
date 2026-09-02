@@ -53,8 +53,8 @@ class MeteoController extends Controller
 
         $meteo = MeteoCouple::aujourdhuiPour($couple);
 
-        $maHumeur = $meteo?->humeurPour($user->id);
-        $saHumeur = $meteo?->humeurPour($partner->id);
+        $maHumeur = $meteo?->humeurActuellePour($user->id);
+        $saHumeur = $meteo?->humeurActuellePour($partner->id);
         $revelee = (bool) $meteo?->estComplet();
 
         $doy = (int) now()->format('z');
@@ -69,8 +69,8 @@ class MeteoController extends Controller
             ->reverse()
             ->map(fn (MeteoCouple $m) => [
                 'jour' => $m->jour->format('d/m'),
-                'moi' => $m->humeurPour($user->id),
-                'lui' => $m->humeurPour($partner->id),
+                'moi' => $m->partagesPour($user->id),
+                'lui' => $m->partagesPour($partner->id),
             ])
             ->values();
 
@@ -80,9 +80,12 @@ class MeteoController extends Controller
             'ilElleARepondu' => ! is_null($saHumeur),
             'revelee' => $revelee,
             'maHumeur' => $maHumeur,
-            'monCommentaire' => $meteo?->commentairePour($user->id),
+            'monCommentaire' => $meteo?->commentaireActuellePour($user->id),
             'saHumeur' => $saHumeur,
-            'saCommentaire' => $meteo?->commentairePour($partner->id),
+            'saCommentaire' => $meteo?->commentaireActuellePour($partner->id),
+            'mesPartages' => $meteo?->partagesPour($user->id) ?? [],
+            'sesPartages' => $meteo?->partagesPour($partner->id) ?? [],
+            'maxPartages' => MeteoCouple::MAX_CHECKINS_PAR_JOUR,
             'lesDeuxMauvais' => $revelee && $meteo->lesDeuxMauvais(),
             'synthese' => MeteoCouple::synthese($maHumeur, $saHumeur),
             'suggestion' => $suggestion,
@@ -115,12 +118,14 @@ class MeteoController extends Controller
             'jour' => today(),
         ]);
 
-        $humeurCol = $couple->user1_id === $user->id ? 'humeur_user1' : 'humeur_user2';
-        $commentaireCol = $couple->user1_id === $user->id ? 'commentaire_user1' : 'commentaire_user2';
-
-        if (! empty($meteo->{$humeurCol})) {
-            return response()->json(['error' => 'Tu as déjà fait ton check-in aujourd\'hui.'], 422);
+        $nbPartages = $meteo->nombrePartagesPour($user->id);
+        if ($nbPartages >= MeteoCouple::MAX_CHECKINS_PAR_JOUR) {
+            return response()->json(['error' => 'Tu as déjà partagé tes '.MeteoCouple::MAX_CHECKINS_PAR_JOUR.' humeurs du jour.'], 422);
         }
+
+        $isUser1 = $couple->user1_id === $user->id;
+        $humeurCol = $isUser1 ? ($nbPartages === 0 ? 'humeur_user1' : 'humeur_user1_2') : ($nbPartages === 0 ? 'humeur_user2' : 'humeur_user2_2');
+        $commentaireCol = $isUser1 ? ($nbPartages === 0 ? 'commentaire_user1' : 'commentaire_user1_2') : ($nbPartages === 0 ? 'commentaire_user2' : 'commentaire_user2_2');
 
         $meteo->forceFill([
             $humeurCol => $request->input('humeur'),
@@ -129,7 +134,7 @@ class MeteoController extends Controller
 
         app(PushService::class)->sendToUser($partner, [
             'title' => '🌦️ Météo du couple',
-            'body' => $user->name.' a partagé son humeur du jour. Et toi ?',
+            'body' => $user->name.' a partagé son humeur. Et toi ?',
             'url' => route('meteo.index'),
         ]);
 

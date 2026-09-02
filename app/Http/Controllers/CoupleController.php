@@ -23,8 +23,8 @@ class CoupleController extends Controller
         $partner = $couple->partnerOf(Auth::user());
 
         $meteo = MeteoCouple::aujourdhuiPour($couple);
-        $maHumeur = $meteo?->humeurPour(Auth::user()->id);
-        $saHumeur = $meteo?->humeurPour($partner->id);
+        $maHumeur = $meteo?->humeurActuellePour(Auth::user()->id);
+        $saHumeur = $meteo?->humeurActuellePour($partner->id);
 
         $meteoInfo = function (?string $humeur): ?array {
             if (! $humeur) {

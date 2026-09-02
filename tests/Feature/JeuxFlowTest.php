@@ -677,13 +677,21 @@ class JeuxFlowTest extends TestCase
 
         $this->postJson(route('meteo.checkin'), ['humeur' => 'heureux', 'commentaire' => 'belle journée'])->assertOk();
 
-        // Double check-in refusé
+        // On peut partager une 2e fois par jour…
+        $this->postJson(route('meteo.checkin'), ['humeur' => 'calme', 'commentaire' => 'soirée tranquille'])->assertOk();
+
+        // …mais pas un 3e.
         $this->postJson(route('meteo.checkin'), ['humeur' => 'triste'])->assertStatus(422);
 
         $s = $this->getJson(route('meteo.state'))->assertOk()->json();
         $this->assertTrue($s['jaiRepondu']);
         $this->assertFalse($s['ilElleARepondu']);
         $this->assertFalse($s['revelee']);
+        // Le partage le plus récent est affiché.
+        $this->assertSame('calme', $s['maHumeur']);
+        $this->assertCount(2, $s['mesPartages']);
+        $this->assertSame('heureux', $s['mesPartages'][0]['humeur']);
+        $this->assertSame('calme', $s['mesPartages'][1]['humeur']);
 
         $this->actingAs($this->bob);
         $this->postJson(route('meteo.checkin'), ['humeur' => 'stress'])->assertOk();
@@ -691,13 +699,16 @@ class JeuxFlowTest extends TestCase
         $s2 = $this->getJson(route('meteo.state'))->assertOk()->json();
         $this->assertTrue($s2['revelee']);
         $this->assertFalse($s2['lesDeuxMauvais']);
+        // Recent de bob = stress ; recent d'alice = calme.
         $this->assertSame('🌦️', $s2['synthese']['emoji']);
 
         $this->assertDatabaseHas('meteo_couples', [
             'couple_id' => $this->couple->id,
             'humeur_user1' => 'heureux',
-            'humeur_user2' => 'stress',
+            'humeur_user1_2' => 'calme',
             'commentaire_user1' => 'belle journée',
+            'commentaire_user1_2' => 'soirée tranquille',
+            'humeur_user2' => 'stress',
         ]);
 
         // Idées personnalisées : on peut écrire, une par jour et par personne
@@ -727,8 +738,10 @@ class JeuxFlowTest extends TestCase
         $this->assertSame('🌩️', $s3['synthese']['emoji']);
         $this->assertNotNull($s3['suggestionReconfort']);
         $this->assertCount(2, $s3['historique']);
-        $this->assertSame('heureux', $s3['historique'][0]['moi']);
-        $this->assertSame('stress', $s3['historique'][0]['lui']);
+        // Jour le plus ancien : alice [heureux, calme], bob [stress].
+        $this->assertSame('heureux', $s3['historique'][0]['moi'][0]['humeur']);
+        $this->assertSame('calme', $s3['historique'][0]['moi'][1]['humeur']);
+        $this->assertSame('stress', $s3['historique'][0]['lui'][0]['humeur']);
     }
 
     public function test_dashboard_affiche_la_meteo_du_couple(): void

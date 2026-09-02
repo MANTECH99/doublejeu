@@ -62,7 +62,7 @@
 
             if (!d.jaiRepondu) {
                 zone.innerHTML = `
-                    <div class="tiny muted mb8">Comment te sens-tu aujourd'hui ?</div>
+                    <div class="tiny muted mb8">Comment te sens-tu aujourd'hui (1er partage) ?</div>
                     <div class="mood-grid">
                         ${Object.entries(d.meteos).map(([k, m]) => `
                             <label class="mood-btn">
@@ -72,10 +72,21 @@
                     </div>
                     <input class="input mt12" id="meteo-commentaire" maxlength="255" placeholder="Un petit mot, en option…">
                     <button class="btn btn-primary btn-block mt8" onclick="enregistrerMeteo()">😊 Envoyer mon humeur</button>`;
-            } else if (!d.revelee) {
+            } else if (d.mesPartages.length < d.maxPartages) {
                 zone.innerHTML = `
-<span class="chip">Ton humeur : <b style="margin-left:4px">${moodEmoji(d.maHumeur, d.meteos)} ${moodLabel(d.maHumeur, d.meteos)}</b></span>
-                    <div class="badge neutre mt8">⏳ En attente de l'humeur de ${d.partenaire}…</div>
+                    <div class="chip">Ton humeur : <b style="margin-left:4px">${moodEmoji(d.maHumeur, d.meteos)} ${moodLabel(d.maHumeur, d.meteos)}</b></div>
+                    <div class="divider"></div>
+                    <div class="tiny muted mb8">Partage encore une fois ton humeur (message du soir) :</div>
+                    <div class="mood-grid">
+                        ${Object.entries(d.meteos).map(([k, m]) => `
+                            <label class="mood-btn">
+                                <input type="radio" name="humeur" class="mood-${k}" value="${k}" ${k === selectedMood ? 'checked' : ''}>
+                                <span><span>${m.emoji}</span><b>${m.label}</b></span>
+                            </label>`).join('')}
+                    </div>
+                    <input class="input mt12" id="meteo-commentaire" maxlength="255" placeholder="Un petit mot, en option…">
+                    <button class="btn btn-primary btn-block mt8" onclick="enregistrerMeteo()">🌙 Partager mon humeur du soir</button>
+                    ${!d.ilElleARepondu ? `<div class="badge neutre mt12">⏳ En attente de l'humeur de ${d.partenaire}…</div>` : ''}
                     ${renderSuggestion(d)}`;
             } else {
                 const syn = d.synthese ?? { emoji: '🌦️', label: 'Un jour partagé' };
@@ -150,8 +161,10 @@
                 <div class="meteo-chart">
                     ${d.historique.map(day => `
                         <div class="mcell">
-                            <span class="m-emo ${day.moi ? d.meteos[day.moi].niveau : 'vide'}">${day.moi ? moodEmoji(day.moi, d.meteos) : '·'}</span>
-                            <span class="m-emo ${day.lui ? d.meteos[day.lui].niveau : 'vide'}">${day.lui ? moodEmoji(day.lui, d.meteos) : '·'}</span>
+                            <span class="m-emo ${day.moi[0] ? d.meteos[day.moi[0].humeur].niveau : 'vide'}">${day.moi[0] ? moodEmoji(day.moi[0].humeur, d.meteos) : '·'}</span>
+                            <span class="m-emo ${day.moi[1] ? d.meteos[day.moi[1].humeur].niveau : 'vide'}">${day.moi[1] ? moodEmoji(day.moi[1].humeur, d.meteos) : '·'}</span>
+                            <span class="m-emo ${day.lui[0] ? d.meteos[day.lui[0].humeur].niveau : 'vide'}">${day.lui[0] ? moodEmoji(day.lui[0].humeur, d.meteos) : '·'}</span>
+                            <span class="m-emo ${day.lui[1] ? d.meteos[day.lui[1].humeur].niveau : 'vide'}">${day.lui[1] ? moodEmoji(day.lui[1].humeur, d.meteos) : '·'}</span>
                             <span class="m-date">${day.jour}</span>
                         </div>`).join('')}
                 </div>`;
