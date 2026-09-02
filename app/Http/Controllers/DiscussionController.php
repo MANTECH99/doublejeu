@@ -77,7 +77,7 @@ class DiscussionController extends Controller
             ->whereNull('read_at')
             ->count();
 
-        $partenaire = $couple->partnerOf($request->user());
+        $partenaire = $couple->partnerOf($request->user())?->fresh();
 
         return response()->json([
             'messages' => $messages,
@@ -86,8 +86,20 @@ class DiscussionController extends Controller
                 'enLigne' => $partenaire?->last_active_at !== null && $partenaire->last_active_at->diffInMinutes() < 1,
                 'present' => $partenaire?->last_active_at !== null,
                 'heure' => $partenaire?->last_active_at?->diffForHumans(),
+                'typing' => $partenaire?->typing_at !== null && $partenaire->typing_at->diffInSeconds() < 3,
             ],
         ]);
+    }
+
+    public function typing(Request $request): JsonResponse
+    {
+        // Signale que l'utilisateur est en train d'écrire ; l'indicateur expire seul
+        // après quelques secondes (le dernier typage est renvoyé via fetch).
+        $request->user()->forceFill(['typing_at' => now()])->save();
+
+        ActivityService::touch($request->user());
+
+        return response()->json(['ok' => true]);
     }
 
     public function send(Request $request): JsonResponse

@@ -53,6 +53,7 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::get('/discussion', [DiscussionController::class, 'index'])->name('discussion.index');
     Route::get('/discussion/etat', [DiscussionController::class, 'fetch'])->name('discussion.fetch');
     Route::post('/discussion/envoyer', [DiscussionController::class, 'send'])->name('discussion.send');
+    Route::post('/discussion/tape', [DiscussionController::class, 'typing'])->name('discussion.typing');
     Route::get('/discussion/non-lus', [DiscussionController::class, 'nonLus'])->name('discussion.non-lus');
 
     // ---- Vérité ou Action ----

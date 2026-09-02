@@ -164,6 +164,36 @@ class DiscussionFlowTest extends TestCase
         $this->assertSame('Alice', $reply['reply_to']['sender_name']);
     }
 
+    public function test_partner_sees_typing_indicator_while_other_is_typing(): void
+    {
+        // Personne ne tape au départ.
+        $idle = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertFalse($idle['partenaire']['typing']);
+
+        // Alice tape juste maintenant.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.typing'))
+            ->assertOk()
+            ->assertJson(['ok' => true]);
+
+        $whileTyping = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertTrue($whileTyping['partenaire']['typing']);
+
+        // L'indicateur expire après 3 secondes d'inactivité.
+        $this->travel(4)->seconds();
+        $expired = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertFalse($expired['partenaire']['typing']);
+    }
+
     public function test_validation_and_authorization(): void
     {
         // Contenu vide refusé.

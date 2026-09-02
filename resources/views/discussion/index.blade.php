@@ -87,6 +87,7 @@
     const REPLY_CLOSE_EL = document.getElementById('disc-reply-close');
     const STATE_URL = '{{ route("discussion.fetch") }}';
     const SEND_URL = '{{ route("discussion.send") }}';
+    const TYPING_URL = '{{ route("discussion.typing") }}';
     const MY_ID = {{ $me->id }};
     const PARTNER_NAME = @json($partenaire->name);
 
@@ -436,7 +437,9 @@
 
     function updateOnline(p) {
         if (!p) return;
-        if (p.enLigne) {
+        if (p.typing) {
+            STATUS_EL.innerHTML = '<span style="color:var(--primary)">en train d\u2019\u00e9crire…</span>';
+        } else if (p.enLigne) {
             STATUS_EL.innerHTML = '<span style="color:var(--success)">● en ligne</span>';
         } else if (p.present) {
             STATUS_EL.innerHTML = '<span class="muted">actif·ve il y a ' + p.heure + '</span>';
@@ -445,8 +448,26 @@
         }
     }
 
+    // Envoie le signal "je tape" au maximum une fois par période de poll (1,5 s) :
+    // le timestamp typing_at reste ainsi frais tant qu'on écrit.
+    let lastTypingSent = 0;
+    function sendTyping() {
+        const now = Date.now();
+        if (now - lastTypingSent < 1200) return;
+        lastTypingSent = now;
+        fetch(TYPING_URL, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+        }).catch(() => {});
+    }
+
     INPUT_EL.addEventListener('input', () => {
         SEND_BTN.disabled = !INPUT_EL.value.trim();
+        if (INPUT_EL.value.trim()) sendTyping();
     });
     INPUT_EL.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
