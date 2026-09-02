@@ -754,7 +754,7 @@ summary.btn::-webkit-details-marker { display: none; }
     color: var(--text);
     padding: 10px 16px;
     font: inherit;
-    font-size: 14px;
+    font-size: 16px;
     outline: none;
     transition: 0.2s;
 }

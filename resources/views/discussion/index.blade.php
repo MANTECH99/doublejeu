@@ -2,6 +2,14 @@
 
 @section('title', 'Discussion')
 
+@push('head')
+<style>
+    /* Pas de barre de navigation en bas sur la page discussion :
+       le chat occupe tout l'espace jusqu'en bas de l'écran. */
+    body .bottom-nav { display: none !important; }
+    .disc-wrap { bottom: 0 !important; }
+</style>
+@endpush
 @php
     $me = auth()->user();
     $partenaire = $couple->partnerOf($me);
