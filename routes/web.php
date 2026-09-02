@@ -54,6 +54,9 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::get('/discussion/etat', [DiscussionController::class, 'fetch'])->name('discussion.fetch');
     Route::post('/discussion/envoyer', [DiscussionController::class, 'send'])->name('discussion.send');
     Route::post('/discussion/tape', [DiscussionController::class, 'typing'])->name('discussion.typing');
+    Route::get('/discussion/gifs', [DiscussionController::class, 'gifs'])->name('discussion.gifs');
+    Route::get('/discussion/favoris', [DiscussionController::class, 'favorites'])->name('discussion.favorites');
+    Route::post('/discussion/favoris', [DiscussionController::class, 'toggleFavorite'])->name('discussion.favorites.toggle');
     Route::get('/discussion/non-lus', [DiscussionController::class, 'nonLus'])->name('discussion.non-lus');
 
     // ---- Vérité ou Action ----

@@ -98,4 +98,9 @@ class Couple extends Model
     {
         return $this->hasMany(Message::class);
     }
+
+    public function gifFavorites(): HasMany
+    {
+        return $this->hasMany(GifFavorite::class);
+    }
 }

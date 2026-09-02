@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['couple_id', 'sender_id', 'body', 'reply_to_id', 'read_at'])]
+#[Fillable(['couple_id', 'sender_id', 'body', 'reply_to_id', 'gif_url', 'gif_alt', 'read_at'])]
 class Message extends Model
 {
     use HasFactory;
@@ -37,6 +37,11 @@ class Message extends Model
     public function isRead(): bool
     {
         return $this->read_at !== null;
+    }
+
+    public function isGif(): bool
+    {
+        return ! empty($this->gif_url);
     }
 
     public function markAsRead(): void

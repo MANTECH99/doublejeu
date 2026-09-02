@@ -56,6 +56,14 @@
 
         {{-- Composer (fixe, juste au-dessus de la barre de navigation) --}}
         <div class="disc-composer" id="disc-composer">
+            <button class="disc-gif-btn" id="disc-gif-btn" type="button" aria-label="Envoyer un GIF">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                    <path d="M10 12h2v3"></path>
+                    <path d="M7 9h2"></path>
+                    <path d="M13 9v3c0 1.1.9 2 2 2"></path>
+                </svg>
+            </button>
             <input
                 type="text"
                 id="disc-input"
@@ -72,6 +80,19 @@
             </button>
         </div>
     </div>
+
+    {{-- Panneau GIF (recherche GIPHY + favoris), au-dessus du composer --}}
+    <div class="disc-gifpanel" id="disc-gifpanel" style="display:none">
+        <div class="disc-gifpanel-head">
+            <input type="text" id="disc-gif-search" class="disc-gif-search" placeholder="Rechercher un GIF… " />
+            <button class="disc-gif-close" id="disc-gif-close" aria-label="Fermer">✕</button>
+        </div>
+        <div class="disc-gif-tabs">
+            <button type="button" class="disc-gif-tab active" data-tab="search" id="disc-tab-search">Recherche</button>
+            <button type="button" class="disc-gif-tab" data-tab="favs" id="disc-tab-favs">Favoris</button>
+        </div>
+        <div class="disc-gif-grid" id="disc-gif-grid"></div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -81,6 +102,13 @@
     const INPUT_EL = document.getElementById('disc-input');
     const SEND_BTN = document.getElementById('disc-send');
     const STATUS_EL = document.getElementById('disc-status');
+    const GIF_BTN = document.getElementById('disc-gif-btn');
+    const GIF_PANEL = document.getElementById('disc-gifpanel');
+    const GIF_SEARCH = document.getElementById('disc-gif-search');
+    const GIF_GRID = document.getElementById('disc-gif-grid');
+    const GIF_CLOSE = document.getElementById('disc-gif-close');
+    const TAB_SEARCH = document.getElementById('disc-tab-search');
+    const TAB_FAVS = document.getElementById('disc-tab-favs');
     const REPLYBAR_EL = document.getElementById('disc-replybar');
     const REPLY_NAME_EL = document.getElementById('disc-reply-name');
     const REPLY_BODY_EL = document.getElementById('disc-reply-body');
@@ -88,6 +116,9 @@
     const STATE_URL = '{{ route("discussion.fetch") }}';
     const SEND_URL = '{{ route("discussion.send") }}';
     const TYPING_URL = '{{ route("discussion.typing") }}';
+    const GIFS_URL = '{{ route("discussion.gifs") }}';
+    const FAVORITES_URL = '{{ route("discussion.favorites") }}';
+    const FAVORITES_TOGGLE_URL = '{{ route("discussion.favorites.toggle") }}';
     const MY_ID = {{ $me->id }};
     const PARTNER_NAME = @json($partenaire->name);
 
@@ -97,6 +128,7 @@
     let lastDate = '';
     let sending = false;
     let replyTarget = null; // {id, sender_name, body}
+    let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
 
     function scrollToBottom(smooth) {
         if (smooth) {
@@ -246,10 +278,24 @@
             bubble.appendChild(quoted);
         }
 
-        const bodyText = document.createElement('span');
-        bodyText.className = 'disc-bubble-text';
-        bodyText.textContent = msg.body;
-        bubble.appendChild(bodyText);
+        // Message GIF/sticker : grande image au lieu du texte.
+        if (msg.is_gif && msg.gif_url) {
+            const imgWrap = document.createElement('div');
+            imgWrap.className = 'disc-gif';
+            const img = document.createElement('img');
+            img.src = msg.gif_url;
+            img.alt = msg.gif_alt || 'GIF';
+            img.loading = 'lazy';
+            imgWrap.appendChild(img);
+            bubble.appendChild(imgWrap);
+        }
+
+        if (msg.body) {
+            const bodyText = document.createElement('span');
+            bodyText.className = 'disc-bubble-text';
+            bodyText.textContent = msg.body;
+            bubble.appendChild(bodyText);
+        }
 
         const meta = document.createElement('div');
         meta.className = 'disc-meta ' + (isMe ? 'me' : 'them');
@@ -385,10 +431,16 @@
 
     async function sendMessage() {
         const body = INPUT_EL.value.trim();
-        if (!body || sending) return;
+        if ((!body && !pendingGif) || sending) return;
 
         sending = true;
         SEND_BTN.disabled = true;
+
+        const payload = { body, reply_to_id: replyTarget ? replyTarget.id : null };
+        if (pendingGif) {
+            payload.gif_url = pendingGif.url;
+            payload.gif_alt = pendingGif.alt;
+        }
 
         try {
             const res = await fetch(SEND_URL, {
@@ -399,7 +451,7 @@
                     'X-Requested-With': 'XMLHttpRequest',
                     'Accept': 'application/json',
                 },
-                body: JSON.stringify({ body, reply_to_id: replyTarget ? replyTarget.id : null }),
+                body: JSON.stringify(payload),
             });
 
             if (res.ok) {
@@ -410,6 +462,9 @@
                     id: data.id,
                     sender_id: MY_ID,
                     body: body,
+                    is_gif: !!pendingGif,
+                    gif_url: pendingGif ? pendingGif.url : null,
+                    gif_alt: pendingGif ? pendingGif.alt : null,
                     lu: false,
                     created_at: data.created_at,
                     date: new Date().toISOString().slice(0, 10),
@@ -422,16 +477,18 @@
                 });
                 if (wasDown) scrollToBottom(true);
                 setReply(null);
+                pendingGif = null;
+                closeGifPanel();
                 INPUT_EL.value = '';
                 SEND_BTN.disabled = true;
             } else {
-                toast('Erreur lors de l\'envoi.', 'error');
+                toast(pendingGif ? 'Erreur lors de l\'envoi du GIF.' : 'Erreur lors de l\'envoi.', 'error');
             }
         } catch (e) {
             toast('Connexion perdue.', 'error');
         } finally {
             sending = false;
-            SEND_BTN.disabled = !INPUT_EL.value.trim();
+            SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif;
         }
     }
 
@@ -465,8 +522,181 @@
         }).catch(() => {});
     }
 
+    /* ---------- Panneau GIF + favoris ---------- */
+    let gifRequest = null;
+    let activeTab = 'search';
+    let favCache = [];      // {id, url, alt} des favoris
+    let favUrlSet = new Set();
+
+    function closeGifPanel() {
+        GIF_PANEL.style.display = 'none';
+        GIF_SEARCH.value = '';
+        GIF_GRID.innerHTML = '';
+        GIF_BTN.classList.remove('active');
+        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif;
+    }
+
+    function openGifPanel() {
+        GIF_PANEL.style.display = 'flex';
+        GIF_BTN.classList.add('active');
+        showTab('search');
+        GIF_SEARCH.focus();
+    }
+
+    function showTab(tab) {
+        activeTab = tab;
+        TAB_SEARCH.classList.toggle('active', tab === 'search');
+        TAB_FAVS.classList.toggle('active', tab === 'favs');
+        if (tab === 'favs') {
+            loadFavorites();
+        } else {
+            loadGifs(GIF_SEARCH.value.trim());
+        }
+    }
+
+    async function loadFavorites() {
+        GIF_GRID.innerHTML = '<div class="disc-gif-loading">Chargement…</div>';
+        try {
+            const res = await fetch(FAVORITES_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!res.ok) {
+                GIF_GRID.innerHTML = '<div class="disc-gif-error">Impossible de charger les favoris.</div>';
+                return;
+            }
+            const data = await res.json();
+            favCache = data.favorites || [];
+            favUrlSet = new Set(favCache.map(f => f.url));
+            renderGifGrid(favCache.map(f => ({ url: f.url, alt: f.alt, isFav: true })));
+        } catch (e) {
+            GIF_GRID.innerHTML = '<div class="disc-gif-error">Connexion perdue.</div>';
+        }
+    }
+
+    async function loadGifs(query) {
+        if (gifRequest) gifRequest.abort();
+        GIF_GRID.innerHTML = '<div class="disc-gif-loading">Chargement…</div>';
+        gifRequest = new AbortController();
+        try {
+            const res = await fetch(GIFS_URL + '?q=' + encodeURIComponent(query), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                signal: gifRequest.signal,
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                GIF_GRID.innerHTML = '<div class="disc-gif-error">' + escHtml(err.error || 'Impossible de charger les GIF.') + '</div>';
+                return;
+            }
+            const data = await res.json();
+            const items = (data.gifs || []).map(g => ({
+                url: g.url,
+                alt: g.alt || '',
+                preview: g.preview,
+                isFav: favUrlSet.has(g.url),
+            }));
+            renderGifGrid(items);
+        } catch (e) {
+            if (e.name !== 'AbortError') {
+                GIF_GRID.innerHTML = '<div class="disc-gif-error">Connexion perdue.</div>';
+            }
+        }
+    }
+
+    async function toggleFavorite(url, alt) {
+        const res = await fetch(FAVORITES_TOGGLE_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ gif_url: url, gif_alt: alt || '' }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            favCache = data.favorites || [];
+            favUrlSet = new Set(favCache.map(f => f.url));
+            // Rafraîchit la grille selon l'onglet actif.
+            if (activeTab === 'favs') {
+                renderGifGrid(favCache.map(f => ({ url: f.url, alt: f.alt, isFav: true })));
+            } else {
+                updateFavStars();
+            }
+        }
+    }
+
+    function updateFavStars() {
+        GIF_GRID.querySelectorAll('.disc-gif-item').forEach(item => {
+            const url = item.dataset.url;
+            const star = item.querySelector('.disc-gif-star');
+            if (star) star.classList.toggle('active', favUrlSet.has(url));
+        });
+    }
+
+    function renderGifGrid(gifs) {
+        GIF_GRID.innerHTML = '';
+        if (gifs.length === 0) {
+            GIF_GRID.innerHTML = '<div class="disc-gif-error">' + (activeTab === 'favs' ? 'Aucun favori pour l\'instant.' : 'Aucun GIF trouvé.') + '</div>';
+            return;
+        }
+        for (const g of gifs) {
+            const wrap = document.createElement('div');
+            wrap.className = 'disc-gif-item';
+            wrap.dataset.url = g.url;
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'disc-gif-select';
+            const img = document.createElement('img');
+            img.src = g.url || g.preview;
+            img.alt = g.alt || 'GIF';
+            img.loading = 'lazy';
+            btn.appendChild(img);
+
+            const star = document.createElement('button');
+            star.type = 'button';
+            star.className = 'disc-gif-star' + (g.isFav ? ' active' : '');
+            star.setAttribute('aria-label', 'Favori');
+            star.textContent = '★';
+
+            btn.addEventListener('click', () => {
+                pendingGif = { url: g.url, alt: g.alt || 'GIF' };
+                sendMessage();
+            });
+            star.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleFavorite(g.url, g.alt);
+            });
+
+            wrap.appendChild(btn);
+            wrap.appendChild(star);
+            GIF_GRID.appendChild(wrap);
+        }
+    }
+
+    TAB_SEARCH.addEventListener('click', () => showTab('search'));
+    TAB_FAVS.addEventListener('click', () => showTab('favs'));
+
+    GIF_BTN.addEventListener('click', () => {
+        if (GIF_PANEL.style.display === 'flex') closeGifPanel();
+        else openGifPanel();
+    });
+    GIF_CLOSE.addEventListener('click', closeGifPanel);
+    GIF_SEARCH.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            loadGifs(GIF_SEARCH.value.trim());
+        }
+    });
+    GIF_SEARCH.addEventListener('input', () => {
+        clearTimeout(GIF_SEARCH._t);
+        GIF_SEARCH._t = setTimeout(() => {
+            const v = GIF_SEARCH.value.trim();
+            if (v.length >= 2 || v.length === 0) loadGifs(v);
+        }, 400);
+    });
+
     INPUT_EL.addEventListener('input', () => {
-        SEND_BTN.disabled = !INPUT_EL.value.trim();
+        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif;
         if (INPUT_EL.value.trim()) sendTyping();
     });
     INPUT_EL.addEventListener('keydown', (e) => {

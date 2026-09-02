@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Couple;
+use App\Models\GifFavorite;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class DiscussionFlowTest extends TestCase
@@ -194,13 +196,140 @@ class DiscussionFlowTest extends TestCase
         $this->assertFalse($expired['partenaire']['typing']);
     }
 
+    public function test_partners_can_send_and_receive_gif_messages(): void
+    {
+        // Alice envoie un message GIF.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), [
+                'gif_url' => 'https://media.giphy.com/media/xyz/giphy.gif',
+                'gif_alt' => 'Petit chat mignon',
+            ])
+            ->assertOk()
+            ->assertJson(['ok' => true]);
+
+        $this->assertDatabaseHas('messages', [
+            'couple_id' => $this->couple->id,
+            'gif_url' => 'https://media.giphy.com/media/xyz/giphy.gif',
+        ]);
+
+        // Bob reçoit le GIF avec ses métadonnées.
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $gif = $fetch['messages'][0];
+        $this->assertTrue($gif['is_gif']);
+        $this->assertSame('https://media.giphy.com/media/xyz/giphy.gif', $gif['gif_url']);
+        $this->assertSame('Petit chat mignon', $gif['gif_alt']);
+
+        // Message vide sans GIF refusé, et GIF + légende accepté.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['body' => '', 'gif_url' => null])
+            ->assertStatus(422);
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['body' => 'Regarde ça !', 'gif_url' => 'https://media.giphy.com/media/abc/giphy.gif'])
+            ->assertOk();
+    }
+
+    public function test_giphy_proxy_endpoint_returns_gifs(): void
+    {
+        Http::fake([
+            'api.giphy.com/*' => Http::response([
+                'data' => [
+                    [
+                        'id' => 'abc',
+                        'title' => 'Funny cat',
+                        'alt_text' => 'Funny cat',
+                        'images' => [
+                            'original' => ['url' => 'https://media.giphy.com/media/abc/giphy.gif'],
+                            'downsized' => ['url' => 'https://media.giphy.com/media/abc/downsized.gif'],
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        config(['services.giphy.key' => 'fake-key']);
+
+        $res = $this->actingAs($this->alice)
+            ->getJson(route('discussion.gifs').'?q=chat')
+            ->assertOk()
+            ->json();
+
+        $this->assertCount(1, $res['gifs']);
+        $this->assertSame('https://media.giphy.com/media/abc/giphy.gif', $res['gifs'][0]['url']);
+        $this->assertSame('https://media.giphy.com/media/abc/downsized.gif', $res['gifs'][0]['preview']);
+
+        // Sans clé configurée → 503 avec un message clair.
+        config(['services.giphy.key' => null]);
+        $this->actingAs($this->alice)
+            ->getJson(route('discussion.gifs').'?q=chat')
+            ->assertStatus(503);
+    }
+
+    public function test_couples_can_favorite_and_unfavorite_gifs(): void
+    {
+        $url = 'https://media.giphy.com/media/xyz/giphy.gif';
+
+        $this->assertSame((int) $this->alice->coupleModel->id, (int) $this->bob->coupleModel->id);
+
+        // Liste vide au départ.
+        $empty = $this->actingAs($this->bob)
+            ->getJson(route('discussion.favorites'))
+            ->assertOk()
+            ->json();
+        $this->assertCount(0, $empty['favorites']);
+
+        // Alice ajoute un favori → renvoyé en favori avec la liste à jour.
+        $added = $this->actingAs($this->alice)
+            ->postJson(route('discussion.favorites.toggle'), ['gif_url' => $url, 'gif_alt' => 'Chat mignon'])
+            ->assertOk()
+            ->json();
+        $this->assertTrue($added['favorite']);
+        $this->assertCount(1, $added['favorites']);
+        $this->assertSame($url, $added['favorites'][0]['url']);
+
+        // Le partenaire (même couple) voit ce favori.
+        $list = $this->actingAs($this->bob)
+            ->getJson(route('discussion.favorites'))
+            ->assertOk()
+            ->json();
+        $this->assertCount(1, $list['favorites']);
+        $this->assertSame('Chat mignon', $list['favorites'][0]['alt']);
+
+        // Un deuxième toggle sur la même URL retire le favori (aller-retour).
+        $removed = $this->actingAs($this->alice)
+            ->postJson(route('discussion.favorites.toggle'), ['gif_url' => $url, 'gif_alt' => 'Chat mignon'])
+            ->assertOk()
+            ->json();
+        $this->assertFalse($removed['favorite']);
+        $this->assertCount(0, $removed['favorites']);
+    }
+
+    public function test_gif_favorite_is_unique_per_couple_and_url(): void
+    {
+        $url = 'https://media.giphy.com/media/xyz/giphy.gif';
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.favorites.toggle'), ['gif_url' => $url])
+            ->assertOk();
+
+        // La contrainte unique (couple_id, gif_url) empêche tout doublon en base.
+        $this->expectExceptionMessageMatches('/UNIQUE/i');
+        GifFavorite::create([
+            'couple_id' => $this->alice->coupleModel->id,
+            'gif_url' => $url,
+        ]);
+    }
+
     public function test_validation_and_authorization(): void
     {
         // Contenu vide refusé.
         $this->actingAs($this->alice)
             ->postJson(route('discussion.send'), ['body' => '   '])
             ->assertStatus(422);
-
         // Un utilisateur non lié ne peut pas accéder à la discussion.
         $solo = User::factory()->create();
         $this->actingAs($solo)

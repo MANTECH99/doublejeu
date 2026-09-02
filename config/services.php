@@ -41,4 +41,8 @@ return [
         'private_key' => env('VAPID_PRIVATE_KEY'),
     ],
 
+    'giphy' => [
+        'key' => env('GIPHY_API_KEY'),
+    ],
+
 ];

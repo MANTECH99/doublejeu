@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\GifFavorite;
 use App\Models\Message;
 use App\Services\ActivityService;
 use App\Services\PushService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 use Illuminate\View\View;
 
 class DiscussionController extends Controller
@@ -61,6 +63,9 @@ class DiscussionController extends Controller
             'sender_id' => $m->sender_id,
             'sender_name' => $m->sender?->name ?? 'Ancien·ne partenaire',
             'body' => $m->body,
+            'gif_url' => $m->gif_url,
+            'gif_alt' => $m->gif_alt,
+            'is_gif' => $m->isGif(),
             'lu' => $m->isRead(),
             'created_at' => $m->created_at->format('H:i'),
             'date' => $m->created_at->format('Y-m-d'),
@@ -102,14 +107,117 @@ class DiscussionController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function gifs(Request $request): JsonResponse
+    {
+        $query = trim((string) $request->query('q', ''));
+
+        $apiKey = config('services.giphy.key');
+        if (! $apiKey) {
+            return response()->json(['error' => 'La clé GIPHY n\'est pas configurée.'], 503);
+        }
+
+        $params = [
+            'api_key' => $apiKey,
+            'limit' => 24,
+            'rating' => 'g',
+            'lang' => 'fr',
+        ];
+
+        // Sans mot-clé : stickers/emojis tendance ; sinon recherche.
+        $endpoint = $query === ''
+            ? 'https://api.giphy.com/v1/stickers/trending'
+            : 'https://api.giphy.com/v1/stickers/search';
+
+        if ($query !== '') {
+            $params['q'] = $query;
+        }
+
+        $response = Http::get($endpoint, $params);
+
+        if ($response->failed() || ! isset($response->json()['data'])) {
+            return response()->json(['error' => 'Impossible de contacter GIPHY.'], 502);
+        }
+
+        $gifs = collect($response->json()['data'])->map(fn ($g) => [
+            'id' => $g['id'] ?? null,
+            'title' => $g['title'] ?? '',
+            'alt' => $g['alt_text'] ?? ($g['title'] ?? ''),
+            'url' => $g['images']['original']['url'] ?? null,
+            'preview' => $g['images']['downsized']['url'] ?? ($g['images']['fixed_width']['url'] ?? null),
+        ])->filter(fn ($g) => $g['url'] !== null)->values();
+
+        return response()->json(['gifs' => $gifs]);
+    }
+
+    public function favorites(Request $request): JsonResponse
+    {
+        $couple = $request->user()->coupleModel;
+
+        $favorites = $couple->gifFavorites()
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (GifFavorite $f) => [
+                'id' => $f->id,
+                'url' => $f->gif_url,
+                'alt' => $f->gif_alt ?? '',
+            ]);
+
+        return response()->json(['favorites' => $favorites]);
+    }
+
+    public function toggleFavorite(Request $request): JsonResponse
+    {
+        $couple = $request->user()->coupleModel;
+
+        $data = $request->validate([
+            'gif_url' => ['required', 'url', 'max:1000'],
+            'gif_alt' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        // On utilise la version URL comme clé : l'URL "original" d'un GIF est stable
+        // (la même vignette revient souvent), c'est une clé fiable pour un favori.
+        $key = $data['gif_url'];
+
+        $existing = $couple->gifFavorites()->where('gif_url', $key)->first();
+
+        if ($existing) {
+            $existing->delete();
+            $isFavorite = false;
+        } else {
+            $couple->gifFavorites()->create([
+                'gif_url' => $key,
+                'gif_alt' => $data['gif_alt'] ?? null,
+            ]);
+            $isFavorite = true;
+        }
+
+        $favorites = $couple->gifFavorites()
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (GifFavorite $f) => [
+                'id' => $f->id,
+                'url' => $f->gif_url,
+                'alt' => $f->gif_alt ?? '',
+            ]);
+
+        return response()->json(['favorite' => $isFavorite, 'favorites' => $favorites]);
+    }
+
     public function send(Request $request): JsonResponse
     {
         $couple = $request->user()->coupleModel;
 
         $data = $request->validate([
-            'body' => ['required', 'string', 'max:2000'],
+            'body' => ['nullable', 'string', 'max:2000'],
+            'gif_url' => ['nullable', 'url', 'max:1000'],
+            'gif_alt' => ['nullable', 'string', 'max:255'],
             'reply_to_id' => ['nullable', 'integer'],
         ]);
+
+        // Un message doit contenir du texte OU un GIF (ou les deux, GIF + légende).
+        if (blank($data['body'] ?? null) && blank($data['gif_url'] ?? null)) {
+            return response()->json(['error' => 'Le message est vide.'], 422);
+        }
 
         $replyToId = $data['reply_to_id'] ?? null;
         if ($replyToId !== null) {
@@ -122,7 +230,9 @@ class DiscussionController extends Controller
         $message = Message::create([
             'couple_id' => $couple->id,
             'sender_id' => $request->user()->id,
-            'body' => $data['body'],
+            'body' => $data['body'] ?? '',
+            'gif_url' => $data['gif_url'] ?? null,
+            'gif_alt' => $data['gif_alt'] ?? null,
             'reply_to_id' => $replyToId,
         ]);
 
@@ -130,9 +240,12 @@ class DiscussionController extends Controller
 
         $partner = $couple->partnerOf($request->user());
         if ($partner) {
+            $notifBody = ! empty($data['gif_url'] ?? null)
+                ? '📷 Envoie un GIF'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                : ($data['body'] ?? 'Nouveau message');
             app(PushService::class)->sendToUser($partner, [
                 'title' => '💬 '.$request->user()->name,
-                'body' => mb_strimwidth($data['body'], 0, 80, '…'),
+                'body' => mb_strimwidth($notifBody, 0, 80, '…'),
                 'url' => route('discussion.index'),
             ]);
         }
