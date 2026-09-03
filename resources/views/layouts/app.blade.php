@@ -100,7 +100,7 @@
                 <span>Double Jeu</span>
             </a>
             <div class="actions">
-                <a href="{{ route('discussion.index') }}" class="icon-btn" title="Discussion">💬</a>
+                <a href="{{ route('discussion.index') }}" class="icon-btn" title="Discussion">💬<span class="dj-badge" id="header-disc-badge" style="display:none"></span></a>
                 <a href="{{ route('recompenses.index') }}" class="icon-btn" title="Récompenses">🏆</a>
                 <a href="{{ route('cartes.index') }}" class="icon-btn" title="Mes cartes">🃏</a>
                 <a href="{{ route('profile.edit') }}" class="icon-btn" title="Profil">👤</a>
@@ -125,6 +125,61 @@
                 toast(@json($error), 'error');
             @endforeach
         });
+    </script>
+
+    <script>
+        // Compteur de messages non lus (header + nav + badge PWA), comme WhatsApp.
+        (function () {
+            if (!document.body || document.body.getAttribute('data-auth') !== '1') return;
+
+            function setBadge(el, n) {
+                if (!el) return;
+                if (n > 0) {
+                    el.textContent = n > 99 ? '99+' : n;
+                    el.style.display = 'grid';
+                } else {
+                    el.style.display = 'none';
+                }
+            }
+
+            function updateBadges(n) {
+                setBadge(document.getElementById('header-disc-badge'), n);
+                setBadge(document.getElementById('nav-disc-badge'), n);
+                if ('setAppBadge' in navigator) {
+                    navigator.setAppBadge(n).catch(function () {});
+                }
+                // iOS ne connaît pas setAppBadge : on passe par le service worker,
+                // qui gère setNotificationBadge et setAppBadge côté registration.
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.ready
+                        .then(function (reg) {
+                            var active = reg.active || reg.waiting;
+                            if (active) active.postMessage({ type: 'SET_BADGE', count: n });
+                        })
+                        .catch(function () {});
+                }
+            }
+
+            async function poll() {
+                try {
+                    var res = await fetch('/discussion/non-lus', {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        cache: 'no-store'
+                    });
+                    if (res.ok) {
+                        var data = await res.json();
+                        updateBadges(data.nonLus || 0);
+                    }
+                } catch (e) {}
+            }
+
+            poll();
+            setInterval(poll, 1000);
+
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'visible') poll();
+            });
+        })();
     </script>
 
     @stack('scripts')

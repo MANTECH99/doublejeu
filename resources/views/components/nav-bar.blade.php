@@ -15,7 +15,7 @@
     </a>
     @foreach ($games as $game)
         <a href="{{ $game['url'] }}" class="{{ $route === $game['route'] ? 'active' : '' }}">
-            <span class="ico">{{ $game['ico'] }}</span>
+            <span class="ico">{{ $game['ico'] }}@if ($game['route'] === 'discussion.index')<span class="dj-badge" id="nav-disc-badge" style="display:none"></span>@endif</span>
             <span>{{ $game['label'] }}</span>
         </a>
     @endforeach

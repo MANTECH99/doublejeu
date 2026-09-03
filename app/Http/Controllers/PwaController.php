@@ -18,7 +18,19 @@ class PwaController extends Controller
     {
         return response(
             <<<'JS'
-const CACHE = 'doublejeu-v9';
+const CACHE = 'doublejeu-v10';
+
+// Pose le badge sur l'icône de l'app installée (Android via setAppBadge,
+// iOS via setNotificationBadge dès que le Web Push arrive).
+function setBadge(count) {
+    const n = Number(count) || 0;
+    if (self.registration.setNotificationBadge) {
+        self.registration.setNotificationBadge(n).catch(() => {});
+    }
+    if (self.registration.setAppBadge) {
+        self.registration.setAppBadge(n).catch(() => {});
+    }
+}
 const ASSETS = [
     '/',
     '/manifest.webmanifest',
@@ -68,6 +80,8 @@ self.addEventListener('push', (event) => {
         try { data = Object.assign({}, data, event.data.json()); } catch (e) {}
     }
 
+    if (data.badge != null) setBadge(data.badge);
+
     event.waitUntil(
         self.registration.showNotification(data.title, {
             body: data.body,
@@ -81,6 +95,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
+    setBadge(0);
     const url = (event.notification.data && event.notification.data.url) || '/dashboard';
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true })
@@ -94,7 +109,10 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+    if (!event.data) return;
+    if (event.data.type === 'SKIP_WAITING') self.skipWaiting();
+    if (event.data.type === 'SET_BADGE') setBadge(event.data.count);
+    if (event.data.type === 'CLEAR_BADGE') setBadge(0);
 });
 JS
             ,

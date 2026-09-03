@@ -71,7 +71,7 @@ class PushService
         $webPush = $this->client();
         $sent = 0;
 
-        $json = json_encode(array_merge(['title' => $payload['title'], 'body' => $payload['body'], 'url' => $payload['url']], $data), JSON_UNESCAPED_UNICODE);
+        $json = json_encode(array_merge($payload, $data), JSON_UNESCAPED_UNICODE);
 
         foreach ($subscriptions as $subscription) {
             try {

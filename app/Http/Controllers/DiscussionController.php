@@ -243,10 +243,15 @@ class DiscussionController extends Controller
             $notifBody = ! empty($data['gif_url'] ?? null)
                 ? '📷 Envoie un GIF'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
                 : ($data['body'] ?? 'Nouveau message');
+            $nonLus = Message::where('couple_id', $couple->id)
+                ->where('sender_id', '!=', $partner->id)
+                ->whereNull('read_at')
+                ->count();
             app(PushService::class)->sendToUser($partner, [
                 'title' => '💬 '.$request->user()->name,
                 'body' => mb_strimwidth($notifBody, 0, 80, '…'),
                 'url' => route('discussion.index'),
+                'badge' => $nonLus,
             ]);
         }
 

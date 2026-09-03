@@ -6,8 +6,10 @@ use App\Models\Couple;
 use App\Models\GifFavorite;
 use App\Models\Message;
 use App\Models\User;
+use App\Services\PushService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Mockery;
 use Tests\TestCase;
 
 class DiscussionFlowTest extends TestCase
@@ -326,6 +328,7 @@ class DiscussionFlowTest extends TestCase
 
     public function test_validation_and_authorization(): void
     {
+
         // Contenu vide refusé.
         $this->actingAs($this->alice)
             ->postJson(route('discussion.send'), ['body' => '   '])
@@ -341,5 +344,43 @@ class DiscussionFlowTest extends TestCase
             ->get(route('discussion.index'))
             ->assertOk()
             ->assertSee('disc-messages', false);
+    }
+
+    public function test_message_push_carries_unread_badge_count_for_partner(): void
+    {
+        // Bob a déjà 2 messages non lus (il n'a jamais lu la discussion).
+        Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Premier']);
+        Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Deuxième']);
+
+        // Quand Alice envoie un nouveau message, le badge envoyé au partenaire
+        // doit refléter le total de ses messages non lus (2 existants + 1 nouveau = 3).
+        $this->mock(PushService::class)
+            ->shouldReceive('sendToUser')
+            ->once()
+            ->with(
+                Mockery::on(fn ($user) => $user->is($this->bob)),
+                Mockery::on(fn ($payload) => isset($payload['badge']) && $payload['badge'] === 3)
+            );
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['body' => 'Troisième'])
+            ->assertOk();
+    }
+
+    public function test_service_worker_sets_badge_on_push_and_clears_on_notification_click(): void
+    {
+        $sw = $this->get(route('pwa.sw'))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/javascript; charset=UTF-8')
+            ->getContent();
+
+        // La pastille est posée quand une push porte un compteur.
+        $this->assertStringContainsString('if (data.badge != null) setBadge(data.badge);', $sw);
+        // Le service worker sait poser le badge via setNotificationBadge (iOS) et setAppBadge (Android).
+        $this->assertStringContainsString('self.registration.setNotificationBadge(n)', $sw);
+        $this->assertStringContainsString('self.registration.setAppBadge(n)', $sw);
+        // Effacement au clic sur la notification.
+        $this->assertStringContainsString('notificationclick', $sw);
+        $this->assertStringContainsString('setBadge(0)', $sw);
     }
 }
