@@ -974,6 +974,7 @@ summary.btn::-webkit-details-marker { display: none; }
 
 .disc-composer {
     flex-shrink: 0; /* dans le flux : il est scotché en bas du conteneur non défilable */
+    position: relative; /* ancrage de l'aperçu de photo */
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1053,6 +1054,143 @@ summary.btn::-webkit-details-marker { display: none; }
 .disc-gif-btn.active {
     color: var(--primary);
     background: var(--card-2);
+}
+
+/* Bouton appareil photo dans le composer */
+.disc-camera-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text-3);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: 0.2s;
+    flex-shrink: 0;
+}
+.disc-camera-btn:hover,
+.disc-camera-btn:active {
+    color: var(--primary);
+    background: var(--card-2);
+}
+
+/* Aperçu de la photo à envoyer, au-dessus du composer */
+.disc-photo-preview {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: calc(100% + 8px);
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    max-width: 320px;
+    padding: 8px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    z-index: 65;
+}
+.disc-photo-preview img {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+.disc-photo-preview-close {
+    margin-left: auto;
+    border: none;
+    background: var(--card-2);
+    color: var(--text-2);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+}
+
+/* Photo dans une bulle */
+.disc-photo {
+    border-radius: 12px;
+    overflow: hidden;
+    max-width: 260px;
+    margin: -2px;
+}
+.disc-photo img {
+    display: block;
+    width: 100%;
+    max-width: 260px;
+    height: auto;
+    border-radius: 12px;
+    cursor: zoom-in;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* Visionneuse plein écran d'une photo (style WhatsApp) */
+.disc-photo-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: rgba(0, 0, 0, 0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    gap: 14px;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+.disc-photo-viewer img {
+    max-width: 100%;
+    max-height: 78dvh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+}
+.disc-photo-viewer-close {
+    position: absolute;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+    font-size: 18px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    z-index: 1;
+}
+.disc-photo-viewer-actions {
+    display: flex;
+    gap: 10px;
+}
+.disc-photo-viewer-download {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    color: #fff;
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+}
+.disc-photo-viewer-download:active {
+    transform: scale(0.95);
 }
 
 /* Panneau de recherche de GIF, au-dessus du composer */

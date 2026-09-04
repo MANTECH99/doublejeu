@@ -103,6 +103,18 @@
                     <path d="M13 9v3c0 1.1.9 2 2 2"></path>
                 </svg>
             </button>
+            <button class="disc-camera-btn" id="disc-camera-btn" type="button" aria-label="Envoyer une photo">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+            </button>
+            <input type="file" id="disc-photo-input" accept="image/*" style="display:none">
+            {{-- Aperçu de la photo à envoyer, au-dessus du composer --}}
+            <div class="disc-photo-preview" id="disc-photo-preview" style="display:none">
+                <img id="disc-photo-preview-img" alt="Aperçu de la photo">
+                <button class="disc-photo-preview-close" id="disc-photo-preview-close" aria-label="Retirer la photo">✕</button>
+            </div>
             <textarea
                 id="disc-input"
                 class="disc-input"
@@ -143,6 +155,15 @@
         <button type="button" class="disc-sheet-btn disc-sheet-delete-red" id="disc-sheet-delete-all" style="display:none">🗑️ Supprimer pour tous</button>
         <button type="button" class="disc-sheet-btn disc-sheet-cancel" id="disc-sheet-cancel">Annuler</button>
     </div>
+
+    {{-- Visionneuse plein écran d'une photo : zoom + téléchargement (style WhatsApp) --}}
+    <div class="disc-photo-viewer" id="disc-photo-viewer" style="display:none">
+        <button class="disc-photo-viewer-close" id="disc-photo-viewer-close" aria-label="Fermer">✕</button>
+        <img id="disc-photo-viewer-img" alt="Photo agrandie">
+        <div class="disc-photo-viewer-actions">
+            <a class="disc-photo-viewer-download" id="disc-photo-viewer-download" download>⬇ Télécharger</a>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -160,6 +181,15 @@
     const TAB_SEARCH = document.getElementById('disc-tab-search');
     const TAB_FAVS = document.getElementById('disc-tab-favs');
     const TAB_STICKERS = document.getElementById('disc-tab-stickers');
+    const CAMERA_BTN = document.getElementById('disc-camera-btn');
+    const PHOTO_INPUT = document.getElementById('disc-photo-input');
+    const PHOTO_PREVIEW = document.getElementById('disc-photo-preview');
+    const PHOTO_PREVIEW_IMG = document.getElementById('disc-photo-preview-img');
+    const PHOTO_PREVIEW_CLOSE = document.getElementById('disc-photo-preview-close');
+    const PHOTO_VIEWER = document.getElementById('disc-photo-viewer');
+    const PHOTO_VIEWER_IMG = document.getElementById('disc-photo-viewer-img');
+    const PHOTO_VIEWER_CLOSE = document.getElementById('disc-photo-viewer-close');
+    const PHOTO_VIEWER_DOWNLOAD = document.getElementById('disc-photo-viewer-download');
     const REPLYBAR_EL = document.getElementById('disc-replybar');
     const REPLY_NAME_EL = document.getElementById('disc-reply-name');
     const REPLY_BODY_EL = document.getElementById('disc-reply-body');
@@ -180,6 +210,7 @@
     const SHEET_CANCEL = document.getElementById('disc-sheet-cancel');
     const STATE_URL = '{{ route("discussion.fetch") }}';
     const SEND_URL = '{{ route("discussion.send") }}';
+    const PHOTO_URL = '{{ route("discussion.photo") }}';
     const TYPING_URL = '{{ route("discussion.typing") }}';
     const GIFS_URL = '{{ route("discussion.gifs") }}';
     const STICKERS_URL = '{{ route("discussion.stickers") }}';
@@ -196,6 +227,7 @@
     let sending = false;
     let replyTarget = null; // {id, sender_name, body}
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
+    let pendingPhoto = null; // {path, url} photo choisie à envoyer
     const selectedMsgs = new Map(); // id -> {msg, wrap}
     let lastToggleAt = -9999; // dernier moment où la sélection a été basculée (anti-rebond/doublon)
     let initialLoad = true; // premier chargement : scroll direct en bas
@@ -470,6 +502,23 @@
             bubble.appendChild(imgWrap);
         }
 
+        // Message photo : image hébergée localement.
+        if (msg.is_photo && msg.photo_url) {
+            const imgWrap = document.createElement('div');
+            imgWrap.className = 'disc-photo';
+            const img = document.createElement('img');
+            img.src = msg.photo_url;
+            img.alt = 'Photo';
+            img.loading = 'lazy';
+            img.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openPhotoViewer(img.src, img.alt);
+            });
+            imgWrap.appendChild(img);
+            bubble.appendChild(imgWrap);
+        }
+
         if (msg.body) {
             const bodyText = document.createElement('span');
             bodyText.className = 'disc-bubble-text';
@@ -660,7 +709,7 @@
 
     async function sendMessage() {
         const body = INPUT_EL.value.trim();
-        if ((!body && !pendingGif) || sending) return;
+        if ((!body && !pendingGif && !pendingPhoto) || sending) return;
 
         sending = true;
         SEND_BTN.disabled = true;
@@ -669,6 +718,9 @@
         if (pendingGif) {
             payload.gif_url = pendingGif.url;
             payload.gif_alt = pendingGif.alt;
+        }
+        if (pendingPhoto) {
+            payload.photo_path = pendingPhoto.path;
         }
 
         try {
@@ -694,6 +746,8 @@
                     is_gif: !!pendingGif,
                     gif_url: pendingGif ? pendingGif.url : null,
                     gif_alt: pendingGif ? pendingGif.alt : null,
+                    is_photo: !!pendingPhoto,
+                    photo_url: pendingPhoto ? pendingPhoto.url : null,
                     lu: false,
                     created_at: data.created_at,
                     date: new Date().toISOString().slice(0, 10),
@@ -707,6 +761,8 @@
                 if (wasDown) scrollToBottom(true);
                 setReply(null);
                 pendingGif = null;
+                pendingPhoto = null;
+                hidePhotoPreview();
                 closeGifPanel();
                 INPUT_EL.value = '';
                 autosize();
@@ -718,7 +774,7 @@
             toast('Connexion perdue.', 'error');
         } finally {
             sending = false;
-            SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif;
+            SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto;
         }
     }
 
@@ -758,12 +814,45 @@
     let favCache = [];      // {id, url, alt} des favoris
     let favUrlSet = new Set();
 
+    function hidePhotoPreview() {
+        PHOTO_PREVIEW.style.display = 'none';
+        PHOTO_PREVIEW_IMG.removeAttribute('src');
+        PHOTO_INPUT.value = '';
+    }
+
+    /* ---------- Visionneuse plein écran (style WhatsApp) ---------- */
+    function openPhotoViewer(src, alt) {
+        PHOTO_VIEWER_IMG.src = src;
+        PHOTO_VIEWER_IMG.alt = alt || 'Photo';
+        PHOTO_VIEWER_DOWNLOAD.href = src;
+        try {
+            // Nom de fichier pour le téléchargement, ex. "double-jeu-12345.jpg".
+            const name = src.split('/').pop() || 'double-jeu.jpg';
+            PHOTO_VIEWER_DOWNLOAD.download = 'double-jeu-' + name;
+        } catch (e) { /* ignore */ }
+        PHOTO_VIEWER.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closePhotoViewer() {
+        PHOTO_VIEWER.style.display = 'none';
+        PHOTO_VIEWER_IMG.removeAttribute('src');
+        document.body.style.overflow = '';
+    }
+    PHOTO_VIEWER_CLOSE.addEventListener('click', closePhotoViewer);
+    PHOTO_VIEWER.addEventListener('click', (e) => {
+        if (e.target === PHOTO_VIEWER) closePhotoViewer();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && PHOTO_VIEWER.style.display === 'flex') closePhotoViewer();
+    });
+
     function closeGifPanel() {
         GIF_PANEL.style.display = 'none';
         GIF_SEARCH.value = '';
         GIF_GRID.innerHTML = '';
         GIF_BTN.classList.remove('active');
-        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif;
+        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto;
     }
 
     function openGifPanel() {
@@ -936,6 +1025,57 @@
         if (GIF_PANEL.style.display === 'flex') closeGifPanel();
         else openGifPanel();
     });
+
+    /* ---------- Envoi de photo ---------- */
+    CAMERA_BTN.addEventListener('click', () => {
+        closeGifPanel();
+        PHOTO_INPUT.accept = 'image/*';
+        PHOTO_INPUT.setAttribute('capture', 'environment');
+        PHOTO_INPUT.removeAttribute('multiple');
+        PHOTO_INPUT.click();
+    });
+    PHOTO_INPUT.addEventListener('change', async () => {
+        const file = PHOTO_INPUT.files[0];
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+            toast('Image trop lourde (max 10 Mo).', 'error');
+            PHOTO_INPUT.value = '';
+            return;
+        }
+        const fd = new FormData();
+        fd.append('photo', file);
+        try {
+            const res = await fetch(PHOTO_URL, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                body: fd,
+            });
+            if (res.ok) {
+                const data = await res.json();
+                pendingPhoto = { path: data.path, url: data.url };
+                PHOTO_PREVIEW_IMG.src = data.url;
+                PHOTO_PREVIEW.style.display = 'flex';
+                SEND_BTN.disabled = false;
+                INPUT_EL.focus();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast(err.message || 'Photo invalide.', 'error');
+                PHOTO_INPUT.value = '';
+            }
+        } catch (e) {
+            toast('Connexion perdue.', 'error');
+            PHOTO_INPUT.value = '';
+        }
+    });
+    PHOTO_PREVIEW_CLOSE.addEventListener('click', () => {
+        pendingPhoto = null;
+        hidePhotoPreview();
+        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto;
+    });
     GIF_CLOSE.addEventListener('click', closeGifPanel);
     GIF_SEARCH.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -953,7 +1093,7 @@
 
     INPUT_EL.addEventListener('input', () => {
         autosize();
-        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif;
+        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto;
         if (INPUT_EL.value.trim()) sendTyping();
     });
     INPUT_EL.addEventListener('keydown', (e) => {

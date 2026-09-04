@@ -9,12 +9,29 @@ use App\Services\ActivityService;
 use App\Services\PushService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class DiscussionController extends Controller
 {
+    /**
+     * URL racine-relative d'une photo de discussion (ex. `/storage/discussion-photos/x.png`).
+     * Contrairement à Storage::url(), on évite l'URL absolue construite à partir
+     * d'APP_URL : le destinataire charge ainsi toujours l'image depuis son propre
+     * domaine, même s'il accède via une IP LAN ou un autre nom d'hôte.
+     */
+    protected function photoUrl(?string $path): ?string
+    {
+        if (blank($path)) {
+            return null;
+        }
+
+        return parse_url(Storage::disk('public')->url($path), PHP_URL_PATH) ?: null;
+    }
+
     public function index(): View
     {
         ActivityService::touch(Auth::user());
@@ -71,7 +88,9 @@ class DiscussionController extends Controller
                 'body' => $deletedForAll ? null : $m->body,
                 'gif_url' => $deletedForAll ? null : $m->gif_url,
                 'gif_alt' => $deletedForAll ? null : $m->gif_alt,
+                'photo_url' => $deletedForAll ? null : $this->photoUrl($m->photo_path),
                 'is_gif' => $deletedForAll ? false : $m->isGif(),
+                'is_photo' => $deletedForAll ? false : $m->isPhoto(),
                 'lu' => $m->isRead(),
                 'deleted_for_all' => $deletedForAll,
                 'deleted_by_me' => $deletedForAll && $m->deleted_by === $userId,
@@ -245,12 +264,18 @@ class DiscussionController extends Controller
             'body' => ['nullable', 'string', 'max:2000'],
             'gif_url' => ['nullable', 'url', 'max:1000'],
             'gif_alt' => ['nullable', 'string', 'max:255'],
+            'photo_path' => ['nullable', 'string', 'max:255'],
             'reply_to_id' => ['nullable', 'integer'],
         ]);
 
-        // Un message doit contenir du texte OU un GIF (ou les deux, GIF + légende).
-        if (blank($data['body'] ?? null) && blank($data['gif_url'] ?? null)) {
+        // Un message doit contenir du texte, un GIF ou une photo.
+        if (blank($data['body'] ?? null) && blank($data['gif_url'] ?? null) && blank($data['photo_path'] ?? null)) {
             return response()->json(['error' => 'Le message est vide.'], 422);
+        }
+
+        // Vérifier que le fichier existe sur le disque public.
+        if (! blank($data['photo_path'] ?? null) && ! Storage::disk('public')->exists($data['photo_path'])) {
+            return response()->json(['error' => 'Photo introuvable.'], 422);
         }
 
         $replyToId = $data['reply_to_id'] ?? null;
@@ -267,6 +292,7 @@ class DiscussionController extends Controller
             'body' => $data['body'] ?? '',
             'gif_url' => $data['gif_url'] ?? null,
             'gif_alt' => $data['gif_alt'] ?? null,
+            'photo_path' => $data['photo_path'] ?? null,
             'reply_to_id' => $replyToId,
         ]);
 
@@ -274,9 +300,11 @@ class DiscussionController extends Controller
 
         $partner = $couple->partnerOf($request->user());
         if ($partner) {
-            $notifBody = ! empty($data['gif_url'] ?? null)
-                ? '📷 Envoie un GIF'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
-                : ($data['body'] ?? 'Nouveau message');
+            $notifBody = ! empty($data['photo_path'] ?? null)
+                ? '📷 Envoie une photo'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                : (! empty($data['gif_url'] ?? null)
+                    ? '📷 Envoie un GIF'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                    : ($data['body'] ?? 'Nouveau message'));
             $nonLus = Message::where('couple_id', $couple->id)
                 ->where('sender_id', '!=', $partner->id)
                 ->whereNull('read_at')
@@ -295,6 +323,27 @@ class DiscussionController extends Controller
             'ok' => true,
             'id' => $message->id,
             'created_at' => $message->created_at->format('H:i'),
+        ]);
+    }
+
+    /**
+     * Envoie une photo dans la discussion. Le fichier est stocké sur le disque
+     * public puis référencé par le message envoyé via `send()`.
+     */
+    public function uploadPhoto(Request $request): JsonResponse
+    {
+        $request->validate([
+            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp,gif', 'max:10240'],
+        ]);
+
+        /** @var UploadedFile $file */
+        $file = $request->file('photo');
+        $path = $file->store('discussion-photos', 'public');
+
+        return response()->json([
+            'ok' => true,
+            'path' => $path,
+            'url' => $this->photoUrl($path),
         ]);
     }
 

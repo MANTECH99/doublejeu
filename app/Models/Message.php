@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['couple_id', 'sender_id', 'body', 'reply_to_id', 'gif_url', 'gif_alt', 'read_at', 'deleted_at', 'deleted_by'])]
+#[Fillable(['couple_id', 'sender_id', 'body', 'reply_to_id', 'gif_url', 'gif_alt', 'photo_path', 'read_at', 'deleted_at', 'deleted_by'])]
 class Message extends Model
 {
     use HasFactory;
@@ -54,6 +54,11 @@ class Message extends Model
     public function isGif(): bool
     {
         return ! empty($this->gif_url);
+    }
+
+    public function isPhoto(): bool
+    {
+        return ! empty($this->photo_path);
     }
 
     public function markAsRead(): void

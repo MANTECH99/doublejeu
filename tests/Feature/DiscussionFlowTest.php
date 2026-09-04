@@ -8,7 +8,9 @@ use App\Models\Message;
 use App\Models\User;
 use App\Services\PushService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Tests\TestCase;
 
@@ -485,5 +487,97 @@ class DiscussionFlowTest extends TestCase
             ->assertOk()
             ->json();
         $this->assertSame(1, $res['nonLus']);
+    }
+
+    public function test_partners_can_upload_send_and_receive_photos(): void
+    {
+        Storage::fake('public');
+
+        // Alice envoie une photo avec une légende.
+        $upload = $this->actingAs($this->alice)
+            ->post(route('discussion.photo'), ['photo' => UploadedFile::fake()->image('vacances.png')])
+            ->assertOk()
+            ->json();
+
+        $path = $upload['path'];
+        Storage::disk('public')->assertExists($path);
+        $this->assertStringStartsWith('discussion-photos/', $path);
+        // L'URL est racine-relative : elle fonctionne depuis n'importe quel appareil
+        // du couple, indépendamment d'APP_URL (sinon le destinataire charge une
+        // image pointant vers "localhost").
+        $this->assertSame('/storage/'.$path, $upload['url']);
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['body' => 'Notre week-end !', 'photo_path' => $path])
+            ->assertOk();
+
+        $this->assertDatabaseHas('messages', [
+            'couple_id' => $this->couple->id,
+            'photo_path' => $path,
+        ]);
+
+        // Bob reçoit la photo avec son URL publique.
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $photo = $fetch['messages'][0];
+        $this->assertTrue($photo['is_photo']);
+        $this->assertSame('/storage/'.$path, $photo['photo_url']);
+        $this->assertSame('Notre week-end !', $photo['body']);
+    }
+
+    public function test_photo_upload_requires_a_valid_image(): void
+    {
+        Storage::fake('public');
+
+        // Sans fichier → 422.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.photo'))
+            ->assertStatus(422);
+
+        // Fichier non-image → 422.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.photo'), ['photo' => UploadedFile::fake()->create('note.txt', 10)])
+            ->assertStatus(422);
+
+        Storage::disk('public')->assertDirectoryEmpty('discussion-photos');
+    }
+
+    public function test_photo_path_must_exist_on_disk_to_send(): void
+    {
+        Storage::fake('public');
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['photo_path' => 'discussion-photos/introuvable.jpg'])
+            ->assertStatus(422);
+    }
+
+    public function test_photo_cleared_when_message_deleted_for_all(): void
+    {
+        Storage::fake('public');
+
+        $path = Storage::disk('public')->putFileAs('discussion-photos', UploadedFile::fake()->image('secret.png'), 'secret.png');
+
+        $msg = Message::create([
+            'couple_id' => $this->couple->id,
+            'sender_id' => $this->alice->id,
+            'body' => '',
+            'photo_path' => $path,
+        ]);
+
+        $this->actingAs($this->alice)
+            ->deleteJson(route('discussion.delete', $msg->id), ['mode' => 'all'])
+            ->assertOk();
+
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $this->assertTrue($fetch['messages'][0]['deleted_for_all']);
+        $this->assertNull($fetch['messages'][0]['photo_url']);
+        $this->assertFalse($fetch['messages'][0]['is_photo']);
     }
 }
