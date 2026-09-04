@@ -109,6 +109,26 @@
             </form>
         </section>
 
+        {{-- Infos & légal --}}
+        <section class="card pad-lg">
+            <h2 class="section-title">ℹ️ Infos & légal</h2>
+            <div class="row gap8 wrap" style="display:flex;flex-wrap:wrap;gap:8px">
+                <a href="{{ route('info.show', 'modes-de-jeu') }}" class="btn btn-sm btn-soft">🎮 Modes de jeu</a>
+                <a href="{{ route('info.show', 'categories-questions') }}" class="btn btn-sm btn-soft">🗂️ Catégories de questions</a>
+                <a href="{{ route('info.show', 'installation') }}" class="btn btn-sm btn-soft">📲 Installer l'app</a>
+                <a href="{{ route('info.show', 'a-propos') }}" class="btn btn-sm btn-soft">💞 À propos</a>
+                <a href="{{ route('info.show', 'contact') }}" class="btn btn-sm btn-soft">💬 Contact & support</a>
+            </div>
+            <div class="divider"></div>
+            <div class="row gap8 wrap" style="display:flex;flex-wrap:wrap;gap:8px">
+                <a href="{{ route('info.show', 'confidentialite') }}" class="btn btn-sm btn-ghost">🔒 Confidentialité</a>
+                <a href="{{ route('info.show', 'cgu') }}" class="btn btn-sm btn-ghost">📜 Conditions d'utilisation</a>
+                <a href="{{ route('info.show', 'mentions-legales') }}" class="btn btn-sm btn-ghost">⚖️ Mentions légales</a>
+                <a href="{{ route('info.show', 'cookies') }}" class="btn btn-sm btn-ghost">🍪 Cookies</a>
+                <a href="{{ route('info.show', 'securite') }}" class="btn btn-sm btn-ghost">🛡️ Sécurité</a>
+            </div>
+        </section>
+
         {{-- Déconnexion --}}
         <section class="card pad-lg center">
             <form method="POST" action="{{ route('logout') }}">

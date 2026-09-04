@@ -158,6 +158,31 @@ class DiscussionController extends Controller
         return response()->json(['gifs' => $gifs]);
     }
 
+    /**
+     * Pack de stickers hébergés localement (aucune dépendance externe).
+     * L'onglet « Stickers » du panneau s'appuie sur ces URLs, qui pointent
+     * vers le domaine de l'app : le destinataire les charge donc toujours,
+     * même hors-ligne (mise en cache par le Service Worker).
+     */
+    public function stickers(): JsonResponse
+    {
+        $manifestPath = public_path('stickers/manifest.json');
+
+        if (! file_exists($manifestPath)) {
+            return response()->json(['stickers' => []]);
+        }
+
+        $stickers = collect(json_decode((string) file_get_contents($manifestPath), true))
+            ->map(fn (array $s): array => [
+                'url' => asset('stickers/'.$s['file']),
+                'alt' => $s['alt'] ?? '',
+                'local' => true,
+            ])
+            ->values();
+
+        return response()->json(['stickers' => $stickers]);
+    }
+
     public function favorites(Request $request): JsonResponse
     {
         $couple = $request->user()->coupleModel;
@@ -262,6 +287,7 @@ class DiscussionController extends Controller
                 'body' => mb_strimwidth($notifBody, 0, 80, '…'),
                 'url' => route('discussion.index'),
                 'badge' => $nonLus,
+                'msg_id' => $message->id,
             ]);
         }
 
@@ -300,6 +326,18 @@ class DiscussionController extends Controller
                 'deleted_at' => now(),
                 'deleted_by' => $request->user()->id,
             ])->save();
+
+            // Retire la notification du message dans la barre du téléphone du
+            // partenaire (s'il ne l'a pas encore ouverte) : le SW fermera la
+            // notification portant le tag correspondant.
+            $partner = $couple->partnerOf($request->user());
+            if ($partner) {
+                app(PushService::class)->sendToUser($partner, [
+                    'type' => 'message_deleted',
+                    'msg_id' => $message->id,
+                    'url' => route('discussion.index'),
+                ]);
+            }
         }
 
         return response()->json(['ok' => true]);

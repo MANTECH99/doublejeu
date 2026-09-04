@@ -7,8 +7,37 @@
     /* Pas de barre de navigation en bas sur la page discussion :
        le chat occupe tout l'espace jusqu'en bas de l'écran. */
     body .bottom-nav { display: none !important; }
-    .disc-wrap { bottom: 0 !important; }
+    .disc-wrap { bottom: auto !important; top: 64px; height: calc(100dvh - 64px); }
 </style>
+<script>
+    // Quand le clavier mobile s'ouvre, le viewport visible se réduit. Sans ajustement,
+    // la barre de profil (header de la discussion) peut sortir de l'écran. On suit le
+    // Visual Viewport pour garder l'en-tête en haut et le composer juste au-dessus du clavier,
+    // comme WhatsApp : hauteur du wrap = hauteur visible - topbar.
+    (function () {
+        var wrap = null;
+        var TOP_H = 64;
+        function layout() {
+            if (!wrap) wrap = document.getElementById('disc-wrap');
+            if (!wrap) return;
+            var vv = window.visualViewport;
+            if (vv) {
+                // hauteur visible au-dessus du clavier (visualViewport), moins la topbar.
+                var h = vv.height - TOP_H;
+                if (h > 200) wrap.style.height = h + 'px';
+            }
+        }
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', layout);
+            window.visualViewport.addEventListener('scroll', layout);
+        }
+        window.addEventListener('resize', layout);
+        document.addEventListener('DOMContentLoaded', layout);
+        // relance après le rendu complet (images, fonts) pour ne pas laisser de blanc en bas
+        window.setTimeout(layout, 300);
+        window.addEventListener('load', layout);
+    })();
+</script>
 @endpush
 @php
     $me = auth()->user();
@@ -18,7 +47,7 @@
 @endphp
 
 @section('content')
-    <div class="disc-wrap">
+    <div class="disc-wrap" id="disc-wrap">
         {{-- Header --}}
         <div class="disc-header">
             <a href="{{ route('dashboard') }}" class="disc-back">←</a>
@@ -100,6 +129,7 @@
         </div>
         <div class="disc-gif-tabs">
             <button type="button" class="disc-gif-tab active" data-tab="search" id="disc-tab-search">Recherche</button>
+            <button type="button" class="disc-gif-tab" data-tab="stickers" id="disc-tab-stickers">Stickers 😍</button>
             <button type="button" class="disc-gif-tab" data-tab="favs" id="disc-tab-favs">Favoris</button>
         </div>
         <div class="disc-gif-grid" id="disc-gif-grid"></div>
@@ -129,6 +159,7 @@
     const GIF_CLOSE = document.getElementById('disc-gif-close');
     const TAB_SEARCH = document.getElementById('disc-tab-search');
     const TAB_FAVS = document.getElementById('disc-tab-favs');
+    const TAB_STICKERS = document.getElementById('disc-tab-stickers');
     const REPLYBAR_EL = document.getElementById('disc-replybar');
     const REPLY_NAME_EL = document.getElementById('disc-reply-name');
     const REPLY_BODY_EL = document.getElementById('disc-reply-body');
@@ -151,6 +182,7 @@
     const SEND_URL = '{{ route("discussion.send") }}';
     const TYPING_URL = '{{ route("discussion.typing") }}';
     const GIFS_URL = '{{ route("discussion.gifs") }}';
+    const STICKERS_URL = '{{ route("discussion.stickers") }}';
     const FAVORITES_URL = '{{ route("discussion.favorites") }}';
     const FAVORITES_TOGGLE_URL = '{{ route("discussion.favorites.toggle") }}';
     const DELETE_URL = '/discussion/message/';
@@ -166,6 +198,7 @@
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
     const selectedMsgs = new Map(); // id -> {msg, wrap}
     let lastToggleAt = -9999; // dernier moment où la sélection a été basculée (anti-rebond/doublon)
+    let initialLoad = true; // premier chargement : scroll direct en bas
 
     function scrollToBottom(smooth) {
         if (smooth) {
@@ -173,6 +206,30 @@
         } else {
             MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
         }
+    }
+
+    // Au premier chargement : colle tout en bas puis re-colle quand les images
+    // oneshot (lazy) finissent de charger, sinon leur arrivée remonte le contenu
+    // et laisse un espace en bas.
+    function stickyToBottomOnce() {
+        initialLoad = false;
+        const imgs = Array.from(MESSAGES_EL.querySelectorAll('img'));
+        let remaining = imgs.filter((i) => !i.complete).length;
+        if (remaining === 0) {
+            MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+            return;
+        }
+        const done = () => {
+            remaining--;
+            if (remaining === 0) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+        };
+        for (const img of imgs) {
+            if (img.complete) continue;
+            img.addEventListener('load', done);
+            img.addEventListener('error', done);
+        }
+        // Filet de sécurité : re-colle en bas de toute façon après 3 s.
+        setTimeout(() => { MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight; }, 3000);
     }
 
     // Ajuste la hauteur du textarea à son contenu, comme WhatsApp.
@@ -548,7 +605,14 @@
                     buildBubble(msg);
                 }
                 syncReadState(data.messages);
-                if (bottom || hasIncoming) scrollToBottom(true);
+                // Au tout premier chargement on colle directement tout en bas (scroll
+                // instantané), sinon on reste en bas de façon animée à chaque poll.
+                if (initialLoad) {
+                    scrollToBottom(false); // non animé : permet d'atteindre le bas exact
+                    stickyToBottomOnce();
+                } else if (bottom || hasIncoming) {
+                    scrollToBottom(true);
+                }
             }
 
             updateOnline(data.partenaire);
@@ -561,6 +625,8 @@
         }
     }
 
+    let pushCleared = false; // évite de re-fermer les notifications à chaque poll
+
     function updateBadge(count) {
         let badge = document.getElementById('disc-badge');
         if (count > 0) {
@@ -571,8 +637,24 @@
                 document.querySelector('.disc-header')?.appendChild(badge);
             }
             badge.textContent = count;
-        } else if (badge) {
-            badge.remove();
+            pushCleared = false; // de nouveaux non-lus arrivent → on retirera à la prochaine lecture
+        } else {
+            if (badge) badge.remove();
+            // Plus aucun message non lu (l'utilisateur vient de tout lire) : on
+            // ferme les notifications de la barre du téléphone et on réinitialise
+            // le badge de l'icône de l'app installée.
+            if (!pushCleared) {
+                pushCleared = true;
+                clearPushNotifications();
+            }
+        }
+    }
+
+    // Demande au Service Worker de fermer les notifications du téléphone et de
+    // remettre le badge de l'icône à zéro (l'utilisateur vient de tout lire).
+    function clearPushNotifications() {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_NOTIFICATIONS' });
         }
     }
 
@@ -694,11 +776,36 @@
     function showTab(tab) {
         activeTab = tab;
         TAB_SEARCH.classList.toggle('active', tab === 'search');
+        TAB_STICKERS.classList.toggle('active', tab === 'stickers');
         TAB_FAVS.classList.toggle('active', tab === 'favs');
+        GIF_GRID.classList.toggle('disc-gif-grid-stickers', tab === 'stickers');
         if (tab === 'favs') {
             loadFavorites();
+        } else if (tab === 'stickers') {
+            loadStickers();
         } else {
             loadGifs(GIF_SEARCH.value.trim());
+        }
+    }
+
+    async function loadStickers() {
+        GIF_GRID.innerHTML = '<div class="disc-gif-loading">Chargement…</div>';
+        try {
+            const res = await fetch(STICKERS_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!res.ok) {
+                GIF_GRID.innerHTML = '<div class="disc-gif-error">Impossible de charger les stickers.</div>';
+                return;
+            }
+            const data = await res.json();
+            const items = (data.stickers || []).map(s => ({
+                url: s.url,
+                alt: s.alt || 'Sticker',
+                preview: s.url,
+                isFav: favUrlSet.has(s.url),
+            }));
+            renderGifGrid(items);
+        } catch (e) {
+            GIF_GRID.innerHTML = '<div class="disc-gif-error">Connexion perdue.</div>';
         }
     }
 
@@ -822,6 +929,7 @@
     }
 
     TAB_SEARCH.addEventListener('click', () => showTab('search'));
+    TAB_STICKERS.addEventListener('click', () => showTab('stickers'));
     TAB_FAVS.addEventListener('click', () => showTab('favs'));
 
     GIF_BTN.addEventListener('click', () => {

@@ -99,6 +99,12 @@
         <main class="fadeIn">
             @yield('content')
         </main>
+        <footer class="public-footer">
+            <a href="{{ route('info.show', 'confidentialite') }}">Confidentialité</a>
+            <a href="{{ route('info.show', 'cgu') }}">CGU</a>
+            <a href="{{ route('info.show', 'mentions-legales') }}">Mentions légales</a>
+            <a href="{{ route('info.show', 'contact') }}">Contact</a>
+        </footer>
     </div>
 </body>
 </html>

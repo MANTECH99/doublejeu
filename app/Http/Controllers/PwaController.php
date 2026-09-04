@@ -82,12 +82,25 @@ self.addEventListener('push', (event) => {
 
     if (data.badge != null) setBadge(data.badge);
 
+    // Suppression « pour tous » : retire la notification du message dans la barre
+    // du téléphone (si elle y est encore) au lieu d'en afficher une nouvelle.
+    if (data.type === 'message_deleted' && data.msg_id != null) {
+        const tagToClose = 'msg-' + data.msg_id;
+        event.waitUntil(
+            self.registration.getNotifications().then((notifs) => {
+                notifs.filter((n) => n.tag === tagToClose).forEach((n) => n.close());
+            })
+        );
+        return;
+    }
+
     event.waitUntil(
         self.registration.showNotification(data.title, {
             body: data.body,
             icon: '/icons/icon-192.png',
             badge: '/icons/icon-192.png',
             vibrate: [100, 50, 100],
+            tag: data.msg_id != null ? 'msg-' + data.msg_id : undefined,
             data: { url: data.url },
         })
     );
@@ -113,6 +126,14 @@ self.addEventListener('message', (event) => {
     if (event.data.type === 'SKIP_WAITING') self.skipWaiting();
     if (event.data.type === 'SET_BADGE') setBadge(event.data.count);
     if (event.data.type === 'CLEAR_BADGE') setBadge(0);
+    // L'utilisateur a lu ses messages : on ferme les notifications visibles de la
+    // barre du téléphone et on réinitialise le badge de l'icône de l'app.
+    if (event.data.type === 'CLEAR_NOTIFICATIONS') {
+        setBadge(0);
+        self.registration.getNotifications().then((notifs) => {
+            notifs.forEach((n) => n.close());
+        });
+    }
 });
 JS
             ,

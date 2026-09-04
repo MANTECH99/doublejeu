@@ -271,6 +271,25 @@ class DiscussionFlowTest extends TestCase
             ->assertStatus(503);
     }
 
+    public function test_local_stickers_endpoint_returns_manifest(): void
+    {
+        $manifest = public_path('stickers/manifest.json');
+
+        $this->assertFileExists($manifest);
+
+        $res = $this->actingAs($this->alice)
+            ->getJson(route('discussion.stickers'))
+            ->assertOk()
+            ->json();
+
+        $this->assertNotEmpty($res['stickers']);
+
+        $first = $res['stickers'][0];
+        $this->assertTrue($first['local']);
+        $this->assertStringContainsString('stickers/', $first['url']);
+        $this->assertNotEmpty($first['alt']);
+    }
+
     public function test_couples_can_favorite_and_unfavorite_gifs(): void
     {
         $url = 'https://media.giphy.com/media/xyz/giphy.gif';

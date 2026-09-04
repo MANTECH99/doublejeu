@@ -4,6 +4,7 @@ use App\Http\Controllers\CardsController;
 use App\Http\Controllers\CoupleController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\EnveloppeController;
+use App\Http\Controllers\InfoController;
 use App\Http\Controllers\MeteoController;
 use App\Http\Controllers\MissionSecreteController;
 use App\Http\Controllers\MotsCroisesController;
@@ -21,6 +22,9 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome');
 });
+
+// ---- Pages d'information publiques (légales, fonctionnelles, techniques) ----
+Route::get('/info/{slug}', [InfoController::class, 'show'])->name('info.show');
 
 Route::get('/manifest.json', [PwaController::class, 'manifest'])->name('pwa.manifest');
 Route::get('/manifest.webmanifest', [PwaController::class, 'manifest'])->name('manifest');
@@ -55,6 +59,7 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::post('/discussion/envoyer', [DiscussionController::class, 'send'])->name('discussion.send');
     Route::post('/discussion/tape', [DiscussionController::class, 'typing'])->name('discussion.typing');
     Route::get('/discussion/gifs', [DiscussionController::class, 'gifs'])->name('discussion.gifs');
+    Route::get('/discussion/stickers', [DiscussionController::class, 'stickers'])->name('discussion.stickers');
     Route::get('/discussion/favoris', [DiscussionController::class, 'favorites'])->name('discussion.favorites');
     Route::post('/discussion/favoris', [DiscussionController::class, 'toggleFavorite'])->name('discussion.favorites.toggle');
     Route::get('/discussion/non-lus', [DiscussionController::class, 'nonLus'])->name('discussion.non-lus');
