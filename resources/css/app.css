@@ -1171,6 +1171,41 @@ summary.btn::-webkit-details-marker { display: none; }
     display: grid;
     place-items: center;
     z-index: 1;
+    -webkit-tap-highlight-color: transparent;
+}
+.disc-photo-viewer-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 46px;
+    height: 46px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    z-index: 1;
+    -webkit-tap-highlight-color: transparent;
+}
+.disc-photo-viewer-nav:active { background: rgba(255, 255, 255, 0.32); }
+.disc-photo-viewer-nav[hidden] { display: none; }
+.disc-photo-viewer-prev {
+    left: calc(12px + env(safe-area-inset-left, 0px));
+    padding-right: 3px; /* centrage optique du caractère ‹ */
+}
+.disc-photo-viewer-next {
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    padding-left: 3px; /* centrage optique du caractère › */
+}
+.disc-photo-viewer-counter {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    opacity: 0.85;
 }
 .disc-photo-viewer-actions {
     display: flex;

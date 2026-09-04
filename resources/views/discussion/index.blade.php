@@ -7,24 +7,56 @@
     /* Pas de barre de navigation en bas sur la page discussion :
        le chat occupe tout l'espace jusqu'en bas de l'écran. */
     body .bottom-nav { display: none !important; }
-    .disc-wrap { bottom: auto !important; top: 64px; height: calc(100dvh - 64px); }
+    .disc-wrap {
+        bottom: auto !important;
+        top: 64px;
+        height: calc(100dvh - 64px);
+    }
+    /* --- iOS : le document ne défile jamais (seule la liste de messages défile).
+       C'est ce qui empêchait iOS de "pan" le chat quand le clavier est ouvert
+       et créait l'espace entre le composer et le clavier. --- */
+    html, body { overflow: hidden; }
+    .disc-messages { overscroll-behavior: contain; } /* le scroll s'arrête dans la liste */
+    /* La topbar et le header ne doivent pas réagir au rubber-band iOS */
+    body .topbar, .disc-header { touch-action: none; }
+    .disc-composer { padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px)); }
 </style>
 <script>
-    // Quand le clavier mobile s'ouvre, le viewport visible se réduit. Sans ajustement,
-    // la barre de profil (header de la discussion) peut sortir de l'écran. On suit le
-    // Visual Viewport pour garder l'en-tête en haut et le composer juste au-dessus du clavier,
-    // comme WhatsApp : hauteur du wrap = hauteur visible - topbar.
+    // Clavier mobile : hauteur du chat = hauteur visible (Visual Viewport) − topbar.
+    // Le composer, dernier élément en flux du wrap, reste ainsi scotché au-dessus
+    // du clavier, et l'en-tête (profil) juste sous la topbar.
     (function () {
         var wrap = null;
         var TOP_H = 64;
+        var pressing = false;
         function layout() {
             if (!wrap) wrap = document.getElementById('disc-wrap');
             if (!wrap) return;
+            // Pendant une pression (pouce posé sur un bouton), on ne touche pas
+            // au layout : sinon le composant bouge sous le doigt quand le clavier
+            // se ferme (blur) et le clic est impossible.
+            if (pressing) return;
             var vv = window.visualViewport;
             if (vv) {
-                // hauteur visible au-dessus du clavier (visualViewport), moins la topbar.
-                var h = vv.height - TOP_H;
-                if (h > 200) wrap.style.height = h + 'px';
+                // Clavier fermé : on mesure la topbar (son bas inclut le safe-area /
+                // encoche d'iPhone). Clavier ouvert : on garde la valeur en cours.
+                var focus = document.activeElement;
+                var editing = focus && (focus.tagName === 'INPUT' || focus.tagName === 'TEXTAREA');
+                if (!editing) {
+                    var tb = document.querySelector('.topbar');
+                    if (tb) {
+                        var n = Math.round(tb.getBoundingClientRect().bottom);
+                        if (n > 0 && n < 400) TOP_H = n;
+                    }
+                }
+                // Bas du wrap = hauteur visible du Visual Viewport + décalage éventuel
+                // (offsetTop) : le composer reste exactement au-dessus du clavier,
+                // sans espace, sur iOS comme sur Android.
+                var h = (vv.offsetTop || 0) + vv.height - TOP_H;
+                if (h > 100) {
+                    wrap.style.height = h + 'px';
+                    wrap.style.top = TOP_H + 'px';
+                }
             }
         }
         if (window.visualViewport) {
@@ -33,9 +65,43 @@
         }
         window.addEventListener('resize', layout);
         document.addEventListener('DOMContentLoaded', layout);
-        // relance après le rendu complet (images, fonts) pour ne pas laisser de blanc en bas
         window.setTimeout(layout, 300);
         window.addEventListener('load', layout);
+
+        // Gel du layout pendant toute la durée d'une pression au doigt/pointeur.
+        document.addEventListener('pointerdown', function () { pressing = true; }, true);
+        document.addEventListener('pointerup', function () {
+            pressing = false;
+            layout(); // on recale dès que le doigt est levé
+        }, true);
+        document.addEventListener('pointercancel', function () {
+            pressing = false;
+            layout();
+        }, true);
+
+        // Filet de sécurité : si iOS décale le document pendant le clavier ouvert
+        // (auto-scroll au focus), on l'annule immédiatement.
+        window.addEventListener('scroll', function () {
+            var a = document.activeElement;
+            var editing = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+            if (editing && (window.scrollY || 0) > 0) window.scrollTo(0, 0);
+        }, { passive: true });
+
+        // Pendant la saisie, on remesure régulièrement : certains iOS n'émettent
+        // pas le dernier événement visualViewport à la fin de l'animation du clavier.
+        document.addEventListener('DOMContentLoaded', function () {
+            var input = document.getElementById('disc-input');
+            if (!input) return;
+            var iv = null;
+            input.addEventListener('focus', function () {
+                if (iv) clearInterval(iv);
+                iv = setInterval(layout, 200);
+            });
+            input.addEventListener('blur', function () {
+                if (iv) { clearInterval(iv); iv = null; }
+                layout();
+            });
+        });
     })();
 </script>
 @endpush
@@ -159,7 +225,10 @@
     {{-- Visionneuse plein écran d'une photo : zoom + téléchargement (style WhatsApp) --}}
     <div class="disc-photo-viewer" id="disc-photo-viewer" style="display:none">
         <button class="disc-photo-viewer-close" id="disc-photo-viewer-close" aria-label="Fermer">✕</button>
+        <button class="disc-photo-viewer-nav disc-photo-viewer-prev" id="disc-photo-viewer-prev" aria-label="Photo précédente" hidden>‹</button>
+        <button class="disc-photo-viewer-nav disc-photo-viewer-next" id="disc-photo-viewer-next" aria-label="Photo suivante" hidden>›</button>
         <img id="disc-photo-viewer-img" alt="Photo agrandie">
+        <div class="disc-photo-viewer-counter" id="disc-photo-viewer-counter"></div>
         <div class="disc-photo-viewer-actions">
             <a class="disc-photo-viewer-download" id="disc-photo-viewer-download" download>⬇ Télécharger</a>
         </div>
@@ -190,6 +259,9 @@
     const PHOTO_VIEWER_IMG = document.getElementById('disc-photo-viewer-img');
     const PHOTO_VIEWER_CLOSE = document.getElementById('disc-photo-viewer-close');
     const PHOTO_VIEWER_DOWNLOAD = document.getElementById('disc-photo-viewer-download');
+    const PHOTO_VIEWER_PREV = document.getElementById('disc-photo-viewer-prev');
+    const PHOTO_VIEWER_NEXT = document.getElementById('disc-photo-viewer-next');
+    const PHOTO_VIEWER_COUNTER = document.getElementById('disc-photo-viewer-counter');
     const REPLYBAR_EL = document.getElementById('disc-replybar');
     const REPLY_NAME_EL = document.getElementById('disc-reply-name');
     const REPLY_BODY_EL = document.getElementById('disc-reply-body');
@@ -821,15 +893,53 @@
     }
 
     /* ---------- Visionneuse plein écran (style WhatsApp) ---------- */
-    function openPhotoViewer(src, alt) {
-        PHOTO_VIEWER_IMG.src = src;
-        PHOTO_VIEWER_IMG.alt = alt || 'Photo';
-        PHOTO_VIEWER_DOWNLOAD.href = src;
+    // Photos visibles dans la discussion : la visionneuse défile entre elles.
+    let photoList = [];   // [{src, alt}]
+    let photoIndex = -1;
+    let swiped = false;   // un swipe a eu lieu → ne pas fermer la visionneuse au clic
+    let swipeStartX = 0;
+    let swipeStartY = 0;
+    let swipeTracking = false;
+
+    function showPhoto(i) {
+        if (!photoList.length) return;
+        if (i < 0) i = photoList.length - 1;
+        if (i >= photoList.length) i = 0;
+        photoIndex = i;
+        const p = photoList[i];
+        // Petit fondu à chaque changement de photo.
+        PHOTO_VIEWER_IMG.style.animation = 'none';
+        void PHOTO_VIEWER_IMG.offsetWidth;
+        PHOTO_VIEWER_IMG.style.animation = 'fadeIn 0.18s ease';
+        PHOTO_VIEWER_IMG.src = p.src;
+        PHOTO_VIEWER_IMG.alt = p.alt || 'Photo';
+        PHOTO_VIEWER_DOWNLOAD.href = p.src;
         try {
             // Nom de fichier pour le téléchargement, ex. "double-jeu-12345.jpg".
-            const name = src.split('/').pop() || 'double-jeu.jpg';
+            const name = p.src.split('/').pop() || 'double-jeu.jpg';
             PHOTO_VIEWER_DOWNLOAD.download = 'double-jeu-' + name;
         } catch (e) { /* ignore */ }
+        PHOTO_VIEWER_PREV.hidden = photoList.length < 2;
+        PHOTO_VIEWER_NEXT.hidden = photoList.length < 2;
+        PHOTO_VIEWER_COUNTER.textContent = photoList.length > 1
+            ? (photoIndex + 1) + ' / ' + photoList.length
+            : '';
+    }
+
+    function nextPhoto() { showPhoto(photoIndex + 1); }
+    function prevPhoto() { showPhoto(photoIndex - 1); }
+
+    function openPhotoViewer(src, alt) {
+        // Toutes les photos actuellement dans le fil, dans l'ordre d'affichage.
+        const imgs = Array.from(document.querySelectorAll('.disc-messages .disc-photo img'));
+        photoList = imgs.map(img => ({ src: img.src, alt: img.alt || 'Photo' }));
+        photoIndex = photoList.findIndex(p => p.src === src);
+        if (photoIndex === -1) {
+            // Photo non trouvée dans le fil (ex. pas encore rechargé) : on affiche seule.
+            photoList = [{ src, alt: alt || 'Photo' }];
+            photoIndex = 0;
+        }
+        showPhoto(photoIndex);
         PHOTO_VIEWER.style.display = 'flex';
         document.body.style.overflow = 'hidden';
     }
@@ -837,14 +947,42 @@
     function closePhotoViewer() {
         PHOTO_VIEWER.style.display = 'none';
         PHOTO_VIEWER_IMG.removeAttribute('src');
+        photoList = [];
+        photoIndex = -1;
+        PHOTO_VIEWER_COUNTER.textContent = '';
         document.body.style.overflow = '';
     }
     PHOTO_VIEWER_CLOSE.addEventListener('click', closePhotoViewer);
+    PHOTO_VIEWER_PREV.addEventListener('click', (e) => { e.stopPropagation(); prevPhoto(); });
+    PHOTO_VIEWER_NEXT.addEventListener('click', (e) => { e.stopPropagation(); nextPhoto(); });
     PHOTO_VIEWER.addEventListener('click', (e) => {
+        if (swiped) { swiped = false; return; }
         if (e.target === PHOTO_VIEWER) closePhotoViewer();
     });
+
+    // Swipe gauche/droite pour naviguer entre les photos (iOS comme Android).
+    PHOTO_VIEWER.addEventListener('pointerdown', (e) => {
+        swipeStartX = e.clientX;
+        swipeStartY = e.clientY;
+        swipeTracking = true;
+    });
+    PHOTO_VIEWER.addEventListener('pointerup', (e) => {
+        if (!swipeTracking) return;
+        swipeTracking = false;
+        const dx = e.clientX - swipeStartX;
+        const dy = e.clientY - swipeStartY;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+            swiped = true;
+            if (dx < 0) nextPhoto(); else prevPhoto();
+        }
+    });
+    PHOTO_VIEWER.addEventListener('pointercancel', () => { swipeTracking = false; });
+
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && PHOTO_VIEWER.style.display === 'flex') closePhotoViewer();
+        if (PHOTO_VIEWER.style.display !== 'flex') return;
+        if (e.key === 'Escape') closePhotoViewer();
+        if (e.key === 'ArrowRight') nextPhoto();
+        if (e.key === 'ArrowLeft') prevPhoto();
     });
 
     function closeGifPanel() {
@@ -1030,7 +1168,9 @@
     CAMERA_BTN.addEventListener('click', () => {
         closeGifPanel();
         PHOTO_INPUT.accept = 'image/*';
-        PHOTO_INPUT.setAttribute('capture', 'environment');
+        // Pas de capture : sur iOS, sans cet attribut le picker ouvre la
+        // bibliothèque de photos (avec capture, il force l'appareil photo).
+        PHOTO_INPUT.removeAttribute('capture');
         PHOTO_INPUT.removeAttribute('multiple');
         PHOTO_INPUT.click();
     });
