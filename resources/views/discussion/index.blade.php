@@ -19,7 +19,15 @@
     .disc-messages { overscroll-behavior: contain; } /* le scroll s'arrête dans la liste */
     /* La topbar et le header ne doivent pas réagir au rubber-band iOS */
     body .topbar, .disc-header { touch-action: none; }
-    .disc-composer { padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px)); }
+    .disc-composer {
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        /* transition douce quand le clavier fermé rétablit le safe-area */
+        transition: padding-bottom 0.22s ease;
+    }
+    /* Clavier ouvert : padding réduit → le champ reste collé au clavier (pas d'espace).
+       La classe est pilotée par le JS et retirée seulement quand le clavier est réellement
+       fermé, pour ne pas faire sauter les boutons au moment du tap. */
+    body.disc-edit .disc-composer { padding-bottom: 3px; }
 </style>
 <script>
     // Clavier mobile : hauteur du chat = hauteur visible (Visual Viewport) − topbar.
@@ -38,11 +46,16 @@
             if (pressing) return;
             var vv = window.visualViewport;
             if (vv) {
-                // Clavier fermé : on mesure la topbar (son bas inclut le safe-area /
-                // encoche d'iPhone). Clavier ouvert : on garde la valeur en cours.
                 var focus = document.activeElement;
                 var editing = focus && (focus.tagName === 'INPUT' || focus.tagName === 'TEXTAREA');
-                if (!editing) {
+                // Le clavier couvre encore le bas de l'écran tant que le viewport
+                // visible est nettement plus court que la hauteur du document.
+                var kbOpen = vv.height + 50 < window.innerHeight;
+                // "disc-edit" reste actif tant que le clavier est là (même après un blur) :
+                // le composer garde son padding réduit, aucun saut au moment d'un tap.
+                if (document.body) document.body.classList.toggle('disc-edit', editing || kbOpen);
+                // Mesure de la topbar seulement clavier fermé (layout stable).
+                if (!editing && !kbOpen) {
                     var tb = document.querySelector('.topbar');
                     if (tb) {
                         var n = Math.round(tb.getBoundingClientRect().bottom);
