@@ -58,6 +58,7 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::get('/discussion/favoris', [DiscussionController::class, 'favorites'])->name('discussion.favorites');
     Route::post('/discussion/favoris', [DiscussionController::class, 'toggleFavorite'])->name('discussion.favorites.toggle');
     Route::get('/discussion/non-lus', [DiscussionController::class, 'nonLus'])->name('discussion.non-lus');
+    Route::delete('/discussion/message/{id}', [DiscussionController::class, 'delete'])->name('discussion.delete');
 
     // ---- Vérité ou Action ----
     Route::get('/jeux/verite-action', [VeriteActionController::class, 'index'])->name('vo.index');

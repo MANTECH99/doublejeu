@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\GifFavorite;
 use App\Models\Message;
+use App\Models\MessageDeletion;
 use App\Services\ActivityService;
 use App\Services\PushService;
 use Illuminate\Http\JsonResponse;
@@ -41,6 +42,7 @@ class DiscussionController extends Controller
         $apresId = (int) $request->query('after', 0);
 
         $query = Message::where('couple_id', $couple->id)
+            ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', $request->user()->id))
             ->with(['sender:id,name', 'replyTo:id,body,sender_id']);
 
         if ($apresId > 0) {
@@ -58,24 +60,31 @@ class DiscussionController extends Controller
                 ->values();
         }
 
-        $messages = $messages->map(fn (Message $m) => [
-            'id' => $m->id,
-            'sender_id' => $m->sender_id,
-            'sender_name' => $m->sender?->name ?? 'Ancien·ne partenaire',
-            'body' => $m->body,
-            'gif_url' => $m->gif_url,
-            'gif_alt' => $m->gif_alt,
-            'is_gif' => $m->isGif(),
-            'lu' => $m->isRead(),
-            'created_at' => $m->created_at->format('H:i'),
-            'date' => $m->created_at->format('Y-m-d'),
-            'reply_to' => $m->replyTo ? [
-                'id' => $m->replyTo->id,
-                'sender_id' => $m->replyTo->sender_id,
-                'sender_name' => $m->replyTo->sender?->name ?? 'Ancien·ne partenaire',
-                'body' => $m->replyTo->body,
-            ] : null,
-        ]);
+        $userId = $request->user()->id;
+        $messages = $messages->map(function (Message $m) use ($userId) {
+            $deletedForAll = $m->isDeletedForAll();
+
+            return [
+                'id' => $m->id,
+                'sender_id' => $m->sender_id,
+                'sender_name' => $m->sender?->name ?? 'Ancien·ne partenaire',
+                'body' => $deletedForAll ? null : $m->body,
+                'gif_url' => $deletedForAll ? null : $m->gif_url,
+                'gif_alt' => $deletedForAll ? null : $m->gif_alt,
+                'is_gif' => $deletedForAll ? false : $m->isGif(),
+                'lu' => $m->isRead(),
+                'deleted_for_all' => $deletedForAll,
+                'deleted_by_me' => $deletedForAll && $m->deleted_by === $userId,
+                'created_at' => $m->created_at->format('H:i'),
+                'date' => $m->created_at->format('Y-m-d'),
+                'reply_to' => $m->replyTo && ! $deletedForAll ? [
+                    'id' => $m->replyTo->id,
+                    'sender_id' => $m->replyTo->sender_id,
+                    'sender_name' => $m->replyTo->sender?->name ?? 'Ancien·ne partenaire',
+                    'body' => $m->replyTo->body,
+                ] : null,
+            ];
+        });
 
         $nonLus = Message::where('couple_id', $couple->id)
             ->where('sender_id', '!=', $request->user()->id)
@@ -246,6 +255,7 @@ class DiscussionController extends Controller
             $nonLus = Message::where('couple_id', $couple->id)
                 ->where('sender_id', '!=', $partner->id)
                 ->whereNull('read_at')
+                ->whereNull('deleted_at')
                 ->count();
             app(PushService::class)->sendToUser($partner, [
                 'title' => '💬 '.$request->user()->name,
@@ -262,6 +272,39 @@ class DiscussionController extends Controller
         ]);
     }
 
+    public function delete(Request $request, int $id): JsonResponse
+    {
+        $couple = $request->user()->coupleModel;
+        $message = Message::where('id', $id)->where('couple_id', $couple->id)->first();
+
+        if (! $message) {
+            return response()->json(['error' => 'Message introuvable.'], 404);
+        }
+
+        $data = $request->validate([
+            'mode' => ['required', 'string', 'in:me,all'],
+        ]);
+
+        if ($data['mode'] === 'me') {
+            MessageDeletion::firstOrCreate([
+                'message_id' => $message->id,
+                'user_id' => $request->user()->id,
+            ]);
+        } else {
+            // Supprimer pour tous : seul l'expéditeur peut le faire.
+            if ($message->sender_id !== $request->user()->id) {
+                return response()->json(['error' => 'Seul l\'expéditeur peut supprimer pour tous.'], 403);
+            }
+
+            $message->forceFill([
+                'deleted_at' => now(),
+                'deleted_by' => $request->user()->id,
+            ])->save();
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
     public function nonLus(Request $request): JsonResponse
     {
         $couple = $request->user()->coupleModel;
@@ -269,6 +312,7 @@ class DiscussionController extends Controller
         $count = Message::where('couple_id', $couple->id)
             ->where('sender_id', '!=', $request->user()->id)
             ->whereNull('read_at')
+            ->whereNull('deleted_at')
             ->count();
 
         return response()->json(['nonLus' => $count]);

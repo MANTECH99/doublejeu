@@ -37,6 +37,16 @@
             </div>
         </div>
 
+        {{-- Barre de sélection multi-messages (remplace le header en mode sélection) --}}
+        <div class="disc-selectionbar" id="disc-selectionbar" style="display:none">
+            <button class="disc-down-btn" id="disc-sel-back" aria-label="Fermer la sélection">←</button>
+            <div class="disc-sel-count" id="disc-sel-count">1</div>
+            <div class="grow"></div>
+            <button class="disc-sel-action" id="disc-sel-reply" aria-label="Répondre" title="Répondre">↩️</button>
+            <button class="disc-sel-action" id="disc-sel-star" aria-label="Etoile" title="Favori" style="display:none">⭐</button>
+            <button class="disc-sel-action disc-sel-delete" id="disc-sel-delete" aria-label="Supprimer" title="Supprimer">🗑️</button>
+        </div>
+
         {{-- Messages (occupent l'espace libre entre header et composer) --}}
         <div class="disc-messages" id="disc-messages">
             <div class="disc-welcome">
@@ -64,14 +74,15 @@
                     <path d="M13 9v3c0 1.1.9 2 2 2"></path>
                 </svg>
             </button>
-            <input
-                type="text"
+            <textarea
                 id="disc-input"
                 class="disc-input"
+                rows="1"
                 placeholder="Écrire un message…"
                 maxlength="2000"
                 autocomplete="off"
-            />
+                enterkeyhint="newline"
+            ></textarea>
             <button class="disc-send" id="disc-send" disabled>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -93,6 +104,15 @@
         </div>
         <div class="disc-gif-grid" id="disc-gif-grid"></div>
     </div>
+
+    {{-- Bottom-sheet : options de suppression (style WhatsApp) --}}
+    <div class="disc-sheet-backdrop" id="disc-sheet-backdrop" style="display:none"></div>
+    <div class="disc-sheet" id="disc-sheet" style="display:none">
+        <div class="disc-sheet-title" id="disc-sheet-title">Supprimer</div>
+        <button type="button" class="disc-sheet-btn disc-sheet-delete-red" id="disc-sheet-delete-me">🗑️ Supprimer pour moi</button>
+        <button type="button" class="disc-sheet-btn disc-sheet-delete-red" id="disc-sheet-delete-all" style="display:none">🗑️ Supprimer pour tous</button>
+        <button type="button" class="disc-sheet-btn disc-sheet-cancel" id="disc-sheet-cancel">Annuler</button>
+    </div>
 @endsection
 
 @push('scripts')
@@ -113,12 +133,27 @@
     const REPLY_NAME_EL = document.getElementById('disc-reply-name');
     const REPLY_BODY_EL = document.getElementById('disc-reply-body');
     const REPLY_CLOSE_EL = document.getElementById('disc-reply-close');
+    const SEL_BAR = document.getElementById('disc-selectionbar');
+    const SEL_BACK = document.getElementById('disc-sel-back');
+    const SEL_COUNT = document.getElementById('disc-sel-count');
+    const SEL_REPLY = document.getElementById('disc-sel-reply');
+    const SEL_STAR = document.getElementById('disc-sel-star');
+    const SEL_DELETE = document.getElementById('disc-sel-delete');
+    const DISC_HEADER = document.querySelector('.disc-header');
+    const COMPOSER_EL = document.getElementById('disc-composer');
+    const SHEET = document.getElementById('disc-sheet');
+    const SHEET_BACKDROP = document.getElementById('disc-sheet-backdrop');
+    const SHEET_TITLE = document.getElementById('disc-sheet-title');
+    const SHEET_DELETE_ME = document.getElementById('disc-sheet-delete-me');
+    const SHEET_DELETE_ALL = document.getElementById('disc-sheet-delete-all');
+    const SHEET_CANCEL = document.getElementById('disc-sheet-cancel');
     const STATE_URL = '{{ route("discussion.fetch") }}';
     const SEND_URL = '{{ route("discussion.send") }}';
     const TYPING_URL = '{{ route("discussion.typing") }}';
     const GIFS_URL = '{{ route("discussion.gifs") }}';
     const FAVORITES_URL = '{{ route("discussion.favorites") }}';
     const FAVORITES_TOGGLE_URL = '{{ route("discussion.favorites.toggle") }}';
+    const DELETE_URL = '/discussion/message/';
     const MY_ID = {{ $me->id }};
     const PARTNER_NAME = @json($partenaire->name);
 
@@ -129,6 +164,8 @@
     let sending = false;
     let replyTarget = null; // {id, sender_name, body}
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
+    const selectedMsgs = new Map(); // id -> {msg, wrap}
+    let lastToggleAt = -9999; // dernier moment où la sélection a été basculée (anti-rebond/doublon)
 
     function scrollToBottom(smooth) {
         if (smooth) {
@@ -136,6 +173,12 @@
         } else {
             MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
         }
+    }
+
+    // Ajuste la hauteur du textarea à son contenu, comme WhatsApp.
+    function autosize() {
+        INPUT_EL.style.height = 'auto';
+        INPUT_EL.style.height = INPUT_EL.scrollHeight + 'px';
     }
 
     function formatDate(dateStr) {
@@ -169,72 +212,138 @@
     }
     REPLY_CLOSE_EL.addEventListener('click', () => setReply(null));
 
-    function openActionMenu(msg, e) {
-        const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + msg.id + '"]');
+    /* ---------- Sélection multi-messages (style WhatsApp) ---------- */
 
-        // Fond sombre + flou derrière, seul le message sélectionné reste net.
-        const backdrop = document.createElement('div');
-        backdrop.className = 'disc-backdrop';
-        backdrop.addEventListener('click', removeActionMenu);
-        backdrop.addEventListener('touchmove', (ev) => ev.preventDefault(), { passive: false });
-        document.body.appendChild(backdrop);
-
-        if (wrap) {
-            wrap.classList.add('disc-selected');
-            wrap.style.zIndex = '70';
-        }
-        MESSAGES_EL.classList.add('disc-overlay');
-
-        const menu = document.createElement('div');
-        menu.className = 'disc-action-menu';
-        const reply = document.createElement('button');
-        reply.className = 'disc-action-btn';
-        reply.textContent = '↩️ Répondre';
-        reply.addEventListener('click', () => { setReply(msg); removeActionMenu(); });
-        menu.appendChild(reply);
-        const close = document.createElement('button');
-        close.className = 'disc-action-close';
-        close.textContent = 'Annuler';
-        close.addEventListener('click', removeActionMenu);
-        menu.appendChild(close);
-        document.body.appendChild(menu);
-
-        // Place le menu juste sous la bulle sélectionnée (comme WhatsApp).
-        placeMenuBelow(menu, wrap, msg);
+    function enterSelection() {
+        MESSAGES_EL.classList.add('disc-selecting');
+        DISC_HEADER.style.display = 'none';
+        SEL_BAR.style.display = 'flex';
+        REPLYBAR_EL.style.display = 'none';
+        updateSelectionBar();
     }
 
-    function placeMenuBelow(menu, wrap, msg) {
-        const menuW = 220;
-        const menuH = 120; // hauteur approximative du menu
-        const gap = 6;
+    function exitSelection() {
+        MESSAGES_EL.classList.remove('disc-selecting');
+        selectedMsgs.forEach(item => item.wrap.classList.remove('disc-checked'));
+        selectedMsgs.clear();
+        DISC_HEADER.style.display = '';
+        SEL_BAR.style.display = 'none';
+        if (replyTarget) setReply(null);
+    }
 
-        let top, left;
-        if (wrap) {
-            const rect = wrap.getBoundingClientRect();
-            // Collé juste sous la bulle (en restant dans l'écran en bas).
-            top = Math.min(rect.bottom + gap, window.innerHeight - menuH - 12);
-            top = Math.max(top, 12);
-            // Aligné à gauche de la bulle, sans déborder à droite.
-            left = Math.min(Math.max(rect.left, 12), window.innerWidth - menuW - 12);
+    function toggleSelect(msg, wrap) {
+        lastToggleAt = Date.now();
+        if (selectedMsgs.has(msg.id)) {
+            selectedMsgs.delete(msg.id);
+            wrap.classList.remove('disc-checked');
         } else {
-            top = window.innerHeight / 2;
-            left = (window.innerWidth - menuW) / 2;
+            selectedMsgs.set(msg.id, { msg, wrap });
+            wrap.classList.add('disc-checked');
         }
-
-        menu.style.top = Math.round(top) + 'px';
-        menu.style.left = Math.round(left) + 'px';
-        menu.style.transform = 'translateY(0)';
-        menu.style.width = menuW + 'px';
+        if (selectedMsgs.size === 0) {
+            exitSelection();
+            return;
+        }
+        if (DISC_HEADER.style.display !== 'none') enterSelection();
+        updateSelectionBar();
     }
 
-    function removeActionMenu() {
-        document.querySelectorAll('.disc-backdrop').forEach(el => el.remove());
-        document.querySelectorAll('.disc-action-menu').forEach(el => el.remove());
-        MESSAGES_EL.querySelectorAll('.disc-bubble-wrap.disc-selected').forEach(el => {
-            el.classList.remove('disc-selected');
-            el.style.zIndex = '';
-        });
-        MESSAGES_EL.classList.remove('disc-overlay');
+    function updateSelectionBar() {
+        const n = selectedMsgs.size;
+        SEL_COUNT.textContent = String(n);
+        // Répondre : uniquement si un seul message est sélectionné.
+        SEL_REPLY.style.display = n === 1 ? '' : 'none';
+        // Supprimer pour tous : seulement si TOUS les messages sélectionnés sont à moi.
+        const allMine = [...selectedMsgs.values()].every(item => String(item.msg.sender_id) === String(MY_ID));
+        SEL_DELETE.dataset.canAll = allMine ? '1' : '0';
+    }
+
+    SEL_BACK.addEventListener('click', exitSelection);
+    SEL_REPLY.addEventListener('click', () => {
+        if (selectedMsgs.size !== 1) return;
+        const { msg } = selectedMsgs.values().next().value;
+        const replyMsg = msg;
+        exitSelection();      // retire d'abord le mode sélection (annule replyTarget)
+        setReply(replyMsg);   // puis affiche la barre de réponse
+        INPUT_EL.focus();
+    });
+    SEL_DELETE.addEventListener('click', () => {
+        const allMine = SEL_DELETE.dataset.canAll === '1';
+        SHEET_DELETE_ALL.style.display = allMine ? '' : 'none';
+        SHEET_TITLE.textContent = selectedMsgs.size > 1
+            ? 'Supprimer ' + selectedMsgs.size + ' messages'
+            : 'Supprimer ce message';
+        openSheet();
+    });
+
+    // ---- Bottom-sheet suppression ----
+    function openSheet() {
+        SHEET_BACKDROP.style.display = 'block';
+        SHEET.style.display = 'flex';
+    }
+    function closeSheet() {
+        SHEET_BACKDROP.style.display = 'none';
+        SHEET.style.display = 'none';
+    }
+    SHEET_CANCEL.addEventListener('click', closeSheet);
+    SHEET_BACKDROP.addEventListener('click', closeSheet);
+
+    SHEET_DELETE_ME.addEventListener('click', () => {
+        closeSheet();
+        deleteMessages(Array.from(selectedMsgs.keys()), 'me');
+    });
+    SHEET_DELETE_ALL.addEventListener('click', () => {
+        closeSheet();
+        deleteMessages(Array.from(selectedMsgs.keys()), 'all');
+    });
+
+    async function deleteMessages(ids, mode) {
+        let failed = false;
+        for (const id of ids) {
+            try {
+                const res = await fetch(DELETE_URL + id, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ mode }),
+                });
+                if (res.ok) {
+                    const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + id + '"]');
+                    if (mode === 'all') {
+                        if (wrap) {
+                            const bubble = wrap.querySelector('.disc-bubble');
+                            if (bubble) {
+                                bubble.innerHTML = '';
+                                bubble.classList.add('disc-bubble-deleted');
+                                const txt = document.createElement('span');
+                                txt.className = 'disc-deleted-text';
+                                txt.textContent = 'Vous avez supprimé ce message';
+                                bubble.appendChild(txt);
+                            }
+                            wrap.replaceWith(wrap.cloneNode(true));
+                        }
+                        selectedMsgs.delete(id);
+                    } else {
+                        if (wrap) wrap.remove();
+                        selectedMsgs.delete(id);
+                        renderedIds.delete(id);
+                    }
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    toast(err.error || 'Erreur lors de la suppression.', 'error');
+                    failed = true;
+                }
+            } catch (e) {
+                toast('Connexion perdue.', 'error');
+                failed = true;
+            }
+        }
+        if (selectedMsgs.size === 0) exitSelection();
+        if (failed) return;
     }
 
     function buildBubble(msg) {
@@ -264,6 +373,20 @@
 
         const bubble = document.createElement('div');
         bubble.className = 'disc-bubble ' + (isMe ? 'me' : 'them');
+
+        // Message supprimé pour tous : bulle grisée avec texte placeholder.
+        if (msg.deleted_for_all) {
+            bubble.classList.add('disc-bubble-deleted');
+            const txt = document.createElement('span');
+            txt.className = 'disc-deleted-text';
+            txt.textContent = msg.deleted_by_me
+                ? 'Vous avez supprimé ce message'
+                : 'Ce message a été supprimé';
+            bubble.appendChild(txt);
+            wrap.appendChild(bubble);
+            MESSAGES_EL.appendChild(wrap);
+            return;
+        }
 
         // Message cité (réponse) au-dessus du texte.
         if (msg.reply_to) {
@@ -317,39 +440,63 @@
         wrap.appendChild(meta);
         MESSAGES_EL.appendChild(wrap);
 
-        // Clic long / menu contextuel / swipe → répondre.
+        // Clic droit (desktop) → sélectionner le message.
+        // NB : sur Android, l'appui long déclenche AUSSI un `contextmenu` natif,
+        // juste après le long press (timer touche). Sans garde, les deux appelleraient
+        // toggleSelect → sélection puis désélection immédiate → la barre clignote et
+        // disparaît. On ignore donc le contextmenu s'il survient juste après un toggle.
         wrap.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            openActionMenu(msg, e);
+            if (Date.now() - lastToggleAt < 300) return; // doublon du long press Android
+            toggleSelect(msg, wrap);
         });
-        attachSwipeReply(wrap, msg);
-    }
 
-    /* Swipe vers la droite → répondre directement à ce message. */
-    function attachSwipeReply(wrap, msg) {
-        let startX = null;
-        let startY = null;
-        let touchTimer = null;
-        let longPressFired = false;
+        // Interactions tactiles : appui long = sélection, swipe droite = répondre.
+        (function attachTouch(wrap, msg) {
+            let startX = null;
+            let startY = null;
+            let touchTimer = null;
+            let longPressFired = false;
 
-        wrap.addEventListener('touchstart', (e) => {
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-            longPressFired = false;
-            clearTimeout(touchTimer);
-            touchTimer = setTimeout(() => { longPressFired = true; openActionMenu(msg); }, 500);
-        }, { passive: true });
-        wrap.addEventListener('touchend', (e) => {
-            clearTimeout(touchTimer);
-            if (startX === null || longPressFired) { startX = null; return; }
-            const touch = e.changedTouches[0];
-            const dx = touch.clientX - startX;
-            const dy = touch.clientY - startY;
-            // Déplacement net vers la droite, très peu vertical.
-            if (dx > 60 && Math.abs(dy) < 40) setReply(msg);
-            startX = null;
-        }, { passive: true });
-        wrap.addEventListener('touchcancel', () => { clearTimeout(touchTimer); startX = null; });
+            wrap.addEventListener('touchstart', (e) => {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+                longPressFired = false;
+                clearTimeout(touchTimer);
+                touchTimer = setTimeout(() => {
+                    longPressFired = true;
+                    if (!msg.deleted_for_all) toggleSelect(msg, wrap);
+                }, 500);
+            }, { passive: true });
+
+            // En mode sélection, un simple appui bascule la sélection ; sinon,
+            // un swipe net vers la droite répond au message.
+            wrap.addEventListener('touchend', (e) => {
+                clearTimeout(touchTimer);
+                if (startX === null) return;
+                const touch = e.changedTouches[0];
+                const dx = touch.clientX - startX;
+                const dy = touch.clientY - startY;
+
+                // Verrouillage anti-rebond : un changement de layout (entrée en
+                // mode sélection) peut générer des touchestart/touchend parasites
+                // juste après un long press, qui désélectionneraient le message et
+                // feraient clignoter la barre. On ignore donc les taps pendant un
+                // court instant après chaque bascule.
+                if (Date.now() - lastToggleAt < 300) { startX = null; return; }
+
+                if (selectedMsgs.size > 0) {
+                    if (!longPressFired && Math.abs(dx) < 10 && Math.abs(dy) < 10 && !msg.deleted_for_all) {
+                        toggleSelect(msg, wrap);
+                    }
+                } else if (!longPressFired && dx > 60 && Math.abs(dy) < 40) {
+                    setReply(msg);
+                }
+                startX = null;
+            }, { passive: true });
+
+            wrap.addEventListener('touchcancel', () => { clearTimeout(touchTimer); startX = null; });
+        })(wrap, msg);
     }
 
     // Met à jour le statut "lu" (✓✓) des bulles déjà affichées.
@@ -480,6 +627,7 @@
                 pendingGif = null;
                 closeGifPanel();
                 INPUT_EL.value = '';
+                autosize();
                 SEND_BTN.disabled = true;
             } else {
                 toast(pendingGif ? 'Erreur lors de l\'envoi du GIF.' : 'Erreur lors de l\'envoi.', 'error');
@@ -696,11 +844,20 @@
     });
 
     INPUT_EL.addEventListener('input', () => {
+        autosize();
         SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif;
         if (INPUT_EL.value.trim()) sendTyping();
     });
     INPUT_EL.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key !== 'Enter') return;
+
+        // Sur mobile, la touche Entrée (retour à la ligne) insère une nouvelle
+        // ligne comme sur WhatsApp : l'envoi passe par le bouton d'envoi.
+        const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        if (isTouch && !e.shiftKey) return; // laisser le textarea insérer le \n
+
+        // Sur desktop : Entrée envoie, Maj+Entrée nouvelle ligne.
+        if (!e.shiftKey) {
             e.preventDefault();
             sendMessage();
         }

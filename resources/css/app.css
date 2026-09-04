@@ -648,6 +648,59 @@ summary.btn::-webkit-details-marker { display: none; }
 .disc-header-status {
     font-size: 12px;
 }
+.disc-selectionbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(15, 15, 20, 0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 60;
+}
+.disc-down-btn {
+    background: transparent;
+    border: none;
+    color: var(--primary-2);
+    font-size: 22px;
+    font-weight: 700;
+    padding: 4px 4px 4px 0;
+    cursor: pointer;
+    line-height: 1;
+}
+.disc-sel-count {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    display: grid;
+    place-items: center;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 700;
+}
+.disc-selectionbar .grow { flex: 1; }
+.disc-sel-action {
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text);
+    font-size: 20px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: 0.2s;
+}
+.disc-sel-action:hover {
+    background: var(--card-2);
+}
+.disc-sel-delete { color: #e74c3c; }
+.disc-sel-delete:hover { background: rgba(231, 76, 60, 0.12); }
 .disc-offline {
     color: var(--text-3);
 }
@@ -713,6 +766,13 @@ summary.btn::-webkit-details-marker { display: none; }
 .disc-bubble-wrap.them {
     align-self: flex-start;
 }
+.disc-bubble-wrap.disc-checked {
+    transform: scale(0.97);
+    filter: brightness(0.9);
+}
+.disc-bubble-wrap.disc-checked .disc-bubble {
+    box-shadow: 0 0 0 2px var(--primary);
+}
 
 .disc-bubble {
     padding: 10px 14px;
@@ -732,6 +792,19 @@ summary.btn::-webkit-details-marker { display: none; }
     border: 1px solid var(--border);
     color: var(--text);
     border-bottom-left-radius: 6px;
+}
+.disc-bubble-deleted {
+    background: transparent !important;
+    border: 1px dashed var(--text-3) !important;
+    color: var(--text-3);
+    border-radius: 12px !important;
+    cursor: default;
+    pointer-events: none;
+}
+.disc-deleted-text {
+    font-style: italic;
+    font-size: 13px;
+    opacity: 0.7;
 }
 
 .disc-meta {
@@ -882,8 +955,11 @@ summary.btn::-webkit-details-marker { display: none; }
     font-size: 16px;
     font-weight: 600;
     cursor: pointer;
+    white-space: nowrap; /* libellés sur une seule ligne */
 }
 .disc-action-btn:hover { background: var(--card-2); }
+.disc-action-danger { color: #e74c3c; }
+.disc-action-danger:hover { background: rgba(231, 76, 60, 0.1); }
 .disc-action-close {
     width: 100%;
     text-align: center;
@@ -917,8 +993,17 @@ summary.btn::-webkit-details-marker { display: none; }
     padding: 10px 16px;
     font: inherit;
     font-size: 16px;
+    line-height: 1.4;
     outline: none;
     transition: 0.2s;
+    resize: none; /* zone de saisie multi-ligne gérée en JS (auto-resize) */
+    overflow-y: auto;
+    scrollbar-width: none; /* cache la barre de défilement (Firefox) */
+    -ms-overflow-style: none; /* cache la barre de défilement (ancien Edge/IE) */
+    max-height: 132px; /* ~4 lignes maximum, puis défilement interne */
+}
+.disc-input::-webkit-scrollbar {
+    display: none; /* cache la barre de défilement (Chrome/Safari) */
 }
 .disc-input:focus {
     border-color: var(--primary);
@@ -1201,4 +1286,66 @@ summary.btn::-webkit-details-marker { display: none; }
     color: var(--text-3, #777);
     text-align: center;
     font-family: monospace;
+}
+
+/* ---------- Modal de suppression (centré, style WhatsApp) ---------- */
+.disc-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.15s ease both;
+}
+.disc-sheet {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 91;
+    width: min(340px, 88vw);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    padding: 18px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    animation: scaleIn 0.18s cubic-bezier(0.2, 0.8, 0.3, 1.1) both;
+}
+.disc-sheet-title {
+    text-align: center;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+.disc-sheet-btn {
+    width: 100%;
+    text-align: center;
+    padding: 13px;
+    border: none;
+    border-radius: 12px;
+    background: var(--card-2);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+}
+.disc-sheet-btn:hover {
+    filter: brightness(1.1);
+}
+.disc-sheet-btn.disc-sheet-delete-red {
+    background: rgba(231, 76, 60, 0.12);
+    color: #e74c3c;
+}
+.disc-sheet-cancel {
+    margin-top: 6px;
+    color: var(--text-2);
+}
+@keyframes scaleIn {
+    from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+    to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }

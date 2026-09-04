@@ -383,4 +383,88 @@ class DiscussionFlowTest extends TestCase
         $this->assertStringContainsString('notificationclick', $sw);
         $this->assertStringContainsString('setBadge(0)', $sw);
     }
+
+    public function test_sender_can_delete_message_for_me(): void
+    {
+        $msg = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'À supprimer']);
+
+        // Alice supprime pour elle.
+        $this->actingAs($this->alice)
+            ->deleteJson(route('discussion.delete', $msg->id), ['mode' => 'me'])
+            ->assertOk();
+
+        // Le message n'apparaît plus dans le fetch d'Alice.
+        $fetch = $this->actingAs($this->alice)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertCount(0, $fetch['messages']);
+
+        // Bob voit toujours le message.
+        $bobFetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertCount(1, $bobFetch['messages']);
+        $this->assertSame('À supprimer', $bobFetch['messages'][0]['body']);
+    }
+
+    public function test_sender_can_delete_message_for_all(): void
+    {
+        $msg = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Secret']);
+
+        // Alice supprime pour tous.
+        $this->actingAs($this->alice)
+            ->deleteJson(route('discussion.delete', $msg->id), ['mode' => 'all'])
+            ->assertOk();
+
+        // Les deux voient le placeholder avec deleted_for_all.
+        $aliceFetch = $this->actingAs($this->alice)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertCount(1, $aliceFetch['messages']);
+        $this->assertTrue($aliceFetch['messages'][0]['deleted_for_all']);
+        $this->assertTrue($aliceFetch['messages'][0]['deleted_by_me']);
+        $this->assertNull($aliceFetch['messages'][0]['body']);
+
+        $bobFetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertCount(1, $bobFetch['messages']);
+        $this->assertTrue($bobFetch['messages'][0]['deleted_for_all']);
+        $this->assertFalse($bobFetch['messages'][0]['deleted_by_me']);
+    }
+
+    public function test_partner_cannot_delete_for_all(): void
+    {
+        $msg = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Pas le mien']);
+
+        // Bob ne peut pas supprimer pour tous le message d'Alice.
+        $this->actingAs($this->bob)
+            ->deleteJson(route('discussion.delete', $msg->id), ['mode' => 'all'])
+            ->assertStatus(403);
+
+        // Le message existe toujours.
+        $this->assertDatabaseHas('messages', ['id' => $msg->id, 'deleted_at' => null]);
+    }
+
+    public function test_deleted_for_all_messages_not_counted_in_unread(): void
+    {
+        Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Visible']);
+        $hidden = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Caché']);
+
+        // Alice supprime le second message pour tous.
+        $this->actingAs($this->alice)
+            ->deleteJson(route('discussion.delete', $hidden->id), ['mode' => 'all'])
+            ->assertOk();
+
+        // Seul le message visible compte dans les non-lus de Bob.
+        $res = $this->actingAs($this->bob)
+            ->getJson(route('discussion.non-lus'))
+            ->assertOk()
+            ->json();
+        $this->assertSame(1, $res['nonLus']);
+    }
 }
