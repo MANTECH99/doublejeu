@@ -397,6 +397,14 @@ class DiscussionFlowTest extends TestCase
             ->assertOk()
             ->assertSee('disc-messages', false)
             ->assertSee('Vos messages sont privés', false);
+
+        // Icônes d'appel (décoratives) + modal "bientôt disponible" présents.
+        $this->actingAs($this->alice)
+            ->get(route('discussion.index'))
+            ->assertSee('disc-call-voice', false)
+            ->assertSee('disc-call-video', false)
+            ->assertSee('disc-call-modal', false)
+            ->assertSee('bientôt disponible', false);
     }
 
     public function test_discussion_page_injects_message_data_without_server_html(): void

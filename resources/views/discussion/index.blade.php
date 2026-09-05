@@ -21,6 +21,73 @@
        et créait l'espace entre le composer et le clavier. --- */
     html, body { overflow: hidden; }
     .disc-messages { overscroll-behavior: contain; } /* le scroll s'arrête dans la liste */
+    /* Icônes d'appel (décoratives) en haut à droite du header, façon WhatsApp. */
+    .disc-call-icons {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-right: -4px;
+        position: relative;
+    }
+    .disc-call-btn {
+        width: 40px;
+        height: 40px;
+        border: none;
+        background: transparent;
+        border-radius: 50%;
+        color: var(--primary-2);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        transition: 0.2s;
+    }
+    .disc-call-btn:hover { background: var(--card-2); }
+    .disc-call-btn:active { transform: scale(0.92); }
+    /* Le badge des non-lus se pose sur les icônes (ancré dans .disc-call-icons). */
+    .disc-badge {
+        position: absolute;
+        top: 2px;
+        right: -2px;
+        z-index: 2;
+    }
+    /* Modal info "bientôt disponible" : voile + carte centrée, au-dessus du reste. */
+    .disc-call-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: grid;
+        place-items: center;
+    }
+    .disc-call-modal-card {
+        position: relative;
+        z-index: 81;
+        width: min(320px, 86vw);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 28px 24px 22px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        text-align: center;
+    }
+    .disc-call-modal-icon { font-size: 34px; }
+    .disc-call-modal-title { font-size: 17px; font-weight: 700; }
+    .disc-call-modal-text { font-size: 13px; color: var(--text-3); }
+    .disc-call-modal-ok {
+        margin-top: 8px;
+        padding: 10px 26px;
+        border: none;
+        border-radius: 999px;
+        background: var(--primary);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .disc-call-modal-ok:active { transform: scale(0.95); }
     /* La topbar et le header ne doivent pas réagir au rubber-band iOS */
     body .topbar, .disc-header { touch-action: none; }
     /* Le composer est collé en bas de l'écran : pas de safe-area (la zone du
@@ -166,6 +233,25 @@
                         <span class="disc-offline">hors ligne</span>
                     @endif
                 </div>
+            </div>
+            <div class="disc-call-icons" id="disc-call-icons">
+                <button type="button" class="disc-call-btn" id="disc-call-voice" aria-label="Appel vocal" title="Appel vocal">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                </button>
+                <button type="button" class="disc-call-btn" id="disc-call-video" aria-label="Appel vidéo" title="Appel vidéo">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                </button>
+            </div>
+        </div>
+
+        {{-- Modal info : appels pas encore disponibles (icônes décoratives) --}}
+        <div class="disc-call-modal" id="disc-call-modal" style="display:none" role="dialog" aria-modal="true">
+            <div class="disc-backdrop" data-call-close></div>
+            <div class="disc-call-modal-card">
+                <div class="disc-call-modal-icon">🔮</div>
+                <div class="disc-call-modal-title" id="disc-call-modal-title">Appel vocal</div>
+                <div class="disc-call-modal-text">Cette fonctionnalité sera bientôt disponible !</div>
+                <button type="button" class="disc-call-modal-ok" data-call-close>OK</button>
             </div>
         </div>
 
@@ -970,7 +1056,7 @@
                 badge = document.createElement('span');
                 badge.id = 'disc-badge';
                 badge.className = 'disc-badge';
-                document.querySelector('.disc-header')?.appendChild(badge);
+                document.getElementById('disc-call-icons')?.appendChild(badge);
             }
             badge.textContent = count;
             pushCleared = false; // de nouveaux non-lus arrivent → on retirera à la prochaine lecture
@@ -1866,6 +1952,23 @@
     });
     REC_CANCEL.addEventListener('click', cancelRecording);
     REC_SEND.addEventListener('click', sendRecording);
+
+    // Icônes d'appel (décoratives) : ouvre un modal "bientôt disponible".
+    const CALL_MODAL = document.getElementById('disc-call-modal');
+    const CALL_MODAL_TITLE = document.getElementById('disc-call-modal-title');
+    function openCallModal(title) {
+        CALL_MODAL_TITLE.textContent = title;
+        CALL_MODAL.style.display = 'grid';
+    }
+    function closeCallModal() {
+        CALL_MODAL.style.display = 'none';
+    }
+    document.getElementById('disc-call-voice').addEventListener('click', () => openCallModal('Appel vocal'));
+    document.getElementById('disc-call-video').addEventListener('click', () => openCallModal('Appel vidéo'));
+    CALL_MODAL.querySelectorAll('[data-call-close]').forEach((el) => el.addEventListener('click', closeCallModal));
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && CALL_MODAL.style.display !== 'none') closeCallModal();
+    });
 
     // "Pré-rendu" côté client : les messages injectés par le serveur dans
     // #disc-init-messages sont construits avec buildBubble (le MÊME rendu que le
