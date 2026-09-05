@@ -51,9 +51,21 @@ class DiscussionController extends Controller
 
         $this->marquerLus($couple, Auth::user());
 
+        // Historique complet en vrac (sérialisé, sans HTML) : le JS construit les
+        // bulles avec buildBubble AVANT la première peinture — l'affichage reste
+        // strictement le rendu JS habituel, mais l'ouverture arrive directe en bas.
+        $messages = Message::where('couple_id', $couple->id)
+            ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', Auth::id()))
+            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id'])
+            ->orderByDesc('id')
+            ->get()
+            ->reverse()
+            ->values();
+
         return view('discussion.index', [
             'couple' => $couple,
             'partner' => $partner,
+            'messages' => $this->mapMessages($couple, Auth::id(), $messages),
         ]);
     }
 
@@ -74,6 +86,8 @@ class DiscussionController extends Controller
                 'gif_url' => $deletedForAll ? null : $m->gif_url,
                 'gif_alt' => $deletedForAll ? null : $m->gif_alt,
                 'photo_url' => $deletedForAll ? null : $this->photoUrl($m->photo_path),
+                'photo_w' => $deletedForAll ? null : $m->photo_w,
+                'photo_h' => $deletedForAll ? null : $m->photo_h,
                 'audio_url' => $deletedForAll ? null : $this->audioUrl($m->audio_path),
                 'audio_duration' => $deletedForAll ? null : $m->audio_duration,
                 'audio_bars' => $deletedForAll ? null : $m->audio_bars,
@@ -302,6 +316,8 @@ class DiscussionController extends Controller
             'gif_url' => ['nullable', 'url', 'max:1000'],
             'gif_alt' => ['nullable', 'string', 'max:255'],
             'photo_path' => ['nullable', 'string', 'max:255'],
+            'photo_w' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'photo_h' => ['nullable', 'integer', 'min:1', 'max:10000'],
             'audio_path' => ['nullable', 'string', 'max:255'],
             'audio_duration' => ['nullable', 'integer', 'min:1', 'max:600'],
             'audio_bars' => ['nullable', 'string', 'max:2048'],
@@ -336,6 +352,8 @@ class DiscussionController extends Controller
             'gif_url' => $data['gif_url'] ?? null,
             'gif_alt' => $data['gif_alt'] ?? null,
             'photo_path' => $data['photo_path'] ?? null,
+            'photo_w' => $data['photo_w'] ?? null,
+            'photo_h' => $data['photo_h'] ?? null,
             'audio_path' => $data['audio_path'] ?? null,
             'audio_duration' => $data['audio_duration'] ?? null,
             'audio_bars' => $data['audio_bars'] ?? null,

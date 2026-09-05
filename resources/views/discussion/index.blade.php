@@ -180,14 +180,21 @@
         </div>
 
         {{-- Messages (occupent l'espace libre entre header et composer).
-             Rendu côté client : à l'ouverture, le JS charge l'historique et colle
-             immédiatement en bas, sans défilement ni attente (comme WhatsApp). --}}
-        <div class="disc-messages" id="disc-messages">
+             Rendu côté client : les données injectées dans #disc-init-messages
+             sont construites avec le MÊME buildBubble que d'habitude, AVANT la
+             première peinture → ouverture directe sur le dernier message, sans
+             défilement ni flash, avec un affichage strictement identique. --}}
+        <div class="disc-messages" id="disc-messages" style="visibility:hidden">
             <div class="disc-welcome">
                 <div style="font-size:36px; margin-bottom:8px">💬</div>
                 <div class="tiny muted">Vos messages sont privés.<br>Discutez de tout, à tout moment.</div>
             </div>
         </div>
+
+        {{-- Données injectées par le serveur (JSON brut, aucun HTML de bulle).
+             JSON_HEX_TAG/APOS/QUOT protège le contenu contre toute fermeture
+             anticipée du bloc, même avec du texte/vocal/photo utilisateur. --}}
+        <script type="application/json" id="disc-init-messages">{!! json_encode($messages, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
 
         {{-- Barre "répondre à…" (affichée quand on répond à un message) --}}
         <div class="disc-replybar" id="disc-replybar" style="display:none">
@@ -763,14 +770,19 @@
             bubble.appendChild(imgWrap);
         }
 
-        // Message photo : image hébergée localement.
+        // Message photo : image hébergée localement. Si la taille native est
+        // connue, on réserve la hauteur (aspect-ratio) dès la construction :
+        // le chargement ne peut plus décaler le fil (plus de défilement à
+        // l'entrée, même sur mobile).
         if (msg.is_photo && msg.photo_url) {
             const imgWrap = document.createElement('div');
             imgWrap.className = 'disc-photo';
             const img = document.createElement('img');
             img.src = msg.photo_url;
             img.alt = 'Photo';
-            img.loading = 'lazy';
+            if (msg.photo_w && msg.photo_h) {
+                img.style.aspectRatio = msg.photo_w + ' / ' + msg.photo_h;
+            }
             img.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -982,6 +994,10 @@
         }
         if (pendingPhoto) {
             payload.photo_path = pendingPhoto.path;
+            if (pendingPhoto.w && pendingPhoto.h) {
+                payload.photo_w = pendingPhoto.w;
+                payload.photo_h = pendingPhoto.h;
+            }
         }
         if (pendingAudio) {
             payload.audio_path = pendingAudio.path;
@@ -1005,6 +1021,8 @@
             gif_alt: pendingGif ? pendingGif.alt : null,
             is_photo: !!pendingPhoto,
             photo_url: pendingPhoto ? pendingPhoto.url : null,
+            photo_w: pendingPhoto && pendingPhoto.w ? pendingPhoto.w : null,
+            photo_h: pendingPhoto && pendingPhoto.h ? pendingPhoto.h : null,
             is_audio: !!pendingAudio,
             audio_url: pendingAudio ? pendingAudio.url : null,
             audio_duration: pendingAudio ? pendingAudio.duration : null,
@@ -1762,6 +1780,14 @@
                 const data = await res.json();
                 pendingPhoto = { path: data.path, url: data.url };
                 PHOTO_PREVIEW_IMG.src = data.url;
+                PHOTO_PREVIEW_IMG.onload = () => {
+                    // On retient les dimensions natives : elles réservent la
+                    // hauteur de la bulle sans attendre le chargement côté fil.
+                    if (pendingPhoto) {
+                        pendingPhoto.w = PHOTO_PREVIEW_IMG.naturalWidth || 0;
+                        pendingPhoto.h = PHOTO_PREVIEW_IMG.naturalHeight || 0;
+                    }
+                };
                 PHOTO_PREVIEW.style.display = 'flex';
                 SEND_BTN.disabled = false;
                 INPUT_EL.focus();
@@ -1826,7 +1852,88 @@
     REC_CANCEL.addEventListener('click', cancelRecording);
     REC_SEND.addEventListener('click', sendRecording);
 
+    // "Pré-rendu" côté client : les messages injectés par le serveur dans
+    // #disc-init-messages sont construits avec buildBubble (le MÊME rendu que le
+    // fetch) pendant le parse, donc avant la première peinture. Aucun HTML de
+    // bulle n'est écrit côté serveur : l'affichage ne peut pas différer.
+    // La zone reste invisible (visibility:hidden) seulement le temps de construire
+    // toutes les bulles de façon synchrone pendant le parse. Les photos ont une
+    // hauteur réservée (aspect-ratio) → le chargement ne peut plus décaler le
+    // fil : on révèle d'un coup, sur la hauteur finale, avant la première
+    // peinture → ouverture directe sur le dernier message, sans défilement.
+    let discRevealed = false;
+    function revealDisc() {
+        if (discRevealed) return;
+        discRevealed = true;
+        initialLoad = false;
+        MESSAGES_EL.style.visibility = 'visible';
+        MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+        // Juste avant la première peinture, on re-vérifie l'ancrage : si le
+        // layout s'est encore affiné (polices…), la correction est invisible.
+        requestAnimationFrame(() => {
+            MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+        });
+    }
+    function bootPrerendered() {
+        const el = document.getElementById('disc-init-messages');
+        let list = [];
+        if (el) {
+            try {
+                list = JSON.parse(el.textContent) || [];
+            } catch (err) {
+                list = [];
+            }
+            for (const m of list) buildBubble(m);
+        }
+        const pending = Array.from(
+            MESSAGES_EL.querySelectorAll('.disc-photo img, .disc-gif img')
+        ).filter((img) => !img.complete && !img.style.aspectRatio);
+
+        if (pending.length === 0) {
+            revealDisc();
+            return;
+        }
+        // Seules les images SANS hauteur réservée (GIF, très vieilles photos)
+        // peuvent encore décaler le fil : on les charge en arrière-plan (zone
+        // invisible), on attend qu'elles soient posées, puis on révèle. Leur
+        // nombre est faible, l'attente est donc courte.
+        let left = pending.length;
+        const done = () => {
+            left -= 1;
+            if (left <= 0) revealDisc();
+        };
+        for (const img of pending) {
+            img.loading = 'eager';
+            img.addEventListener('load', done);
+            img.addEventListener('error', done);
+        }
+        // Filet de sécurité : on révèle de toute façon après 8 s.
+        setTimeout(() => {
+            if (left > 0) revealDisc();
+        }, 8000);
+    }
+
+    // Mobile : la barre d'URL se replie ~0,5 s après l'arrivée et agrandit le
+    // viewport, les polices web s'installent aussi après coup. Chaque changement
+    // de layout décalerait l'ancrage du bas. Tant qu'on est (toujours) en bas,
+    // on re-colle en une fois, sans animation, à chaque reflow : c'est un simple
+    // ré-ancrage silencieux, jamais un défilement visible.
+    function glueIfAtBottom() {
+        if (wasAtBottom()) {
+            MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+        }
+    }
+    window.addEventListener('resize', glueIfAtBottom);
+    window.addEventListener('orientationchange', glueIfAtBottom);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', glueIfAtBottom);
+    }
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(glueIfAtBottom);
+    }
+
     // Poll unique : messages + statut en ligne en une seule requête (1,5 s).
+    bootPrerendered();
     fetchMessages();
     setInterval(fetchMessages, 1500);
 

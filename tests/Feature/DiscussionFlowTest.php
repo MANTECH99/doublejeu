@@ -390,9 +390,8 @@ class DiscussionFlowTest extends TestCase
             ->get(route('discussion.index'))
             ->assertRedirect(route('couple.setup'));
 
-        // Page rendue pour un couple lié : le contenu des messages n'est PAS
-        // pré-rendu côté serveur — l'affichage reste entièrement côté client,
-        // seul le bloc d'accueil est présent dans le markup.
+        // Page rendue pour un couple lié : sans message, le bloc d'accueil reste
+        // présent dans le markup.
         $this->actingAs($this->alice)
             ->get(route('discussion.index'))
             ->assertOk()
@@ -400,18 +399,34 @@ class DiscussionFlowTest extends TestCase
             ->assertSee('Vos messages sont privés', false);
     }
 
-    public function test_discussion_page_does_not_pre_render_message_bubbles(): void
+    public function test_discussion_page_injects_message_data_without_server_html(): void
     {
-        Message::create([
+        $texte = Message::create([
             'couple_id' => $this->couple->id,
             'sender_id' => $this->bob->id,
-            'body' => 'Bulle uniquement côté client',
+            'body' => 'Bulle injectée côté client',
+        ]);
+        Message::create([
+            'couple_id' => $this->couple->id,
+            'sender_id' => $this->alice->id,
+            'body' => '',
+            'audio_path' => 'voix/abc.webm',
+            'audio_duration' => 7,
+            'audio_bars' => '10,30,45,20,60,40,25,55',
         ]);
 
-        $this->actingAs($this->alice)
+        $response = $this->actingAs($this->alice)
             ->get(route('discussion.index'))
-            ->assertOk()
-            ->assertDontSee('Bulle uniquement côté client');
+            ->assertOk();
+
+        // Les données sont injectées (JSON brut) mais aucune bulle n'est écrite
+        // en HTML côté serveur : le rendu reste entièrement celui du JS.
+        $response->assertSee('disc-init-messages', false);
+        $response->assertSee('Bulle injectée côté client');
+        $response->assertDontSee('data-sender-id=', false);
+        $response->assertDontSee('data-audio-duration=', false);
+
+        $this->assertTrue(str_contains($response->getContent(), '"id":'.$texte->id));
     }
 
     public function test_message_push_carries_unread_badge_count_for_partner(): void
@@ -555,15 +570,23 @@ class DiscussionFlowTest extends TestCase
         $this->assertSame('/storage/'.$path, $upload['url']);
 
         $this->actingAs($this->alice)
-            ->postJson(route('discussion.send'), ['body' => 'Notre week-end !', 'photo_path' => $path])
+            ->postJson(route('discussion.send'), [
+                'body' => 'Notre week-end !',
+                'photo_path' => $path,
+                'photo_w' => 800,
+                'photo_h' => 600,
+            ])
             ->assertOk();
 
         $this->assertDatabaseHas('messages', [
             'couple_id' => $this->couple->id,
             'photo_path' => $path,
+            'photo_w' => 800,
+            'photo_h' => 600,
         ]);
 
-        // Bob reçoit la photo avec son URL publique.
+        // Bob reçoit la photo avec son URL publique et ses dimensions (elles
+        // réservent la hauteur de la bulle côté client → aucun décalage du fil).
         $fetch = $this->actingAs($this->bob)
             ->getJson(route('discussion.fetch'))
             ->assertOk()
@@ -573,6 +596,8 @@ class DiscussionFlowTest extends TestCase
         $this->assertTrue($photo['is_photo']);
         $this->assertSame('/storage/'.$path, $photo['photo_url']);
         $this->assertSame('Notre week-end !', $photo['body']);
+        $this->assertSame(800, $photo['photo_w']);
+        $this->assertSame(600, $photo['photo_h']);
     }
 
     public function test_photo_upload_requires_a_valid_image(): void
