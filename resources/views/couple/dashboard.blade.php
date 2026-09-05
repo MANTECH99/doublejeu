@@ -151,9 +151,9 @@
                         @if ($me->last_active_at && $me->last_active_at->diffInMinutes() < 1)
                             <span style="color:var(--success)">● en ligne</span>
                         @elseif ($me->last_active_at)
-                            <span class="muted">Actif·ve il y a {{ $me->last_active_at->diffForHumans() }}</span>
+                            <span class="muted">En ligne il y'a {{ $me->last_active_at->diffForHumans(null, \Carbon\CarbonInterface::DIFF_ABSOLUTE) }}</span>
                         @else
-                            <span class="muted">Pas encore actif·ve aujourd'hui</span>
+                            <span class="muted">Pas encore en ligne aujourd'hui</span>
                         @endif
                     </div>
                 </div>
@@ -169,7 +169,7 @@
                         @if ($partner->last_active_at && $partner->last_active_at->diffInMinutes() < 1)
                             <span style="color:var(--success)">● en ligne</span>
                         @elseif ($partner->last_active_at)
-                            <span class="muted">Actif·ve il y a {{ $partner->last_active_at->diffForHumans() }}</span>
+                            <span class="muted">En ligne il y'a {{ $partner->last_active_at->diffForHumans(null, \Carbon\CarbonInterface::DIFF_ABSOLUTE) }}</span>
                         @else
                             <span class="muted">En attente de connexion…</span>
                         @endif
@@ -245,10 +245,10 @@
             if (data.enLigne) {
                 el.innerHTML = '<span style="color:var(--success)">● en ligne</span>';
             } else if (data.present) {
-                el.innerHTML = '<span class="muted">Actif·ve il y a ' + data.heure + '</span>';
+                el.innerHTML = '<span class="muted">En ligne il y\'a ' + data.heure + '</span>';
             } else {
                 el.innerHTML = moi
-                    ? '<span class="muted">Pas encore actif·ve aujourd\'hui</span>'
+                    ? '<span class="muted">Pas encore en ligne aujourd\'hui</span>'
                     : '<span class="muted">En attente de connexion…</span>';
             }
         }

@@ -59,6 +59,11 @@
             // "disc-edit" reste actif tant que le clavier est là (même après un blur) :
             // le composer garde son padding réduit, aucun saut au moment d'un tap.
             if (document.body) document.body.classList.toggle('disc-edit', editing || kbShifts);
+            // État du scroller AVANT le redimensionnement : si l'utilisateur était
+            // en bas, on y reste (le dernier message reste visible au-dessus du
+            // clavier), sans jamais "défiler" pour y retourner.
+            var scroller = document.getElementById('disc-messages');
+            var wasDown = !!scroller && (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 80);
             // Mesure de la topbar seulement clavier fermé (layout stable).
             // La barre ne doit jamais remonter au-dessus de la position CSS
             // (top: 64px) : on plafonne la mesure en dessous de 64.
@@ -79,6 +84,11 @@
                 wrap.style.bottom = '0px';
             }
             wrap.style.height = 'auto';
+            // Le clavier rétrécit la zone visible : si on était collé en bas, on
+            // recale sans mouvement (dernier message juste au-dessus du clavier).
+            if (kbOpen && wasDown && scroller) {
+                scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
+            }
         }
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', layout);
@@ -122,6 +132,12 @@
                 if (iv) { clearInterval(iv); iv = null; }
                 layout();
             });
+            // Tap sur un bouton du composer (envoi, gif, photo, micro…) : empêcher
+            // qu'il vole le focus de l'input. Sinon le clavier se ferme, la barre
+            // saute en bas (« les boutons fuient ») et le clic est perdu.
+            document.querySelectorAll('.disc-composer button').forEach(function (btn) {
+                btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            });
         });
     })();
 </script>
@@ -145,7 +161,7 @@
                     @if ($pEnLigne)
                         <span style="color:var(--success)">● en ligne</span>
                     @elseif ($pPresent)
-                        <span class="muted">actif·ve il y a {{ $partenaire->last_active_at->diffForHumans() }}</span>
+                        <span class="muted">en ligne il y'a {{ $partenaire->last_active_at->diffForHumans(null, \Carbon\CarbonInterface::DIFF_ABSOLUTE) }}</span>
                     @else
                         <span class="disc-offline">hors ligne</span>
                     @endif
@@ -339,6 +355,7 @@
     const PHOTO_URL = '{{ route("discussion.photo") }}';
     const AUDIO_URL = '{{ route("discussion.audio") }}';
     const TYPING_URL = '{{ route("discussion.typing") }}';
+    const RECORDING_URL = '{{ route("discussion.recording") }}';
     const GIFS_URL = '{{ route("discussion.gifs") }}';
     const STICKERS_URL = '{{ route("discussion.stickers") }}';
     const FAVORITES_URL = '{{ route("discussion.favorites") }}';
@@ -957,6 +974,7 @@
         SEND_BTN.disabled = true;
 
         const payload = { body, reply_to_id: replyTarget ? replyTarget.id : null };
+        const hasGif = !!pendingGif;
         if (pendingGif) {
             payload.gif_url = pendingGif.url;
             payload.gif_alt = pendingGif.alt;
@@ -969,6 +987,59 @@
             payload.audio_duration = pendingAudio.duration;
             if (pendingAudio.bars) payload.audio_bars = pendingAudio.bars;
         }
+
+        // Envoi optimiste : le message apparaît dès le clic, sans attendre le
+        // serveur. On utilise un id temporaire (négatif), réconcilié avec le vrai
+        // id quand la réponse arrive. L'heure/daté doivent suivre le même format
+        // que le serveur (H:i et Y-m-d), sinon la bulle affiche un timestamp ISO.
+        const nowLocal = new Date();
+        const pad2 = (n) => (n < 10 ? '0' : '') + n;
+        const tmpId = -(Date.now() % 0x7fffffff) - 1;
+        const optimistic = {
+            id: tmpId,
+            sender_id: MY_ID,
+            body,
+            is_gif: hasGif,
+            gif_url: pendingGif ? pendingGif.url : null,
+            gif_alt: pendingGif ? pendingGif.alt : null,
+            is_photo: !!pendingPhoto,
+            photo_url: pendingPhoto ? pendingPhoto.url : null,
+            is_audio: !!pendingAudio,
+            audio_url: pendingAudio ? pendingAudio.url : null,
+            audio_duration: pendingAudio ? pendingAudio.duration : null,
+            audio_bars: pendingAudio ? (pendingAudio.bars || null) : null,
+            lu: false,
+            created_at: pad2(nowLocal.getHours()) + ':' + pad2(nowLocal.getMinutes()),
+            date: nowLocal.getFullYear() + '-' + pad2(nowLocal.getMonth() + 1) + '-' + pad2(nowLocal.getDate()),
+            reply_to: replyTarget ? {
+                id: replyTarget.id,
+                sender_id: null,
+                sender_name: replyTarget.sender_name,
+                body: replyTarget.body,
+            } : null,
+        };
+        buildBubble(optimistic);
+        if (wasAtBottom()) scrollToBottom(true);
+        setReply(null);
+        pendingGif = null;
+        pendingPhoto = null;
+        hidePhotoPreview();
+        closeGifPanel();
+        // Envoi d'un vocal seul : on garde le texte déjà saisi (WhatsApp ne
+        // l'efface pas). Sinon on vide l'input comme d'habitude.
+        const voiceOnly = !!pendingAudio && !body && !hasGif && !optimistic.is_photo;
+        if (!voiceOnly) {
+            INPUT_EL.value = '';
+        }
+        autosize();
+        SEND_BTN.disabled = true;
+        // Retire ensuite le clavier et recolle le résultat en bas, une fois que
+        // le clavier est réellement replié (sinon la barre remonte derrière lui).
+        INPUT_EL.blur();
+        window.setTimeout(function () {
+            layout();
+            scrollToBottom(false);
+        }, 350);
 
         try {
             const res = await fetch(SEND_URL, {
@@ -984,64 +1055,44 @@
 
             if (res.ok) {
                 const data = await res.json();
-                const replyingId = replyTarget ? replyTarget.id : null;
-                const wasDown = wasAtBottom();
-                buildBubble({
-                    id: data.id,
-                    sender_id: MY_ID,
-                    body: body,
-                    is_gif: !!pendingGif,
-                    gif_url: pendingGif ? pendingGif.url : null,
-                    gif_alt: pendingGif ? pendingGif.alt : null,
-                    is_photo: !!pendingPhoto,
-                    photo_url: pendingPhoto ? pendingPhoto.url : null,
-                    is_audio: !!pendingAudio,
-                    audio_url: pendingAudio ? pendingAudio.url : null,
-                    audio_duration: pendingAudio ? pendingAudio.duration : null,
-                    audio_bars: pendingAudio ? (pendingAudio.bars || null) : null,
-                    lu: false,
-                    created_at: data.created_at,
-                    date: new Date().toISOString().slice(0, 10),
-                    reply_to: replyingId ? {
-                        id: replyingId,
-                        sender_id: null,
-                        sender_name: replyTarget.sender_name,
-                        body: replyTarget.body,
-                    } : null,
-                });
-                if (wasDown) scrollToBottom(true);
-                setReply(null);
-                pendingGif = null;
-                pendingPhoto = null;
-                hidePhotoPreview();
-                closeGifPanel();
-                // Envoi d'un vocal seul : on garde le texte déjà saisi (WhatsApp ne
-                // l'efface pas). Sinon on vide l'input comme d'habitude.
-                const voiceOnly = !!pendingAudio && !body && !pendingGif && !pendingPhoto;
-                if (!voiceOnly) {
-                    INPUT_EL.value = '';
+                const msg = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + tmpId + '"]');
+                if (msg) {
+                    // Réconcilie le message affiché avec le vrai id du serveur.
+                    msg.dataset.id = data.id;
+                    renderedIds.delete(tmpId);
+                    renderedIds.add(data.id);
+                    if (data.id > lastMessageId) lastMessageId = data.id;
                 }
-                autosize();
-                SEND_BTN.disabled = true;
             } else {
-                toast(pendingGif ? 'Erreur lors de l\'envoi du GIF.' : 'Erreur lors de l\'envoi.', 'error');
+                toast(hasGif ? 'Erreur lors de l\'envoi du GIF.' : 'Erreur lors de l\'envoi.', 'error');
+                rollbackOptimistic(tmpId);
             }
         } catch (e) {
             toast('Connexion perdue.', 'error');
+            rollbackOptimistic(tmpId);
         } finally {
             sending = false;
             SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto && !pendingAudio && !isMicRecording();
         }
     }
 
+    // Retire la bulle optimiste (id temporaire) si l'envoi a échoué.
+    function rollbackOptimistic(tmpId) {
+        renderedIds.delete(tmpId);
+        const msg = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + tmpId + '"]');
+        if (msg) msg.remove();
+    }
+
     function updateOnline(p) {
         if (!p) return;
-        if (p.typing) {
+        if (p.recording) {
+            STATUS_EL.innerHTML = '<span style="color:var(--primary)">🎙 enregistrement d\u2019un audio…</span>';
+        } else if (p.typing) {
             STATUS_EL.innerHTML = '<span style="color:var(--primary)">en train d\u2019\u00e9crire…</span>';
         } else if (p.enLigne) {
             STATUS_EL.innerHTML = '<span style="color:var(--success)">● en ligne</span>';
         } else if (p.present) {
-            STATUS_EL.innerHTML = '<span class="muted">actif·ve il y a ' + p.heure + '</span>';
+            STATUS_EL.innerHTML = '<span class="muted">en ligne il y\'a ' + p.heure + '</span>';
         } else {
             STATUS_EL.innerHTML = '<span class="disc-offline">hors ligne</span>';
         }
@@ -1062,6 +1113,35 @@
                 'Accept': 'application/json',
             },
         }).catch(() => {});
+    }
+
+    // Signale à l'autre que l'on enregistre un vocal ; le signal est rafraîchi
+    // en continu pendant l'enregistrement (sinon l'indicateur expire en 3 s).
+    let lastRecSignaled = 0;
+    let recSignalTimer = null;
+    function sendRecSignal() {
+        const now = Date.now();
+        if (now - lastRecSignaled < 1200) return;
+        lastRecSignaled = now;
+        fetch(RECORDING_URL, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+        }).catch(() => {});
+    }
+    function startRecSignal() {
+        stopRecSignal();
+        sendRecSignal();
+        recSignalTimer = setInterval(sendRecSignal, 1500);
+    }
+    function stopRecSignal() {
+        if (recSignalTimer) {
+            clearInterval(recSignalTimer);
+            recSignalTimer = null;
+        }
     }
 
     /* ---------- Panneau GIF + favoris ---------- */
@@ -1247,6 +1327,7 @@
                     REC_TIME.textContent = formatAudioTime(secs);
                 }, 250);
                 refreshSendBtn();
+                startRecSignal();
             })
             .catch(() => toast('Micro inaccessible : vérifiez le navigateur.', 'error'));
     }
@@ -1272,6 +1353,7 @@
         clearInterval(micTimer);
         micTimer = null;
         stopMicStream();
+        stopRecSignal();
         restoreComposer();
     }
 
@@ -1354,6 +1436,7 @@
         clearInterval(micTimer);
         micTimer = null;
         stopMicStream();
+        stopRecSignal();
         restoreComposer();
 
         if (blob.size === 0) {

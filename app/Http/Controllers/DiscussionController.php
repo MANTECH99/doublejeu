@@ -7,6 +7,7 @@ use App\Models\Message;
 use App\Models\MessageDeletion;
 use App\Services\ActivityService;
 use App\Services\PushService;
+use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -134,8 +135,9 @@ class DiscussionController extends Controller
             'partenaire' => [
                 'enLigne' => $partenaire?->last_active_at !== null && $partenaire->last_active_at->diffInMinutes() < 1,
                 'present' => $partenaire?->last_active_at !== null,
-                'heure' => $partenaire?->last_active_at?->diffForHumans(),
+                'heure' => $partenaire?->last_active_at?->diffForHumans(null, CarbonInterface::DIFF_ABSOLUTE),
                 'typing' => $partenaire?->typing_at !== null && $partenaire->typing_at->diffInSeconds() < 3,
+                'recording' => $partenaire?->recording_at !== null && $partenaire->recording_at->diffInSeconds() < 3,
             ],
         ]);
     }
@@ -145,6 +147,18 @@ class DiscussionController extends Controller
         // Signale que l'utilisateur est en train d'écrire ; l'indicateur expire seul
         // après quelques secondes (le dernier typage est renvoyé via fetch).
         $request->user()->forceFill(['typing_at' => now()])->save();
+
+        ActivityService::touch($request->user());
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function recording(Request $request): JsonResponse
+    {
+        // Signale que l'utilisateur est en train d'enregistrer un message vocal ;
+        // l'indicateur expire seul après quelques secondes (rafraîchi pendant
+        // l'enregistrement, renvoyé via fetch).
+        $request->user()->forceFill(['recording_at' => now()])->save();
 
         ActivityService::touch($request->user());
 

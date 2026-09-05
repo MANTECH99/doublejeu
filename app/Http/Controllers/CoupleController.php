@@ -7,6 +7,7 @@ use App\Models\MeteoCouple;
 use App\Models\User;
 use App\Services\ActivityService;
 use App\Services\PushService;
+use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -73,7 +74,7 @@ class CoupleController extends Controller
         $ligne = fn ($user) => [
             'present' => ! is_null($user?->last_active_at),
             'enLigne' => $user?->last_active_at && $user->last_active_at->diffInMinutes() < 1,
-            'heure' => $user?->last_active_at ? $user->last_active_at->diffForHumans() : null,
+            'heure' => $user?->last_active_at ? $user->last_active_at->diffForHumans(null, CarbonInterface::DIFF_ABSOLUTE) : null,
             'aujourdhui' => $user?->last_active_at?->isToday() ?? false,
         ];
 

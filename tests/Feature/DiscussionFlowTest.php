@@ -200,6 +200,36 @@ class DiscussionFlowTest extends TestCase
         $this->assertFalse($expired['partenaire']['typing']);
     }
 
+    public function test_partner_sees_recording_indicator_while_other_is_recording(): void
+    {
+        // Personne n'enregistre au départ.
+        $idle = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertFalse($idle['partenaire']['recording']);
+
+        // Alice enregistre un vocal juste maintenant.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.recording'))
+            ->assertOk()
+            ->assertJson(['ok' => true]);
+
+        $whileRecording = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertTrue($whileRecording['partenaire']['recording']);
+
+        // L'indicateur expire après 3 secondes d'inactivité.
+        $this->travel(4)->seconds();
+        $expired = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+        $this->assertFalse($expired['partenaire']['recording']);
+    }
+
     public function test_partners_can_send_and_receive_gif_messages(): void
     {
         // Alice envoie un message GIF.

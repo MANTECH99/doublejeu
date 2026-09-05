@@ -732,7 +732,9 @@ summary.btn::-webkit-details-marker { display: none; }
     display: flex;
     flex-direction: column;
     gap: 4px;
-    scroll-behavior: smooth;
+    /* Pas de scroll-behavior smooth : à l'ouverture on doit être collé en bas
+       instantanément (comme WhatsApp), sans défilement visible. Les éventuelles
+       animations explicites passent par scrollTo({behavior:'smooth'}). */
     -webkit-overflow-scrolling: touch;
 }
 
