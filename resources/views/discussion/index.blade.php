@@ -758,9 +758,9 @@
             bubble.appendChild(quoted);
         }
 
-        // Message GIF/sticker : grande image au lieu du texte. On réserve un
-        // carré 1/1 (object-fit:contain, aucune découpe) dès la construction :
-        // la hauteur est fixe, le chargement ne peut pas décaler le fil.
+        // Message GIF/sticker : grande image au lieu du texte. Taille fixe réservée
+        // (carré, object-fit:contain, aucune découpe) → la hauteur ne bouge plus,
+        // quel que soit le navigateur (même ancien, sans aspect-ratio).
         if (msg.is_gif && msg.gif_url) {
             const imgWrap = document.createElement('div');
             imgWrap.className = 'disc-gif';
@@ -768,16 +768,18 @@
             img.src = msg.gif_url;
             img.alt = msg.gif_alt || 'GIF';
             img.loading = 'lazy';
-            img.style.aspectRatio = '1 / 1';
+            const gifW = Math.min(220, Math.max(120, Math.round((window.innerWidth || 360) * 0.6)));
+            img.style.width = gifW + 'px';
+            img.style.height = gifW + 'px';
             img.style.objectFit = 'contain';
             imgWrap.appendChild(img);
             bubble.appendChild(imgWrap);
         }
 
-        // Message photo : image hébergée localement. Si la taille native est
-        // connue, on réserve la hauteur (aspect-ratio) dès la construction :
-        // le chargement ne peut plus décaler le fil (plus de défilement à
-        // l'entrée, même sur mobile).
+        // Message photo : image hébergée localement. La taille native étant connue,
+        // on réserve width/height en pixels (compatibles avec les navigateurs
+        // mobiles qui n'ont pas aspect-ratio) → le chargement ne peut plus
+        // décaler le fil : plus de défilement à l'ouverture.
         if (msg.is_photo && msg.photo_url) {
             const imgWrap = document.createElement('div');
             imgWrap.className = 'disc-photo';
@@ -785,7 +787,16 @@
             img.src = msg.photo_url;
             img.alt = 'Photo';
             if (msg.photo_w && msg.photo_h) {
-                img.style.aspectRatio = msg.photo_w + ' / ' + msg.photo_h;
+                const maxW = Math.min(260, Math.max(120, Math.round((window.innerWidth || 360) * 0.6)));
+                let w = maxW;
+                let h = Math.round((w * msg.photo_h) / msg.photo_w);
+                const maxH = Math.round(maxW * 1.4);
+                if (h > maxH) {
+                    h = maxH;
+                    w = Math.round((h * msg.photo_w) / msg.photo_h);
+                }
+                img.style.width = w + 'px';
+                img.style.height = h + 'px';
             }
             img.addEventListener('click', (e) => {
                 e.preventDefault();
