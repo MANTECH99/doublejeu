@@ -758,7 +758,9 @@
             bubble.appendChild(quoted);
         }
 
-        // Message GIF/sticker : grande image au lieu du texte.
+        // Message GIF/sticker : grande image au lieu du texte. On réserve un
+        // carré 1/1 (object-fit:contain, aucune découpe) dès la construction :
+        // la hauteur est fixe, le chargement ne peut pas décaler le fil.
         if (msg.is_gif && msg.gif_url) {
             const imgWrap = document.createElement('div');
             imgWrap.className = 'disc-gif';
@@ -766,6 +768,8 @@
             img.src = msg.gif_url;
             img.alt = msg.gif_alt || 'GIF';
             img.loading = 'lazy';
+            img.style.aspectRatio = '1 / 1';
+            img.style.objectFit = 'contain';
             imgWrap.appendChild(img);
             bubble.appendChild(imgWrap);
         }
@@ -1885,32 +1889,10 @@
             }
             for (const m of list) buildBubble(m);
         }
-        const pending = Array.from(
-            MESSAGES_EL.querySelectorAll('.disc-photo img, .disc-gif img')
-        ).filter((img) => !img.complete && !img.style.aspectRatio);
-
-        if (pending.length === 0) {
-            revealDisc();
-            return;
-        }
-        // Seules les images SANS hauteur réservée (GIF, très vieilles photos)
-        // peuvent encore décaler le fil : on les charge en arrière-plan (zone
-        // invisible), on attend qu'elles soient posées, puis on révèle. Leur
-        // nombre est faible, l'attente est donc courte.
-        let left = pending.length;
-        const done = () => {
-            left -= 1;
-            if (left <= 0) revealDisc();
-        };
-        for (const img of pending) {
-            img.loading = 'eager';
-            img.addEventListener('load', done);
-            img.addEventListener('error', done);
-        }
-        // Filet de sécurité : on révèle de toute façon après 8 s.
-        setTimeout(() => {
-            if (left > 0) revealDisc();
-        }, 8000);
+        // Tous les médias ont une hauteur réservée (photos via dimensions natives,
+        // GIF via carré 1/1) : le chargement ne peut pas décaler le fil, donc on
+        // révèle immédiatement, sans écran noir.
+        revealDisc();
     }
 
     // Mobile : la barre d'URL se replie ~0,5 s après l'arrivée et agrandit le
