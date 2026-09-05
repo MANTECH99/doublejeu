@@ -126,6 +126,8 @@ class MotsCroisesController extends Controller
                 'reponses_user2' => [],
                 'attribues_user1' => [],
                 'attribues_user2' => [],
+                'proposition_user1' => [],
+                'proposition_user2' => [],
             ])->save();
             $grille = $existante;
         } else {
@@ -168,13 +170,20 @@ class MotsCroisesController extends Controller
 
     // ---- Remplissage : seulement le/la partenaire résout la grille créée par l'autre ----
 
+    /**
+     * Reçoit une lettre en cours de saisie (brouillon) et vérifie les mots complets.
+     *
+     * Le solveur tape librement ses lettres (même fausses : le créateur les observe en
+     * temps réel via `etat`). Dès qu'un mot est entièrement couvert (brouillon + cases
+     * validées), il est vérifié en entier : s'il est bon, ses cases se verrouillent ;
+     * sinon les lettres restent visibles, modifiables.
+     */
     public function verifier(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'lettres' => ['required', 'array'],
-            'lettres.*' => ['required', 'string', 'size:1'],
-        ], [
-            'lettres.required' => 'Aucune lettre à vérifier.',
+            'r' => ['required', 'integer'],
+            'c' => ['required', 'integer'],
+            'lettre' => ['nullable', 'string'],
         ]);
 
         $user = $request->user();
@@ -187,62 +196,118 @@ class MotsCroisesController extends Controller
             return response()->json(['error' => 'Ta grille n\'a pas encore été créée.'], 422);
         }
 
-        $col = $couple->user1_id === $user->id ? 'reponses_user1' : 'reponses_user2';
+        $estUser1 = $couple->user1_id === $user->id;
+        $col = $estUser1 ? 'reponses_user1' : 'reponses_user2';
+        $brouillonCol = $estUser1 ? 'proposition_user1' : 'proposition_user2';
+        $attCol = $estUser1 ? 'attribues_user1' : 'attribues_user2';
+        $attColLui = $estUser1 ? 'attribues_user2' : 'attribues_user1';
+
+        $cases = $grille->grille['cases'];
+        $cle = (int) $data['r'].','.(int) $data['c'];
+
+        // Case noire ou hors grille : rien à faire.
+        if (($cases[$cle] ?? '') === '') {
+            return response()->json(['ok' => true]);
+        }
+
+        $reponses = $grille->{$col} ?? [];
+        $brouillon = $grille->{$brouillonCol} ?? [];
+
+        // Déjà validée (via un autre mot) : immuable.
+        if (($reponses[$cle] ?? '') !== '') {
+            return response()->json(['ok' => true]);
+        }
+
+        $lettre = self::normaliseLettre((string) ($data['lettre'] ?? ''));
+        if ($lettre !== '' && ! preg_match('/^[A-Z]$/', $lettre)) {
+            $lettre = '';
+        }
+
+        if ($lettre === '') {
+            unset($brouillon[$cle]);
+        } else {
+            $brouillon[$cle] = $lettre;
+        }
+
         $attribues = array_values(array_unique(array_merge(
             $grille->attribues_user1 ?? [],
             $grille->attribues_user2 ?? []
         )));
-        $attribuesMoi = $grille->attribuesPour($user->id);
-        $attribuesLui = $grille->attribuesPour($partenaire->id);
+        $attribuesMoi = array_values($grille->attribuesPour($user->id));
+        $attribuesLui = array_values($grille->attribuesPour($partenaire->id));
 
-        $reponses = $grille->{$col} ?? [];
-        $cases = $grille->grille['cases'];
-        $resultat = [];
+        $statuts = [];
         $gagne = 0;
 
-        foreach ($data['lettres'] as $cle => $lettre) {
-            if (! array_key_exists($cle, $cases)) {
+        foreach (($grille->grille['mots'] ?? []) as $i => $mot) {
+            $cles = $this->casesDuMot($mot);
+
+            // Mot déjà entièrement verrouillé.
+            $dejaTrouve = true;
+            foreach ($cles as $kk) {
+                if (($reponses[$kk] ?? '') === '') {
+                    $dejaTrouve = false;
+                    break;
+                }
+            }
+            if ($dejaTrouve) {
                 continue;
             }
-            $solution = $cases[$cle];
-            if ($solution === '') {
+
+            // Le mot est « complet » quand chaque case est couverte (brouillon ou validée).
+            $effectives = [];
+            $complet = true;
+            foreach ($cles as $kk) {
+                $lettreEff = ($reponses[$kk] ?? '') !== '' ? $reponses[$kk] : ($brouillon[$kk] ?? '');
+                $effectives[$kk] = $lettreEff;
+                if ($lettreEff === '') {
+                    $complet = false;
+                    break;
+                }
+            }
+            if (! $complet) {
                 continue;
             }
 
-            // Déjà en place : rien à faire.
-            if (isset($reponses[$cle]) && $reponses[$cle] !== '') {
-                $resultat[$cle] = ['statut' => 'deja', 'lettre' => $reponses[$cle]];
+            $juste = true;
+            foreach ($effectives as $kk => $lettreEff) {
+                if (self::normaliseLettre($lettreEff) !== self::normaliseLettre($cases[$kk])) {
+                    $juste = false;
+                    break;
+                }
+            }
+
+            if (! $juste) {
+                // Tentative fausse : on garde les lettres, le créateur voit l'erreur.
+                $statuts[$i] = ['statut' => 'incorrect', 'cases' => array_keys($effectives)];
 
                 continue;
             }
 
-            if (self::normaliseLettre($lettre) === self::normaliseLettre($solution)) {
-                $dejaAttribuee = in_array($cle, $attribues, true);
-                $nouveauPourMoi = ! in_array($cle, $attribuesMoi, true);
-
-                if (! $dejaAttribuee && $nouveauPourMoi) {
-                    $attribuesMoi[] = $cle;
+            $statuts[$i] = ['statut' => 'correct', 'cases' => array_keys($effectives)];
+            foreach ($effectives as $kk => $lettreEff) {
+                unset($brouillon[$kk]);
+                if (($reponses[$kk] ?? '') !== '') {
+                    continue;
+                }
+                $reponses[$kk] = mb_strtoupper($lettreEff);
+                if (! in_array($kk, $attribues, true) && ! in_array($kk, $attribuesMoi, true)) {
+                    $attribuesMoi[] = $kk;
                     $gagne++;
                 }
-                $reponses[$cle] = mb_strtoupper($solution);
-                $resultat[$cle] = ['statut' => 'correct', 'lettre' => mb_strtoupper($solution)];
-            } else {
-                $resultat[$cle] = ['statut' => 'incorrect'];
             }
         }
 
-        $attCol = $couple->user1_id === $user->id ? 'attribues_user1' : 'attribues_user2';
-        $attColLui = $couple->user1_id === $user->id ? 'attribues_user2' : 'attribues_user1';
-
         $grille->forceFill([
             $col => $reponses,
+            $brouillonCol => $brouillon,
             $attCol => $attribuesMoi,
             $attColLui => $attribuesLui,
         ])->save();
 
         if ($gagne > 0) {
             for ($n = 0; $n < $gagne; $n++) {
-                Point::add($user, $couple, 1, 'Lettre trouvée dans les Mots Croisés', 'mots_croises');
+                Point::add($user, $couple, 1, 'Mot trouvé dans les Mots Croisés', 'mots_croises');
             }
         }
 
@@ -261,7 +326,7 @@ class MotsCroisesController extends Controller
         return response()->json([
             'ok' => true,
             'points_gagnes' => $gagne,
-            'resultat' => $resultat,
+            'statuts' => $statuts,
             'complete' => $complete,
             'etat' => $this->etatPour($grille, $user),
         ]);
@@ -273,7 +338,9 @@ class MotsCroisesController extends Controller
     {
         $couple = $grille->couple;
         $col = $couple->user1_id === $solveur->id ? 'reponses_user1' : 'reponses_user2';
+        $brouillonCol = $couple->user1_id === $solveur->id ? 'proposition_user1' : 'proposition_user2';
         $reponses = $grille->{$col} ?? [];
+        $brouillon = $grille->{$brouillonCol} ?? [];
         $grilleArray = $grille->grille;
 
         $cases = [];
@@ -310,12 +377,26 @@ class MotsCroisesController extends Controller
             'lignes' => $grilleArray['lignes'],
             'colonnes' => $grilleArray['colonnes'],
             'cases' => $cases,
+            'brouillon' => array_intersect_key($brouillon, $cases),
             'noires' => $noires,
             'numeros' => $numeros,
             'mots' => $mots,
             'progress' => ['trouvees' => $comptees, 'total' => $total],
             'complete' => $grille->estComplete(),
         ];
+    }
+
+    /** Clés des cases (r,c) couvertes par un mot de la grille. */
+    private function casesDuMot(array $mot): array
+    {
+        $long = $mot['taille'] ?? mb_strlen((string) ($mot['mot'] ?? ''));
+        [$r, $c] = $mot['position'];
+        $out = [];
+        for ($k = 0; $k < $long; $k++) {
+            $out[] = $mot['orientation'] === 'h' ? "{$r},".($c + $k) : ($r + $k).",{$c}";
+        }
+
+        return $out;
     }
 
     /** Numérotation standard des cases de départ de mots (ordre de lecture). */

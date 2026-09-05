@@ -21,7 +21,7 @@
             </div>
         </div>
 
-        <section class="section-head"><h2>🧩 La grille de {{ $partenaire->name }} pour toi</h2><span class="tiny muted">Résous-la : chaque lettre juste reste en place 🎯</span></section>
+        <section class="section-head"><h2>🧩 La grille de {{ $partenaire->name }} pour toi</h2><span class="tiny muted">Résous-la : remplis chaque mot complet, s'il est juste il se fixe 🎯</span></section>
         <div class="card mt16" style="border-color:rgba(232,121,249,.4)">
             <div class="tiny muted center" id="mc-solve-progress">…</div>
             <div id="mc-solve">
@@ -53,19 +53,25 @@
             if (!d || !d.cases || !d.noires) return '';
             const noires = new Set(d.noires);
             const numeros = d.numeros || {};
+            const brouillon = d.brouillon || {};
             const cellW = Math.min(46, Math.max(30, Math.floor((window.innerWidth - 96) / d.colonnes)));
             const rows = Array.from({ length: d.lignes }, (_, r) => Array.from({ length: d.colonnes }, (_, c) => {
                 const key = mcKey(r, c);
                 if (noires.has(key)) return `<div class="mc-cell noir"></div>`;
                 const num = numeros[key];
                 const lettre = d.cases[key] ?? '';
+                const draft = brouillon[key] ?? '';
                 if (!editable) {
-                    return `<div class="mc-cell ${lettre ? 'rempli' : 'vide'}">${num ? `<span class="mc-num">${num}</span>` : ''}${lettre ? `<span class="mc-lettre">${esc(lettre)}</span>` : ''}</div>`;
+                    const aff = lettre || draft;
+                    const cls = lettre ? 'rempli' : (draft ? 'en-cours' : 'vide');
+                    return `<div class="mc-cell ${cls}">${num ? `<span class="mc-num">${num}</span>` : ''}${aff ? `<span class="mc-lettre ${cls}">${esc(aff)}</span>` : ''}</div>`;
                 }
-                return `<div class="mc-cell ${lettre ? 'rempli' : 'vide'}">
+                if (lettre) {
+                    return `<div class="mc-cell rempli">${num ? `<span class="mc-num">${num}</span>` : ''}<span class="mc-lettre">${esc(lettre)}</span></div>`;
+                }
+                return `<div class="mc-cell vide ${draft ? 'en-cours' : ''}">
                     ${num ? `<span class="mc-num">${num}</span>` : ''}
-                    ${lettre ? `<span class="mc-lettre">${esc(lettre)}</span>`
-                        : `<input class="mc-input" maxlength="1" data-r="${r}" data-c="${c}" autocomplete="off" inputmode="text" aria-label="Case ${num || ''}">`}
+                    <input class="mc-input" maxlength="1" data-r="${r}" data-c="${c}" value="${esc(draft)}" autocomplete="off" inputmode="text" aria-label="Case ${num || ''}">
                 </div>`;
             }).join('')).join('');
             return `<div class="mc-grid" style="--cols:${d.colonnes}; --cw:${cellW}px">${rows}</div>`;
@@ -117,7 +123,7 @@
                 ? '🏆 Grille terminée ! Bravo ' + esc(nom)
                 : ('🔎 ' + g.progress.trouvees + ' / ' + g.progress.total + ' lettres');
 
-            box.innerHTML = buildGrilleHtml(g, true) + `<div class="tiny muted center mt8">Clique une case, tape une lettre : si elle est juste, elle reste 🎯</div>`;
+            box.innerHTML = buildGrilleHtml(g, true) + `<div class="tiny muted center mt8">Clique les cases du mot, tape ses lettres : la vérification se fait quand il est complet 🎯</div>`;
             box.querySelectorAll('.mc-input').forEach(inp => {
                 inp.addEventListener('input', () => onMcInput(inp));
                 inp.addEventListener('blur', () => inp.classList.remove('actif'));
@@ -153,52 +159,108 @@
             }
         }
 
+        let mcBusy = false;
+
         async function onMcInput(inp) {
+            if (mcBusy) return;
             let val = (inp.value || '').slice(-1);
-            if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]$/.test(val)) {
+            val = val.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+            if (val !== '' && !/^[A-Z]$/.test(val)) {
                 inp.value = '';
                 return;
             }
-            inp.value = val;
             const r = inp.dataset.r, c = inp.dataset.c;
-            inp.disabled = true;
-            inp.classList.add('checking');
+            mcBusy = true;
             const res = await api(mcUrl + '/verifier', {
                 method: 'POST',
-                body: { lettres: { [r + ',' + c]: val } },
+                body: { r: +r, c: +c, lettre: val },
             });
+            mcBusy = false;
             if (res.ok && res.data.etat) {
                 const etat = res.data.etat;
                 mcState.aGrillePourMoi = etat;
-                const statut = res.data.resultat[r + ',' + c]?.statut ?? 'incorrect';
-                const lettre = res.data.resultat[r + ',' + c]?.lettre ?? '';
-                if (statut === 'correct' || statut === 'deja') {
-                    inp.value = lettre;
-                    inp.classList.add('bon');
-                    inp.classList.remove('checking');
-                    inp.disabled = true;
-                } else {
-                    inp.value = '';
-                    inp.disabled = false;
-                    inp.classList.remove('checking');
-                    inp.classList.add('erreur');
-                    setTimeout(() => inp.classList.remove('erreur'), 700);
-                }
+                const statuts = res.data.statuts || {};
+                let motJuste = false;
+                Object.values(statuts).forEach((s) => {
+                    if (s.statut === 'correct') {
+                        motJuste = true;
+                    } else if (s.statut === 'incorrect') {
+                        s.cases.forEach(k => flashCell(k));
+                    }
+                });
+                updateSolve(etat);
+                renderObserve();
                 if (res.data.points_gagnes > 0) {
                     toast('+' + res.data.points_gagnes + ' pts ⚡', 'success');
                 }
-                const prog = document.getElementById('mc-solve-progress');
-                if (prog) {
-                    prog.textContent = etat.complete
-                        ? '🏆 Grille terminée ! Bravo ' + esc(mcState.partenaire)
-                        : ('🔎 ' + etat.progress.trouvees + ' / ' + etat.progress.total + ' lettres');
+                if (etat.complete) {
+                    toast('🧩 Mots croisés complétés !', 'success');
+                } else if (motJuste) {
+                    focusProchaine();
+                } else {
+                    avancerApres(mcKey(+r, +c), etat);
                 }
-                if (!etat.complete) focusProchaine();
             } else {
                 inp.value = '';
-                inp.disabled = false;
-                inp.classList.remove('checking');
             }
+        }
+
+        function updateSolve(etat) {
+            const box = document.getElementById('mc-solve');
+            if (!box) return;
+            box.querySelectorAll('.mc-input').forEach(inp => {
+                const k = mcKey(+inp.dataset.r, +inp.dataset.c);
+                const locked = etat.cases[k] || '';
+                const draft = (etat.brouillon && etat.brouillon[k]) || '';
+                if (locked) {
+                    inp.value = locked;
+                    inp.disabled = true;
+                    inp.classList.add('bon');
+                    inp.classList.remove('erreur');
+                } else {
+                    inp.value = draft;
+                    inp.disabled = false;
+                    inp.classList.remove('bon');
+                }
+            });
+            const prog = document.getElementById('mc-solve-progress');
+            if (prog) {
+                prog.textContent = etat.complete
+                    ? '🏆 Grille terminée ! Bravo ' + esc(mcState.partenaire)
+                    : ('🔎 ' + etat.progress.trouvees + ' / ' + etat.progress.total + ' lettres');
+            }
+        }
+
+        function flashCell(k) {
+            const [fr, fc] = k.split(',');
+            const el = document.querySelector(`#mc-solve .mc-input[data-r="${fr}"][data-c="${fc}"]`);
+            if (!el) return;
+            el.classList.add('erreur');
+            clearTimeout(el._flash);
+            el._flash = setTimeout(() => el.classList.remove('erreur'), 750);
+        }
+
+        function avancerApres(k, etat) {
+            const [r, c] = k.split(',').map(Number);
+            const noires = new Set(etat.noires);
+            for (const m of (etat.mots || [])) {
+                const dr = m.orientation === 'h' ? 0 : 1;
+                const dc = m.orientation === 'h' ? 1 : 0;
+                for (let i = 0; i < m.taille; i++) {
+                    if (m.position[0] + dr * i !== r || m.position[1] + dc * i !== c) continue;
+                    if (i + 1 >= m.taille) break;
+                    const nk = mcKey(m.position[0] + dr * (i + 1), m.position[1] + dc * (i + 1));
+                    if (noires.has(nk)) break;
+                    if (etat.cases[nk] || (etat.brouillon && etat.brouillon[nk])) break;
+                    const el = document.querySelector(`#mc-solve .mc-input[data-r="${m.position[0] + dr * (i + 1)}"][data-c="${m.position[1] + dc * (i + 1)}"]`);
+                    if (el && !el.disabled) {
+                        el.focus();
+                        el.select();
+                    }
+                    return;
+                }
+            }
+            focusProchaine();
         }
 
         function focusProchaine() {
@@ -228,7 +290,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            startPolling(mcUrl + '/etat', (data) => { mcState = data; renderAll(); }, { interval: 4000 });
+            startPolling(mcUrl + '/etat', (data) => { mcState = data; renderAll(); }, { interval: 1000 });
         });
     </script>
 @endpush

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['couple_id', 'createur_id', 'semaine', 'statut', 'mots', 'grille', 'reponses_user1', 'reponses_user2', 'attribues_user1', 'attribues_user2'])]
+#[Fillable(['couple_id', 'createur_id', 'semaine', 'statut', 'mots', 'grille', 'reponses_user1', 'reponses_user2', 'attribues_user1', 'attribues_user2', 'proposition_user1', 'proposition_user2'])]
 class GrilleMotsCroises extends Model
 {
     use HasFactory;
@@ -24,6 +24,8 @@ class GrilleMotsCroises extends Model
             'reponses_user2' => 'array',
             'attribues_user1' => 'array',
             'attribues_user2' => 'array',
+            'proposition_user1' => 'array',
+            'proposition_user2' => 'array',
         ];
     }
 
@@ -55,6 +57,12 @@ class GrilleMotsCroises extends Model
     public function attribuesPour(int $userId): array
     {
         return $this->couple->user1_id === $userId ? ($this->attribues_user1 ?? []) : ($this->attribues_user2 ?? []);
+    }
+
+    /** Brouillon (lettres en cours de saisie, même fausses) du joueur donné. */
+    public function brouillonsPour(int $userId): array
+    {
+        return $this->couple->user1_id === $userId ? ($this->proposition_user1 ?? []) : ($this->proposition_user2 ?? []);
     }
 
     public function estComplete(): bool

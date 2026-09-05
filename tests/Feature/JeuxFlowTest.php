@@ -862,17 +862,56 @@ class JeuxFlowTest extends TestCase
         }
 
         $cases = $grille->grille['cases'];
+        $grilleMots = $grille->grille['mots'];
         $blanches = array_keys(array_filter($cases, fn ($v) => $v !== ''));
+        $this->assertGreaterThanOrEqual(3, count($grilleMots));
 
-        // Une bonne lettre rapporte 1 point à Bob (la solution reste côté serveur).
-        $cle = $blanches[0];
-        $bonne = $cases[$cle];
-        $res = $this->postJson(route('mots-croises.verifier'), ['lettres' => [$cle => $bonne]])
+        // Cases couvertes par un mot, dans l'ordre du mot (début → fin).
+        $cellulesMot = function (array $m): array {
+            [$r, $c] = $m['position'];
+            $out = [];
+            for ($k = 0; $k < mb_strlen($m['mot']); $k++) {
+                $out[] = $m['orientation'] === 'h' ? "{$r},".($c + $k) : ($r + $k).",{$c}";
+            }
+
+            return $out;
+        };
+
+        // Saisie libre : une lettre (même fausse) reste en brouillon, sans point ni verrou.
+        $mot0 = $grilleMots[0];
+        $clesMot0 = $cellulesMot($mot0);
+        $cle0 = $clesMot0[0];
+        [$r0, $c0] = array_map('intval', explode(',', $cle0));
+        $fausse = $cases[$cle0] === 'Z' ? 'A' : 'Z';
+        $res = $this->postJson(route('mots-croises.verifier'), ['r' => $r0, 'c' => $c0, 'lettre' => $fausse])
             ->assertOk()
             ->json();
-        $this->assertSame(1, $res['points_gagnes']);
-        $this->assertSame('correct', $res['resultat'][$cle]['statut']);
-        $this->assertSame($bonne, $res['etat']['cases'][$cle]);
+        $this->assertSame(0, $res['points_gagnes']);
+        $this->assertSame($fausse, $res['etat']['brouillon'][$cle0]);
+        $this->assertSame('', $res['etat']['cases'][$cle0]);
+
+        // Alice observe en temps réel la lettre même fausse que Bob est en train d'écrire.
+        $etatObserve = $this->actingAs($this->alice)->getJson(route('mots-croises.state'))->assertOk()->json();
+        $this->assertNotNull($etatObserve['maGrillePourX']);
+        $this->assertSame($fausse, $etatObserve['maGrillePourX']['brouillon'][$cle0]);
+        $this->assertSame(0, $etatObserve['maGrillePourX']['progress']['trouvees']);
+
+        // Bob complète le mot 0 avec les BONNES lettres → mot entièrement verrouillé.
+        $this->actingAs($this->bob);
+        $resMot0 = null;
+        foreach ($clesMot0 as $kk) {
+            [$rr, $cc] = array_map('intval', explode(',', $kk));
+            $resMot0 = $this->postJson(route('mots-croises.verifier'), ['r' => $rr, 'c' => $cc, 'lettre' => $cases[$kk]])
+                ->assertOk()
+                ->json();
+        }
+        $this->assertNotNull($resMot0);
+        $this->assertSame('correct', $resMot0['statuts'][0]['statut']);
+        $this->assertSame(count($clesMot0), $resMot0['points_gagnes']);
+        foreach ($clesMot0 as $kk) {
+            $this->assertSame($cases[$kk], $resMot0['etat']['cases'][$kk]);
+            $this->assertArrayNotHasKey($kk, $resMot0['etat']['brouillon']);
+        }
 
         $this->assertDatabaseHas('points', [
             'couple_id' => $this->couple->id,
@@ -880,36 +919,46 @@ class JeuxFlowTest extends TestCase
             'source' => 'mots_croises',
             'montant' => 1,
         ]);
+        $this->assertDatabaseCount('points', count($clesMot0));
 
-        // Lettre incorrecte : pas de point, état « incorrect ».
-        $cle2 = $blanches[1];
-        $mauvaise = $cases[$cle2] === 'A' ? 'Z' : 'A';
-        $res2 = $this->postJson(route('mots-croises.verifier'), ['lettres' => [$cle2 => $mauvaise]])
-            ->assertOk()
-            ->json();
-        $this->assertSame(0, $res2['points_gagnes']);
-        $this->assertSame('incorrect', $res2['resultat'][$cle2]['statut']);
-        $this->assertDatabaseCount('points', 1);
-
-        // Alice observe en temps réel : même avancement côté « maGrillePourX ».
-        $etatObserve = $this->actingAs($this->alice)->getJson(route('mots-croises.state'))->assertOk()->json();
-        $this->assertNotNull($etatObserve['maGrillePourX']);
-        $this->assertSame(1, $etatObserve['maGrillePourX']['progress']['trouvees']);
+        // Un mot rempli avec des mauvaises lettres : refusé, lettres gardées en brouillon, aucun point.
+        $mot1 = $grilleMots[1];
+        $clesMot1 = array_values(array_filter($cellulesMot($mot1), fn ($kk) => ! in_array($kk, $clesMot0, true)));
+        $this->assertNotEmpty($clesMot1);
+        $mauvaise = $cases[$clesMot1[0]] === 'A' ? 'Z' : 'A';
+        $resMot1 = null;
+        foreach ($clesMot1 as $kk) {
+            [$rr, $cc] = array_map('intval', explode(',', $kk));
+            $resMot1 = $this->postJson(route('mots-croises.verifier'), ['r' => $rr, 'c' => $cc, 'lettre' => $mauvaise])
+                ->assertOk()
+                ->json();
+        }
+        $this->assertNotNull($resMot1);
+        $this->assertSame(0, $resMot1['points_gagnes']);
+        $incorrects = array_values(array_filter($resMot1['statuts'], fn ($s) => $s['statut'] === 'incorrect'));
+        $this->assertNotCount(0, $incorrects);
+        foreach ($clesMot1 as $kk) {
+            $this->assertSame($mauvaise, $resMot1['etat']['brouillon'][$kk]);
+        }
+        $this->assertDatabaseCount('points', count($clesMot0));
 
         // Alice ne peut PAS remplir la grille qu'elle a créée pour Bob.
         $this->actingAs($this->alice)
-            ->postJson(route('mots-croises.verifier'), ['lettres' => [$cle2 => $cases[$cle2]]])
+            ->postJson(route('mots-croises.verifier'), ['r' => $r0, 'c' => $c0, 'lettre' => $cases[$cle0]])
             ->assertStatus(422);
 
-        // Bob complète toute la grille → terminee.
+        // Bob corrige le mot 1 puis complète toute la grille → terminee.
         $this->actingAs($this->bob);
         foreach ($blanches as $b) {
-            if ($b === $cle) {
+            if (($grille->fresh()->reponsesPour($this->bob->id)[$b] ?? '') !== '') {
                 continue;
             }
-            $this->postJson(route('mots-croises.verifier'), ['lettres' => [$b => $cases[$b]]])->assertOk();
+            [$rr, $cc] = array_map('intval', explode(',', $b));
+            $this->postJson(route('mots-croises.verifier'), ['r' => $rr, 'c' => $cc, 'lettre' => $cases[$b]])->assertOk();
         }
         $this->assertEquals('terminee', $grille->fresh()->statut);
+        $this->assertEmpty($grille->fresh()->brouillonsPour($this->bob->id));
+        $this->assertDatabaseCount('points', count($blanches));
 
         $etatFin = $this->getJson(route('mots-croises.state'))->assertOk()->json();
         $this->assertTrue($etatFin['aGrillePourMoi']['complete']);
@@ -967,24 +1016,26 @@ class JeuxFlowTest extends TestCase
         // Sans mots (Bob), génération impossible.
         $this->actingAs($this->bob)->postJson(route('mots-croises.generer'))->assertStatus(422);
 
-        // Génération pour Bob, puis Bob trouve une lettre.
+        // Génération pour Bob, puis Bob saisit une lettre (brouillon, pas encore verrouillée).
         $this->actingAs($this->alice)->postJson(route('mots-croises.generer'))->assertOk();
         $grille = GrilleMotsCroises::pourCreateur($this->couple, $this->alice->id);
         $this->assertNotNull($grille);
         $cases = $grille->grille['cases'];
-        $blanches = array_keys(array_filter($cases, fn ($v) => $v !== ''));
+        [$r0, $c0] = array_map('intval', explode(',', array_key_first(array_filter($cases, fn ($v) => $v !== ''))));
 
         $this->actingAs($this->bob)
-            ->postJson(route('mots-croises.verifier'), ['lettres' => [$blanches[0] => $cases[$blanches[0]]]])
+            ->postJson(route('mots-croises.verifier'), ['r' => $r0, 'c' => $c0, 'lettre' => 'A'])
             ->assertOk();
-        $this->assertNotEmpty($grille->fresh()->reponses_user2);
+        $this->assertNotEmpty($grille->fresh()->proposition_user2);
+        $this->assertEmpty($grille->fresh()->reponses_user2);
 
-        // Alice régénère : une seule grille par créateur, progression remise à zéro.
+        // Alice régénère : une seule grille par créateur, progression et brouillon remis à zéro.
         $this->actingAs($this->alice);
         $res = $this->postJson(route('mots-croises.generer'))->assertOk()->json();
         $this->assertSame(0, $res['etat']['progress']['trouvees']);
         $this->assertSame('en_cours', $grille->fresh()->statut);
         $this->assertEmpty($grille->fresh()->reponses_user2);
+        $this->assertEmpty($grille->fresh()->proposition_user2);
         $this->assertGreaterThanOrEqual(3, count($grille->fresh()->grille['mots']));
         $this->assertSame(1, GrilleMotsCroises::where('couple_id', $this->couple->id)->where('createur_id', $this->alice->id)->count());
     }
