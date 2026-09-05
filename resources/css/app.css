@@ -1227,6 +1227,7 @@ summary.btn::-webkit-details-marker { display: none; }
     place-items: center;
     cursor: pointer;
     flex-shrink: 0;
+    margin-right: 14px;
     box-shadow: 0 2px 8px rgba(230, 57, 70, 0.4);
     transition: 0.15s;
 }

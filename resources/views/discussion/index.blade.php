@@ -457,6 +457,8 @@
     const FAVORITES_TOGGLE_URL = '{{ route("discussion.favorites.toggle") }}';
     const DELETE_URL = '/discussion/message/';
     const MY_ID = {{ $me->id }};
+    const MY_NAME = @json($me->name);
+    const MY_AVATAR_URL = @json($me->avatar_url ? '/storage/'.$me->avatar_url : null);
     const PARTNER_NAME = @json($partenaire->name);
     const ICON_PLAY = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
     const ICON_PAUSE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
@@ -1116,6 +1118,8 @@
         const optimistic = {
             id: tmpId,
             sender_id: MY_ID,
+            sender_name: MY_NAME,
+            sender_photo_url: MY_AVATAR_URL,
             body,
             is_gif: hasGif,
             gif_url: pendingGif ? pendingGif.url : null,
@@ -1206,7 +1210,7 @@
     function updateOnline(p) {
         if (!p) return;
         if (p.recording) {
-            STATUS_EL.innerHTML = '<span style="color:var(--primary)">🎙 enregistrement d\u2019un audio…</span>';
+            STATUS_EL.innerHTML = '<span style="color:var(--primary)">🎙 Enregistrement…</span>';
         } else if (p.typing) {
             STATUS_EL.innerHTML = '<span style="color:var(--primary)">en train d\u2019\u00e9crire…</span>';
         } else if (p.enLigne) {
