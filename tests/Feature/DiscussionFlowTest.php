@@ -580,4 +580,107 @@ class DiscussionFlowTest extends TestCase
         $this->assertNull($fetch['messages'][0]['photo_url']);
         $this->assertFalse($fetch['messages'][0]['is_photo']);
     }
+
+    public function test_partners_can_upload_send_and_receive_voice_messages(): void
+    {
+        Storage::fake('public');
+
+        // Alice a une photo de profil : elle doit apparaître sur le vocal reçu par Bob.
+        $this->alice->forceFill(['avatar_url' => 'avatars/alice.png'])->save();
+        Storage::disk('public')->put('avatars/alice.png', 'photo');
+
+        // Alice enregistre un vocal (vrai WAV minimal) puis l'envoie.
+        $upload = $this->actingAs($this->alice)
+            ->post(route('discussion.audio'), ['audio' => $this->smallWav('vocal.wav', 4)])
+            ->assertOk()
+            ->json();
+
+        $path = $upload['path'];
+        Storage::disk('public')->assertExists($path);
+        $this->assertStringStartsWith('discussion-audio/', $path);
+        $this->assertSame('/storage/'.$path, $upload['url']);
+
+        $bars = '45,22,78,60,91,33,70,52,84,40,66,30,58,74,25,47,62,88,36,51,69,44,80,28,55,72,38,61,49,86,42,67,31,54,76,23';
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), [
+                'body' => '',
+                'audio_path' => $path,
+                'audio_duration' => 4,
+                'audio_bars' => $bars,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('messages', [
+            'couple_id' => $this->couple->id,
+            'audio_path' => $path,
+            'audio_duration' => 4,
+            'audio_bars' => $bars,
+        ]);
+
+        // Bob reçoit le vocal avec son URL publique, sa durée, sa bande son et
+        // la photo de profil d'Alice.
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $audio = $fetch['messages'][0];
+        $this->assertTrue($audio['is_audio']);
+        $this->assertSame('/storage/'.$path, $audio['audio_url']);
+        $this->assertSame(4, $audio['audio_duration']);
+        $this->assertSame($bars, $audio['audio_bars']);
+        $this->assertSame('/storage/avatars/alice.png', $audio['sender_photo_url']);
+    }
+
+    public function test_audio_upload_requires_a_valid_audio_file(): void
+    {
+        Storage::fake('public');
+
+        // Sans fichier → 422.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.audio'))
+            ->assertStatus(422);
+
+        // Fichier non-audio → 422.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.audio'), ['audio' => UploadedFile::fake()->create('note.txt', 10)])
+            ->assertStatus(422);
+
+        Storage::disk('public')->assertDirectoryEmpty('discussion-audio');
+    }
+
+    public function test_audio_path_must_exist_on_disk_to_send(): void
+    {
+        Storage::fake('public');
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['audio_path' => 'discussion-audio/introuvable.webm'])
+            ->assertStatus(422);
+    }
+
+    /**
+     * Construit un vrai fichier WAV minimal pour passer la validation de contenu.
+     * Les fichiers "fake" de Laravel ne contiennent que des zéros : finfo les
+     * détecterait comme octet-stream et la règle mimes les rejetterait.
+     */
+    private function smallWav(string $name, int $seconds): UploadedFile
+    {
+        $sampleRate = 8000;
+        $dataSize = $sampleRate * $seconds;
+        $bytes = 16; // bits par échantillon
+        $header = 'RIFF'.pack('V', 36 + $dataSize * 2).'WAVE'
+            .'fmt '.pack('V', 16).pack('v', 1) // PCM
+            .pack('v', 1)                      // mono
+            .pack('V', $sampleRate)
+            .pack('V', $sampleRate * $bytes / 8)
+            .pack('v', $bytes / 8)
+            .pack('v', $bytes)
+            .'data'.pack('V', $dataSize * 2)
+            .str_repeat("\0", $dataSize * 2);
+
+        $temp = tempnam(sys_get_temp_dir(), 'vocal');
+        file_put_contents($temp, $header);
+
+        return new UploadedFile($temp, $name, 'audio/wav', null, true);
+    }
 }

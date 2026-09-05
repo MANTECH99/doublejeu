@@ -136,7 +136,8 @@ body {
     width: 100%;
     max-width: var(--maxw);
     z-index: 50;
-    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+    /* Pas de safe-area : collé en bas de l'écran, identique sur iOS et Android */
+    padding: 10px 14px;
     background: rgba(20, 20, 27, 0.92);
     backdrop-filter: blur(14px);
     border-top: 1px solid var(--border);
@@ -982,8 +983,8 @@ summary.btn::-webkit-details-marker { display: none; }
     position: relative; /* ancrage de l'aperçu de photo */
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
+    gap: 6px;
+    padding: 10px 12px;
     background: rgba(15, 15, 20, 0.96);
     backdrop-filter: blur(12px);
     border-top: 1px solid var(--border);
@@ -1012,7 +1013,7 @@ summary.btn::-webkit-details-marker { display: none; }
     display: none; /* cache la barre de défilement (Chrome/Safari) */
 }
 .disc-input:focus {
-    border-color: var(--primary);
+    background: var(--card-2);
 }
 .disc-input::placeholder {
     color: var(--text-3);
@@ -1081,6 +1082,164 @@ summary.btn::-webkit-details-marker { display: none; }
     background: var(--card-2);
 }
 
+/* Bouton micro (message vocal) dans le composer */
+.disc-mic-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text-3);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: 0.2s;
+    flex-shrink: 0;
+}
+.disc-mic-btn:hover,
+.disc-mic-btn:active {
+    color: var(--primary);
+    background: var(--card-2);
+}
+.disc-mic-btn:disabled {
+    color: var(--text-3);
+    opacity: 0.5;
+    cursor: default;
+}
+.disc-mic-btn:disabled {
+    color: var(--text-3);
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Mobile : icônes des outils plus compactes et resserrées pour laisser la
+   place au champ de saisie (éviter le retour à la ligne du placeholder). */
+@media (max-width: 640px) {
+    .disc-composer {
+        gap: 4px;
+        padding: 8px 8px;
+    }
+    .disc-composer.recording {
+        padding-left: 8px;
+    }
+    .disc-gif-btn,
+    .disc-camera-btn,
+    .disc-mic-btn {
+        width: 36px;
+        height: 36px;
+    }
+    .disc-gif-btn svg,
+    .disc-camera-btn svg,
+    .disc-mic-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+    .disc-send {
+        width: 38px;
+        height: 38px;
+    }
+}
+
+/* En enregistrement : la barre d'enregistrement remplace tout le composer. */
+.disc-composer.recording {
+    padding-left: 12px;
+    padding-right: 4px;
+}
+.disc-composer.recording .disc-gif-btn,
+.disc-composer.recording .disc-camera-btn,
+.disc-composer.recording .disc-mic-btn,
+.disc-composer.recording .disc-input,
+.disc-composer.recording .disc-send,
+.disc-composer.recording .disc-photo-preview {
+    display: none !important;
+}
+.disc-composer.recording .disc-rec-bar {
+    display: flex !important;
+}
+
+/* Barre d'enregistrement vocal dans le composer (façon WhatsApp) */
+.disc-rec-bar {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.disc-rec-cancel {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: var(--card-2);
+    color: var(--text-2);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: 0.2s;
+}
+.disc-rec-cancel:hover,
+.disc-rec-cancel:active {
+    color: var(--primary);
+    background: var(--card);
+}
+.disc-rec-center {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.disc-rec-time {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.disc-rec-waves {
+    flex: 1;
+    min-width: 0;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow: hidden;
+}
+.disc-rec-wave {
+    flex: 1;
+    height: 6px;
+    border-radius: 2px;
+    background: var(--primary);
+    transition: height 0.08s linear;
+}
+.disc-rec-send {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    color: #fff;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(230, 57, 70, 0.4);
+    transition: 0.15s;
+}
+.disc-rec-send:hover {
+    filter: brightness(1.08);
+}
+.disc-rec-send:active {
+    transform: scale(0.92);
+}
+.disc-rec-send:disabled {
+    opacity: 0.5;
+    cursor: default;
+    transform: none;
+}
+
 /* Aperçu de la photo à envoyer, au-dessus du composer */
 .disc-photo-preview {
     position: absolute;
@@ -1138,6 +1297,137 @@ summary.btn::-webkit-details-marker { display: none; }
     -webkit-touch-callout: none;
 }
 
+/* Vocal dans une bulle (façon WhatsApp : avatar + bouton lecture + bande son) */
+.disc-audio {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 4px 0;
+}
+.disc-audio-play {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: 0.15s;
+}
+.disc-audio-play:active {
+    transform: scale(0.92);
+}
+.disc-bubble.me .disc-audio-play {
+    background: rgba(255, 255, 255, 0.22);
+    color: #fff;
+}
+.disc-bubble.them .disc-audio-play {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--primary);
+}
+.disc-audio-body {
+    flex: 1;
+    position: relative;
+    height: 34px;
+    min-width: 120px;
+    max-width: 220px;
+}
+
+/* Bande son : couche de base grisée + couche d'avancement (couleur) */
+.disc-vw {
+    position: relative;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    --bar: rgba(150, 155, 160, 0.5);
+}
+.disc-vw-layer {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.disc-vw-prog {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow: hidden;
+    pointer-events: none;
+    --bar: var(--primary);
+}
+.disc-vw-bar {
+    flex: 1;
+    min-width: 3px;
+    max-width: 4px;
+    border-radius: 2px;
+    background: var(--bar);
+}
+.disc-bubble.me .disc-vw {
+    --bar: rgba(255, 255, 255, 0.45);
+}
+.disc-bubble.me .disc-vw-prog {
+    --bar: #fff;
+}
+.disc-audio-time {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 2px);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.disc-bubble.me .disc-audio-time {
+    color: rgba(255, 255, 255, 0.85);
+}
+.disc-bubble.them .disc-audio-time {
+    color: var(--text-2);
+}
+
+/* Avatar du partenaire DANS la bulle vocale + badge micro (façon WhatsApp) */
+.disc-vmsg-avatar {
+    position: relative;
+    flex-shrink: 0;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.disc-vmsg-avatar-img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-size: cover;
+    background-position: center 30%;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 16px;
+    color: #fff;
+}
+.disc-vmsg-badge {
+    position: absolute;
+    right: -5px;
+    bottom: -5px;
+    width: 19px;
+    height: 19px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    border: 2px solid var(--card-2);
+}
+.disc-bubble.me .disc-vmsg-badge {
+    background: rgba(0, 0, 0, 0.35);
+    border-color: var(--primary-2);
+}
+.disc-vmsg-badge svg {
+    width: 10px;
+    height: 10px;
+    display: block;
+}
 /* Visionneuse plein écran d'une photo (style WhatsApp) */
 .disc-photo-viewer {
     position: fixed;

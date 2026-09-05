@@ -32,6 +32,15 @@ class DiscussionController extends Controller
         return parse_url(Storage::disk('public')->url($path), PHP_URL_PATH) ?: null;
     }
 
+    protected function audioUrl(?string $path): ?string
+    {
+        if (blank($path)) {
+            return null;
+        }
+
+        return parse_url(Storage::disk('public')->url($path), PHP_URL_PATH) ?: null;
+    }
+
     public function index(): View
     {
         ActivityService::touch(Auth::user());
@@ -60,7 +69,7 @@ class DiscussionController extends Controller
 
         $query = Message::where('couple_id', $couple->id)
             ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', $request->user()->id))
-            ->with(['sender:id,name', 'replyTo:id,body,sender_id']);
+            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id']);
 
         if ($apresId > 0) {
             // Poll incrémental : seuls les nouveaux messages depuis le dernier id.
@@ -89,8 +98,15 @@ class DiscussionController extends Controller
                 'gif_url' => $deletedForAll ? null : $m->gif_url,
                 'gif_alt' => $deletedForAll ? null : $m->gif_alt,
                 'photo_url' => $deletedForAll ? null : $this->photoUrl($m->photo_path),
+                'audio_url' => $deletedForAll ? null : $this->audioUrl($m->audio_path),
+                'audio_duration' => $deletedForAll ? null : $m->audio_duration,
+                'audio_bars' => $deletedForAll ? null : $m->audio_bars,
                 'is_gif' => $deletedForAll ? false : $m->isGif(),
                 'is_photo' => $deletedForAll ? false : $m->isPhoto(),
+                'is_audio' => $deletedForAll ? false : $m->isAudio(),
+                // URL racine-relative de la photo de profil de l'expéditeur :
+                // fonctionne depuis tout appareil du couple même si APP_URL diffère.
+                'sender_photo_url' => $m->sender?->avatar_url ? '/storage/'.$m->sender->avatar_url : null,
                 'lu' => $m->isRead(),
                 'deleted_for_all' => $deletedForAll,
                 'deleted_by_me' => $deletedForAll && $m->deleted_by === $userId,
@@ -265,17 +281,23 @@ class DiscussionController extends Controller
             'gif_url' => ['nullable', 'url', 'max:1000'],
             'gif_alt' => ['nullable', 'string', 'max:255'],
             'photo_path' => ['nullable', 'string', 'max:255'],
+            'audio_path' => ['nullable', 'string', 'max:255'],
+            'audio_duration' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'audio_bars' => ['nullable', 'string', 'max:2048'],
             'reply_to_id' => ['nullable', 'integer'],
         ]);
 
-        // Un message doit contenir du texte, un GIF ou une photo.
-        if (blank($data['body'] ?? null) && blank($data['gif_url'] ?? null) && blank($data['photo_path'] ?? null)) {
+        // Un message doit contenir du texte, un GIF, une photo ou un vocal.
+        if (blank($data['body'] ?? null) && blank($data['gif_url'] ?? null) && blank($data['photo_path'] ?? null) && blank($data['audio_path'] ?? null)) {
             return response()->json(['error' => 'Le message est vide.'], 422);
         }
 
         // Vérifier que le fichier existe sur le disque public.
         if (! blank($data['photo_path'] ?? null) && ! Storage::disk('public')->exists($data['photo_path'])) {
             return response()->json(['error' => 'Photo introuvable.'], 422);
+        }
+        if (! blank($data['audio_path'] ?? null) && ! Storage::disk('public')->exists($data['audio_path'])) {
+            return response()->json(['error' => 'Vocal introuvable.'], 422);
         }
 
         $replyToId = $data['reply_to_id'] ?? null;
@@ -293,6 +315,9 @@ class DiscussionController extends Controller
             'gif_url' => $data['gif_url'] ?? null,
             'gif_alt' => $data['gif_alt'] ?? null,
             'photo_path' => $data['photo_path'] ?? null,
+            'audio_path' => $data['audio_path'] ?? null,
+            'audio_duration' => $data['audio_duration'] ?? null,
+            'audio_bars' => $data['audio_bars'] ?? null,
             'reply_to_id' => $replyToId,
         ]);
 
@@ -300,11 +325,13 @@ class DiscussionController extends Controller
 
         $partner = $couple->partnerOf($request->user());
         if ($partner) {
-            $notifBody = ! empty($data['photo_path'] ?? null)
-                ? '📷 Envoie une photo'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
-                : (! empty($data['gif_url'] ?? null)
-                    ? '📷 Envoie un GIF'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
-                    : ($data['body'] ?? 'Nouveau message'));
+            $notifBody = ! empty($data['audio_path'] ?? null)
+                ? '🎤 Message vocal'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                : (! empty($data['photo_path'] ?? null)
+                    ? '📷 Envoie une photo'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                    : (! empty($data['gif_url'] ?? null)
+                        ? '📷 Envoie un GIF'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                        : ($data['body'] ?? 'Nouveau message')));
             $nonLus = Message::where('couple_id', $couple->id)
                 ->where('sender_id', '!=', $partner->id)
                 ->whereNull('read_at')
@@ -344,6 +371,27 @@ class DiscussionController extends Controller
             'ok' => true,
             'path' => $path,
             'url' => $this->photoUrl($path),
+        ]);
+    }
+
+    /**
+     * Envoie un message vocal dans la discussion. Le fichier (webm/opus, mp4/aac…)
+     * est stocké sur le disque public puis référencé par `send()` via audio_path.
+     */
+    public function uploadAudio(Request $request): JsonResponse
+    {
+        $request->validate([
+            'audio' => ['required', 'file', 'mimes:webm,mp4,ogg,oga,m4a,mp3,wav', 'max:20480'],
+        ]);
+
+        /** @var UploadedFile $file */
+        $file = $request->file('audio');
+        $path = $file->store('discussion-audio', 'public');
+
+        return response()->json([
+            'ok' => true,
+            'path' => $path,
+            'url' => $this->audioUrl($path),
         ]);
     }
 

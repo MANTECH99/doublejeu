@@ -18,7 +18,7 @@ class PwaController extends Controller
     {
         return response(
             <<<'JS'
-const CACHE = 'doublejeu-v10';
+const CACHE = 'doublejeu-v11';
 
 // Pose le badge sur l'icône de l'app installée (Android via setAppBadge,
 // iOS via setNotificationBadge dès que le Web Push arrive).

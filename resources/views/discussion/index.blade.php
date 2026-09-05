@@ -7,10 +7,14 @@
     /* Pas de barre de navigation en bas sur la page discussion :
        le chat occupe tout l'espace jusqu'en bas de l'écran. */
     body .bottom-nav { display: none !important; }
+    /* Le chat s'étire de la topbar jusqu'EN BAS DE L'ÉCRAN (clavier fermé) :
+       le composer reste collé tout en bas, sans espace. Quand le clavier
+       s'ouvre, le JS remonte "bottom" au-dessus du clavier uniquement si le
+       navigateur ne redimensionne pas le contenu (iOS). */
     .disc-wrap {
-        bottom: auto !important;
+        bottom: 0;
         top: 64px;
-        height: calc(100dvh - 64px);
+        height: auto;
     }
     /* --- iOS : le document ne défile jamais (seule la liste de messages défile).
        C'est ce qui empêchait iOS de "pan" le chat quand le clavier est ouvert
@@ -19,14 +23,12 @@
     .disc-messages { overscroll-behavior: contain; } /* le scroll s'arrête dans la liste */
     /* La topbar et le header ne doivent pas réagir au rubber-band iOS */
     body .topbar, .disc-header { touch-action: none; }
+    /* Le composer est collé en bas de l'écran : pas de safe-area (la zone du
+       home indicator reste tapée sur le fond sombre), pour qu'il soit collé
+       sur iOS exactement comme sur Android. */
     .disc-composer {
-        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-        /* transition douce quand le clavier fermé rétablit le safe-area */
-        transition: padding-bottom 0.22s ease;
+        padding-bottom: 10px;
     }
-    /* Clavier ouvert : padding réduit → le champ reste collé au clavier (pas d'espace).
-       La classe est pilotée par le JS et retirée seulement quand le clavier est réellement
-       fermé, pour ne pas faire sauter les boutons au moment du tap. */
     body.disc-edit .disc-composer { padding-bottom: 3px; }
 </style>
 <script>
@@ -45,32 +47,38 @@
             // se ferme (blur) et le clic est impossible.
             if (pressing) return;
             var vv = window.visualViewport;
-            if (vv) {
-                var focus = document.activeElement;
-                var editing = focus && (focus.tagName === 'INPUT' || focus.tagName === 'TEXTAREA');
-                // Le clavier couvre encore le bas de l'écran tant que le viewport
-                // visible est nettement plus court que la hauteur du document.
-                var kbOpen = vv.height + 50 < window.innerHeight;
-                // "disc-edit" reste actif tant que le clavier est là (même après un blur) :
-                // le composer garde son padding réduit, aucun saut au moment d'un tap.
-                if (document.body) document.body.classList.toggle('disc-edit', editing || kbOpen);
-                // Mesure de la topbar seulement clavier fermé (layout stable).
-                if (!editing && !kbOpen) {
-                    var tb = document.querySelector('.topbar');
-                    if (tb) {
-                        var n = Math.round(tb.getBoundingClientRect().bottom);
-                        if (n > 0 && n < 400) TOP_H = n;
-                    }
-                }
-                // Bas du wrap = hauteur visible du Visual Viewport + décalage éventuel
-                // (offsetTop) : le composer reste exactement au-dessus du clavier,
-                // sans espace, sur iOS comme sur Android.
-                var h = (vv.offsetTop || 0) + vv.height - TOP_H;
-                if (h > 100) {
-                    wrap.style.height = h + 'px';
-                    wrap.style.top = TOP_H + 'px';
+            var vh = window.innerHeight || document.documentElement.clientHeight;
+            var focus = document.activeElement;
+            var editing = focus && (focus.tagName === 'INPUT' || focus.tagName === 'TEXTAREA');
+            // Sur iOS, la vue visible est plus courte que le document même clavier
+            // fermé (barres d'URL/outils en surimpression). On ne remonte le bas du
+            // chat que si le CLAVIER est vraiment ouvert (champ focus + vue réduite).
+            // Clavier fermé sur iOS ou Android : bottom 0 → barre collée en bas.
+            var kbShifts = !!(vv && vv.height + 50 < vh);
+            var kbOpen = editing && kbShifts;
+            // "disc-edit" reste actif tant que le clavier est là (même après un blur) :
+            // le composer garde son padding réduit, aucun saut au moment d'un tap.
+            if (document.body) document.body.classList.toggle('disc-edit', editing || kbShifts);
+            // Mesure de la topbar seulement clavier fermé (layout stable).
+            // La barre ne doit jamais remonter au-dessus de la position CSS
+            // (top: 64px) : on plafonne la mesure en dessous de 64.
+            if (!editing && !kbShifts) {
+                var tb = document.querySelector('.topbar');
+                if (tb) {
+                    var n = Math.round(tb.getBoundingClientRect().bottom);
+                    if (n > 0 && n < 400) TOP_H = Math.max(64, n);
                 }
             }
+            // Top : juste sous la topbar (jamais au-dessus de la position CSS).
+            wrap.style.top = TOP_H + 'px';
+            // Bas : au-dessus du clavier si celui-ci recouvre (iOS, clavier ouvert),
+            // sinon collé au bas de l'écran, sur iOS comme sur Android.
+            if (kbOpen) {
+                wrap.style.bottom = Math.max(0, Math.round(vh - (vv.offsetTop || 0) - vv.height)) + 'px';
+            } else {
+                wrap.style.bottom = '0px';
+            }
+            wrap.style.height = 'auto';
         }
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', layout);
@@ -194,6 +202,33 @@
                 <img id="disc-photo-preview-img" alt="Aperçu de la photo">
                 <button class="disc-photo-preview-close" id="disc-photo-preview-close" aria-label="Retirer la photo">✕</button>
             </div>
+            <button class="disc-mic-btn" id="disc-mic-btn" type="button" aria-label="Enregistrer un message vocal">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+                    <path d="M5 10a7 7 0 0 0 14 0"></path>
+                    <line x1="12" y1="19" x2="12" y2="22"></line>
+                </svg>
+            </button>
+            {{-- Barre d'enregistrement vocal (façon WhatsApp) : annuler à gauche,
+                 durée + bande son au milieu, envoyer à droite --}}
+            <div class="disc-rec-bar" id="disc-rec-bar" style="display:none">
+                <button type="button" class="disc-rec-cancel" id="disc-rec-cancel" aria-label="Supprimer le vocal">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+                <div class="disc-rec-center">
+                    <span class="disc-rec-time" id="disc-rec-time">0:00</span>
+                    <div class="disc-rec-waves" id="disc-rec-waves"></div>
+                </div>
+                <button type="button" class="disc-rec-send" id="disc-rec-send" aria-label="Envoyer le vocal">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </div>
             <textarea
                 id="disc-input"
                 class="disc-input"
@@ -275,6 +310,12 @@
     const PHOTO_VIEWER_PREV = document.getElementById('disc-photo-viewer-prev');
     const PHOTO_VIEWER_NEXT = document.getElementById('disc-photo-viewer-next');
     const PHOTO_VIEWER_COUNTER = document.getElementById('disc-photo-viewer-counter');
+    const MIC_BTN = document.getElementById('disc-mic-btn');
+    const REC_BAR = document.getElementById('disc-rec-bar');
+    const REC_TIME = document.getElementById('disc-rec-time');
+    const REC_WAVES = document.getElementById('disc-rec-waves');
+    const REC_SEND = document.getElementById('disc-rec-send');
+    const REC_CANCEL = document.getElementById('disc-rec-cancel');
     const REPLYBAR_EL = document.getElementById('disc-replybar');
     const REPLY_NAME_EL = document.getElementById('disc-reply-name');
     const REPLY_BODY_EL = document.getElementById('disc-reply-body');
@@ -296,6 +337,7 @@
     const STATE_URL = '{{ route("discussion.fetch") }}';
     const SEND_URL = '{{ route("discussion.send") }}';
     const PHOTO_URL = '{{ route("discussion.photo") }}';
+    const AUDIO_URL = '{{ route("discussion.audio") }}';
     const TYPING_URL = '{{ route("discussion.typing") }}';
     const GIFS_URL = '{{ route("discussion.gifs") }}';
     const STICKERS_URL = '{{ route("discussion.stickers") }}';
@@ -304,6 +346,9 @@
     const DELETE_URL = '/discussion/message/';
     const MY_ID = {{ $me->id }};
     const PARTNER_NAME = @json($partenaire->name);
+    const ICON_PLAY = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+    const ICON_PAUSE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+    const ICON_MIC = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M18 11a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93V21h2v-2.07A8 8 0 0 0 20 11h-2z"/></svg>';
 
     // Ensemble des id déjà rendus pour éviter tout doublon.
     const renderedIds = new Set();
@@ -313,6 +358,18 @@
     let replyTarget = null; // {id, sender_name, body}
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
     let pendingPhoto = null; // {path, url} photo choisie à envoyer
+    let pendingAudio = null; // {path, url, duration, bars} vocal enregistré à envoyer
+    let activeAudio = null; // <audio> en cours de lecture (un seul à la fois)
+    let micRecorder = null;
+    let micStream = null;
+    let micChunks = [];
+    let micStartedAt = 0;
+    let micTimer = null;
+    let micCtx = null;      // AudioContext pour la bande son en direct
+    let micAnalyser = null;
+    let micFreq = null;
+    let waveBars = [];      // <span> de la bande son d'enregistrement
+    let waveAnim = null;    // requestAnimationFrame de la bande son en direct
     const selectedMsgs = new Map(); // id -> {msg, wrap}
     let lastToggleAt = -9999; // dernier moment où la sélection a été basculée (anti-rebond/doublon)
     let initialLoad = true; // premier chargement : scroll direct en bas
@@ -604,6 +661,106 @@
             bubble.appendChild(imgWrap);
         }
 
+        // Message vocal (façon WhatsApp) : avatar du partenaire DANS la bulle (avec
+// badge micro en bas à droite), bouton lecture à côté, bande son + durée.
+        if (msg.is_audio && msg.audio_url) {
+            const bars = parseBars(msg.audio_bars, 36) || barsFromId(msg.id, 36);
+
+            const audioWrap = document.createElement('div');
+            audioWrap.className = 'disc-audio';
+            audioWrap.prepend(makeAvatar(msg));
+            const playBtn = document.createElement('button');
+            playBtn.type = 'button';
+            playBtn.className = 'disc-audio-play';
+            playBtn.setAttribute('aria-label', 'Écouter le vocal');
+            playBtn.innerHTML = ICON_PLAY;
+
+            const body = document.createElement('div');
+            body.className = 'disc-audio-body';
+
+            // Bande son : couche de base + couche de progression (coupe gauche→droite).
+            const vw = document.createElement('div');
+            vw.className = 'disc-vw';
+            const base = document.createElement('div');
+            base.className = 'disc-vw-layer';
+            const prog = document.createElement('div');
+            prog.className = 'disc-vw-prog';
+            prog.style.width = '0%';
+            bars.forEach((h) => {
+                const bar = document.createElement('span');
+                bar.className = 'disc-vw-bar';
+                bar.style.height = (4 + Math.round(h / 100 * 28)) + 'px';
+                base.appendChild(bar);
+                prog.appendChild(bar.cloneNode(false));
+            });
+            vw.appendChild(base);
+            vw.appendChild(prog);
+
+            const time = document.createElement('span');
+            time.className = 'disc-audio-time';
+            time.textContent = formatAudioTime(msg.audio_duration || 0);
+
+            const audio = document.createElement('audio');
+            audio.src = msg.audio_url;
+            audio.preload = 'none';
+
+            // Durée totale : compteur de l'enregistreur (fiable même si le blob
+            // MediaRecorder n'a pas de durée), affinée par le décodage réel.
+            const totalMs = msg.audio_duration || 0;
+            let realDur = 0;
+            realAudioDuration(msg.audio_url).then((d) => {
+                if (d > 0) {
+                    realDur = d;
+                    time.textContent = formatAudioTime(d);
+                }
+            });
+            const effDuration = () => realDur > 0 ? realDur
+                : ((isFinite(audio.duration) && audio.duration > 0) ? audio.duration : totalMs);
+
+            const setIcon = (playing) => {
+                playBtn.classList.toggle('playing', playing);
+                playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+            };
+            const setProgress = (pct) => { prog.style.width = Math.min(100, Math.max(0, pct)) + '%'; };
+            const showElapsed = () => {
+                const t = audio.currentTime;
+                time.textContent = formatAudioTime((isFinite(t) && t >= 0) ? t : (realDur || totalMs));
+            };
+
+            audio.addEventListener('play', () => { setIcon(true); setProgress(0); });
+            audio.addEventListener('timeupdate', () => {
+                const t = audio.currentTime;
+                if (isFinite(t) && effDuration() > 0) {
+                    setProgress((t / effDuration()) * 100);
+                    if (!audio.paused) showElapsed();
+                }
+            });
+            audio.addEventListener('pause', () => { setIcon(false); showElapsed(); });
+            audio.addEventListener('ended', () => {
+                setIcon(false);
+                setProgress(100);
+                time.textContent = formatAudioTime(realDur || totalMs);
+                activeAudio = null;
+            });
+            playBtn.addEventListener('click', () => {
+                if (activeAudio && activeAudio !== audio && !activeAudio.paused) activeAudio.pause();
+                if (audio.paused) {
+                    audio.play().catch(() => toast('Lecture impossible.', 'error'));
+                    activeAudio = audio;
+                } else {
+                    audio.pause();
+                    activeAudio = null;
+                }
+            });
+
+            body.appendChild(vw);
+            body.appendChild(time);
+            audioWrap.appendChild(playBtn);
+            audioWrap.appendChild(body);
+            audioWrap.appendChild(audio);
+            bubble.appendChild(audioWrap);
+        }
+
         if (msg.body) {
             const bodyText = document.createElement('span');
             bodyText.className = 'disc-bubble-text';
@@ -794,7 +951,7 @@
 
     async function sendMessage() {
         const body = INPUT_EL.value.trim();
-        if ((!body && !pendingGif && !pendingPhoto) || sending) return;
+        if ((!body && !pendingGif && !pendingPhoto && !pendingAudio) || sending) return;
 
         sending = true;
         SEND_BTN.disabled = true;
@@ -806,6 +963,11 @@
         }
         if (pendingPhoto) {
             payload.photo_path = pendingPhoto.path;
+        }
+        if (pendingAudio) {
+            payload.audio_path = pendingAudio.path;
+            payload.audio_duration = pendingAudio.duration;
+            if (pendingAudio.bars) payload.audio_bars = pendingAudio.bars;
         }
 
         try {
@@ -833,6 +995,10 @@
                     gif_alt: pendingGif ? pendingGif.alt : null,
                     is_photo: !!pendingPhoto,
                     photo_url: pendingPhoto ? pendingPhoto.url : null,
+                    is_audio: !!pendingAudio,
+                    audio_url: pendingAudio ? pendingAudio.url : null,
+                    audio_duration: pendingAudio ? pendingAudio.duration : null,
+                    audio_bars: pendingAudio ? (pendingAudio.bars || null) : null,
                     lu: false,
                     created_at: data.created_at,
                     date: new Date().toISOString().slice(0, 10),
@@ -849,7 +1015,12 @@
                 pendingPhoto = null;
                 hidePhotoPreview();
                 closeGifPanel();
-                INPUT_EL.value = '';
+                // Envoi d'un vocal seul : on garde le texte déjà saisi (WhatsApp ne
+                // l'efface pas). Sinon on vide l'input comme d'habitude.
+                const voiceOnly = !!pendingAudio && !body && !pendingGif && !pendingPhoto;
+                if (!voiceOnly) {
+                    INPUT_EL.value = '';
+                }
                 autosize();
                 SEND_BTN.disabled = true;
             } else {
@@ -859,7 +1030,7 @@
             toast('Connexion perdue.', 'error');
         } finally {
             sending = false;
-            SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto;
+            SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto && !pendingAudio && !isMicRecording();
         }
     }
 
@@ -903,6 +1074,302 @@
         PHOTO_PREVIEW.style.display = 'none';
         PHOTO_PREVIEW_IMG.removeAttribute('src');
         PHOTO_INPUT.value = '';
+    }
+
+    /* ---------- Messages vocaux ---------- */
+
+    function formatAudioTime(sec) {
+        sec = Number(sec);
+        if (!isFinite(sec) || sec < 0) return '0:00';
+        sec = Math.round(sec);
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    // Hauteurs (0-100) de la bande son stockées sur le message, complétées à n.
+    function parseBars(str, n) {
+        if (!str) return null;
+        const arr = String(str).split(',').map((v) => parseInt(v, 10)).filter((v) => isFinite(v));
+        if (arr.length < 2) return null;
+        while (arr.length < n) arr.push(arr[arr.length - 1]);
+        return arr.slice(0, n);
+    }
+
+    // Repli si la bande son est absente (ancien vocal) : motif pseudo-aléatoire
+    // déterministe (même bande son pour l'expéditeur et le destinataire).
+    function barsFromId(id, n) {
+        let seed = ((Number(id) || 1) * 2654435761) % 100000;
+        const arr = [];
+        for (let i = 0; i < n; i++) {
+            seed = (seed * 9301 + 49297) % 233280;
+            arr.push(25 + Math.round((seed / 233280) * 55));
+        }
+        return arr;
+    }
+
+    // Avatar du partenaire (photo ou initiale) + badge micro en bas à droite,
+    // affiché À L'INTÉRIEUR de la bulle vocale comme sur WhatsApp.
+    function makeAvatar(msg) {
+        const wrap = document.createElement('div');
+        wrap.className = 'disc-vmsg-avatar';
+        const img = document.createElement('div');
+        img.className = 'disc-vmsg-avatar-img';
+        if (msg.sender_photo_url) {
+            img.style.backgroundImage = "url('" + msg.sender_photo_url + "')";
+        } else {
+            const colors = ['#E63946', '#F4A261', '#2A9D8F', '#E76F51', '#457B9D'];
+            img.style.background = colors[(Number(msg.sender_id) || 0) % colors.length];
+            img.textContent = ((msg.sender_name || '?').trim().charAt(0) || '?').toUpperCase();
+        }
+        wrap.appendChild(img);
+        const badge = document.createElement('span');
+        badge.className = 'disc-vmsg-badge';
+        badge.setAttribute('aria-hidden', 'true');
+        badge.innerHTML = ICON_MIC;
+        wrap.appendChild(badge);
+        return wrap;
+    }
+
+    // Durée réelle (en secondes) d'un vocal, décodée depuis son URL publique.
+    // Les blobs de MediaRecorder n'ont pas de durée dans l'en-tête : le décodage
+    // OfflineAudioContext donne la vraie durée pour l'affichage et la progression.
+    function realAudioDuration(url) {
+        const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (!Ctx) return Promise.resolve(0);
+        return fetch(url, { credentials: 'same-origin' })
+            .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('http'))))
+            .then((buf) => new Promise((resolve) => {
+                const ctx = new Ctx(1, 1, 44100);
+                const finish = (b) => resolve(b.duration || 0);
+                try {
+                    const p = ctx.decodeAudioData(buf);
+                    if (p && typeof p.then === 'function') p.then(finish).catch(() => resolve(0));
+                    else ctx.decodeAudioData(buf.slice(0), finish, () => resolve(0));
+                } catch (e) {
+                    resolve(0);
+                }
+            }))
+            .catch(() => 0);
+    }
+
+    function isMicRecording() {
+        return micRecorder !== null;
+    }
+
+    function refreshSendBtn() {
+        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto && !isMicRecording();
+    }
+
+    // Bande son « en direct » pendant l'enregistrement : barres pilotées par
+    // l'AnalyserNode du flux micro (comme WhatsApp).
+    function buildLiveWaves() {
+        REC_WAVES.innerHTML = '';
+        waveBars = [];
+        for (let i = 0; i < 30; i++) {
+            const b = document.createElement('span');
+            b.className = 'disc-rec-wave';
+            REC_WAVES.appendChild(b);
+            waveBars.push(b);
+        }
+    }
+
+    function startWaveAnim() {
+        if (!micAnalyser) return;
+        micFreq = micFreq || new Uint8Array(micAnalyser.frequencyBinCount);
+        const tick = () => {
+            micAnalyser.getByteFrequencyData(micFreq);
+            const step = Math.max(1, Math.floor(micFreq.length / waveBars.length));
+            for (let i = 0; i < waveBars.length; i++) {
+                const v = micFreq[i * step] / 255;
+                waveBars[i].style.height = (5 + Math.round(v * 28)) + 'px';
+            }
+            waveAnim = requestAnimationFrame(tick);
+        };
+        waveAnim = requestAnimationFrame(tick);
+    }
+
+    function stopWaveAnim() {
+        if (waveAnim) cancelAnimationFrame(waveAnim);
+        waveAnim = null;
+    }
+
+    function stopMicStream() {
+        if (micStream) {
+            micStream.getTracks().forEach((t) => t.stop());
+            micStream = null;
+        }
+        if (micCtx && micCtx.state !== 'closed') micCtx.close().catch(() => {});
+        micCtx = null;
+        micAnalyser = null;
+        micFreq = null;
+    }
+
+    function startRecording() {
+        if (isMicRecording()) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            toast('Enregistrement non supporté sur cet appareil.', 'error');
+            return;
+        }
+        closeGifPanel();
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then((stream) => {
+                micStream = stream;
+                micCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (micCtx.state === 'suspended') micCtx.resume().catch(() => {});
+                micAnalyser = micCtx.createAnalyser();
+                micAnalyser.fftSize = 256;
+                micAnalyser.smoothingTimeConstant = 0.65;
+                micCtx.createMediaStreamSource(stream).connect(micAnalyser);
+
+                const mime = MediaRecorder.isTypeSupported('audio/webm')
+                    ? 'audio/webm'
+                    : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+                let rec;
+                try {
+                    rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+                } catch (e) {
+                    rec = new MediaRecorder(stream);
+                }
+                micRecorder = rec;
+                micChunks = [];
+                rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) micChunks.push(e.data); };
+                rec.start(250);
+                micStartedAt = Date.now();
+
+                buildLiveWaves();
+                startWaveAnim();
+                COMPOSER_EL.classList.add('recording');
+                REC_BAR.style.display = 'flex'; // override le style="display:none" inline
+                REC_TIME.textContent = '0:00';
+                micTimer = setInterval(() => {
+                    const secs = Math.max(0, Math.round((Date.now() - micStartedAt) / 1000));
+                    REC_TIME.textContent = formatAudioTime(secs);
+                }, 250);
+                refreshSendBtn();
+            })
+            .catch(() => toast('Micro inaccessible : vérifiez le navigateur.', 'error'));
+    }
+
+    function restoreComposer() {
+        COMPOSER_EL.classList.remove('recording');
+        REC_BAR.style.display = 'none';
+        stopWaveAnim();
+        REC_TIME.textContent = '0:00';
+        refreshSendBtn();
+    }
+
+    // Annuler : on jette l'enregistrement et on revient au composer normal.
+    function cancelRecording() {
+        if (!isMicRecording()) return;
+        const rec = micRecorder;
+        micRecorder = null;
+        micChunks = [];
+        if (rec && rec.state !== 'inactive') {
+            rec.onstop = null;
+            rec.stop();
+        }
+        clearInterval(micTimer);
+        micTimer = null;
+        stopMicStream();
+        restoreComposer();
+    }
+
+    // Extrait les hauteurs (0-100) de la bande son réelle du vocal enregistré,
+    // via decodeAudioData. Retourne '' si le calcul échoue (bande son générée côté affichage).
+    function computeAudioBars(blob) {
+        const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (!Ctx) return Promise.resolve('');
+        return new Promise((resolve) => {
+            const ctx = new Ctx(1, 1, 44100);
+            const reader = new FileReader();
+            reader.onload = () => {
+                const finish = (buffer) => {
+                    try {
+                        const n = 36;
+                        const channel = buffer.getChannelData(0);
+                        const block = Math.floor(channel.length / n) || 1;
+                        const bars = [];
+                        for (let i = 0; i < n; i++) {
+                            let sum = 0;
+                            const start = i * block;
+                            const end = Math.min(channel.length, start + block);
+                            for (let j = start; j < end; j++) sum += Math.abs(channel[j]);
+                            const avg = sum / Math.max(1, end - start);
+                            bars.push(Math.max(10, Math.min(100, Math.round(avg * 220))));
+                        }
+                        resolve(bars.join(','));
+                    } catch (e) {
+                        resolve('');
+                    }
+                };
+                try {
+                    const p = ctx.decodeAudioData(reader.result);
+                    if (p && typeof p.then === 'function') p.then(finish).catch(() => resolve(''));
+                    else ctx.decodeAudioData(reader.result.slice(0), finish, () => resolve(''));
+                } catch (e) {
+                    resolve('');
+                }
+            };
+            reader.onerror = () => resolve('');
+            reader.readAsArrayBuffer(blob);
+        });
+    }
+
+    async function uploadAudioBlob(blob) {
+        const fd = new FormData();
+        const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+        fd.append('audio', blob, 'vocal.' + ext);
+        try {
+            const res = await fetch(AUDIO_URL, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Accept': 'application/json',
+                },
+                body: fd,
+            });
+            if (res.ok) return await res.json();
+            const err = await res.json().catch(() => ({}));
+            toast(err.message || 'Échec de l\'enregistrement vocal.', 'error');
+        } catch (e) {
+            toast('Connexion perdue.', 'error');
+        }
+        return null;
+    }
+
+    // Envoyer le vocal : on stoppe le recorder, on récupère la bande son réelle,
+    // on upload le fichier puis on envoie le message immédiatement.
+    async function sendRecording() {
+        if (!isMicRecording()) return;
+        REC_SEND.disabled = true;
+        const rec = micRecorder;
+        micRecorder = null;
+        const blob = await new Promise((resolve) => {
+            rec.onstop = () => resolve(new Blob(micChunks, { type: rec.mimeType || 'audio/webm' }));
+            if (rec.state !== 'inactive') rec.stop();
+        });
+        micChunks = [];
+        const duration = Math.max(1, Math.round((Date.now() - micStartedAt) / 1000));
+        clearInterval(micTimer);
+        micTimer = null;
+        stopMicStream();
+        restoreComposer();
+
+        if (blob.size === 0) {
+            REC_SEND.disabled = false;
+            return;
+        }
+        try {
+            const bars = await computeAudioBars(blob);
+            const data = await uploadAudioBlob(blob);
+            if (!data) return; // l'erreur a déjà été affichée
+            pendingAudio = { path: data.path, url: data.url, duration, bars };
+            await sendMessage();
+        } finally {
+            pendingAudio = null;
+            REC_SEND.disabled = false;
+        }
     }
 
     /* ---------- Visionneuse plein écran (style WhatsApp) ---------- */
@@ -1227,7 +1694,7 @@
     PHOTO_PREVIEW_CLOSE.addEventListener('click', () => {
         pendingPhoto = null;
         hidePhotoPreview();
-        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto;
+        refreshSendBtn();
     });
     GIF_CLOSE.addEventListener('click', closeGifPanel);
     GIF_SEARCH.addEventListener('keydown', (e) => {
@@ -1246,7 +1713,7 @@
 
     INPUT_EL.addEventListener('input', () => {
         autosize();
-        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto;
+        refreshSendBtn();
         if (INPUT_EL.value.trim()) sendTyping();
     });
     INPUT_EL.addEventListener('keydown', (e) => {
@@ -1265,11 +1732,23 @@
     });
     SEND_BTN.addEventListener('click', sendMessage);
 
+    // Enregistrement vocal : le micro ouvre la barre d'enregistrement.
+    MIC_BTN.addEventListener('click', () => {
+        if (isMicRecording()) {
+            return;
+        }
+        startRecording();
+    });
+    REC_CANCEL.addEventListener('click', cancelRecording);
+    REC_SEND.addEventListener('click', sendRecording);
+
     // Poll unique : messages + statut en ligne en une seule requête (1,5 s).
     fetchMessages();
     setInterval(fetchMessages, 1500);
 
-    INPUT_EL.focus();
+    // Pas de focus automatique à l'entrée : garder stable la position de la
+    // barre d'envoi (sur mobile, le focus ouvrirait le clavier et ferait
+    // remonter le composer). Le focus est remis après une action (envoi, photo…).
 })();
 </script>
 @endpush

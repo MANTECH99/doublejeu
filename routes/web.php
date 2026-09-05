@@ -58,6 +58,7 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::get('/discussion/etat', [DiscussionController::class, 'fetch'])->name('discussion.fetch');
     Route::post('/discussion/envoyer', [DiscussionController::class, 'send'])->name('discussion.send');
     Route::post('/discussion/photo', [DiscussionController::class, 'uploadPhoto'])->name('discussion.photo');
+    Route::post('/discussion/audio', [DiscussionController::class, 'uploadAudio'])->name('discussion.audio');
     Route::post('/discussion/tape', [DiscussionController::class, 'typing'])->name('discussion.typing');
     Route::get('/discussion/gifs', [DiscussionController::class, 'gifs'])->name('discussion.gifs');
     Route::get('/discussion/stickers', [DiscussionController::class, 'stickers'])->name('discussion.stickers');
