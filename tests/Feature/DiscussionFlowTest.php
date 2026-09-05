@@ -390,11 +390,28 @@ class DiscussionFlowTest extends TestCase
             ->get(route('discussion.index'))
             ->assertRedirect(route('couple.setup'));
 
-        // Page rendue pour un couple lié.
+        // Page rendue pour un couple lié : le contenu des messages n'est PAS
+        // pré-rendu côté serveur — l'affichage reste entièrement côté client,
+        // seul le bloc d'accueil est présent dans le markup.
         $this->actingAs($this->alice)
             ->get(route('discussion.index'))
             ->assertOk()
-            ->assertSee('disc-messages', false);
+            ->assertSee('disc-messages', false)
+            ->assertSee('Vos messages sont privés', false);
+    }
+
+    public function test_discussion_page_does_not_pre_render_message_bubbles(): void
+    {
+        Message::create([
+            'couple_id' => $this->couple->id,
+            'sender_id' => $this->bob->id,
+            'body' => 'Bulle uniquement côté client',
+        ]);
+
+        $this->actingAs($this->alice)
+            ->get(route('discussion.index'))
+            ->assertOk()
+            ->assertDontSee('Bulle uniquement côté client');
     }
 
     public function test_message_push_carries_unread_badge_count_for_partner(): void

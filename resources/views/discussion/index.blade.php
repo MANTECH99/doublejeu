@@ -179,7 +179,9 @@
             <button class="disc-sel-action disc-sel-delete" id="disc-sel-delete" aria-label="Supprimer" title="Supprimer">🗑️</button>
         </div>
 
-        {{-- Messages (occupent l'espace libre entre header et composer) --}}
+        {{-- Messages (occupent l'espace libre entre header et composer).
+             Rendu côté client : à l'ouverture, le JS charge l'historique et colle
+             immédiatement en bas, sans défilement ni attente (comme WhatsApp). --}}
         <div class="disc-messages" id="disc-messages">
             <div class="disc-welcome">
                 <div style="font-size:36px; margin-bottom:8px">💬</div>
@@ -391,12 +393,10 @@
     let lastToggleAt = -9999; // dernier moment où la sélection a été basculée (anti-rebond/doublon)
     let initialLoad = true; // premier chargement : scroll direct en bas
 
-    function scrollToBottom(smooth) {
-        if (smooth) {
-            MESSAGES_EL.scrollTo({ top: MESSAGES_EL.scrollHeight, behavior: 'smooth' });
-        } else {
-            MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
-        }
+    // Colle en bas, toujours sans animation (aucun défilement visible) :
+    // à l'envoi comme à la réception, le dernier message apparaît d'un coup.
+    function scrollToBottom() {
+        MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
     }
 
     // Au premier chargement : colle tout en bas puis re-colle quand les images
@@ -594,6 +594,108 @@
         if (failed) return;
     }
 
+    // Câble la lecture du vocal (play/pause, progression, durée) sur un bloc
+    // `.disc-audio` déjà présent dans le DOM (bulle créée en JS ou pré-rendue).
+    function wireAudio(audioWrap, msg) {
+        const playBtn = audioWrap.querySelector('.disc-audio-play');
+        const prog = audioWrap.querySelector('.disc-vw-prog');
+        const time = audioWrap.querySelector('.disc-audio-time');
+        const audio = audioWrap.querySelector('audio');
+        if (!playBtn || !prog || !time || !audio) return;
+
+        const totalMs = msg.audio_duration || 0;
+        let realDur = 0;
+        realAudioDuration(msg.audio_url).then((d) => {
+            if (d > 0) {
+                realDur = d;
+                time.textContent = formatAudioTime(d);
+            }
+        });
+        const effDuration = () => realDur > 0 ? realDur
+            : ((isFinite(audio.duration) && audio.duration > 0) ? audio.duration : totalMs);
+
+        const setIcon = (playing) => {
+            playBtn.classList.toggle('playing', playing);
+            playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+        };
+        const setProgress = (pct) => { prog.style.width = Math.min(100, Math.max(0, pct)) + '%'; };
+        const showElapsed = () => {
+            const t = audio.currentTime;
+            time.textContent = formatAudioTime((isFinite(t) && t >= 0) ? t : (realDur || totalMs));
+        };
+
+        audio.addEventListener('play', () => { setIcon(true); setProgress(0); });
+        audio.addEventListener('timeupdate', () => {
+            const t = audio.currentTime;
+            if (isFinite(t) && effDuration() > 0) {
+                setProgress((t / effDuration()) * 100);
+                if (!audio.paused) showElapsed();
+            }
+        });
+        audio.addEventListener('pause', () => { setIcon(false); showElapsed(); });
+        audio.addEventListener('ended', () => {
+            setIcon(false);
+            setProgress(100);
+            time.textContent = formatAudioTime(realDur || totalMs);
+            activeAudio = null;
+        });
+        playBtn.addEventListener('click', () => {
+            if (activeAudio && activeAudio !== audio && !activeAudio.paused) activeAudio.pause();
+            if (audio.paused) {
+                audio.play().catch(() => toast('Lecture impossible.', 'error'));
+                activeAudio = audio;
+            } else {
+                audio.pause();
+                activeAudio = null;
+            }
+        });
+    }
+
+    // Câble les interactions d'une bulle (clic droit/long press = sélection,
+    // swipe droite = répondre) sur un bloc `.disc-bubble-wrap` (JS ou pré-rendu).
+    function wireMessage(wrap, msg) {
+        wrap.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (Date.now() - lastToggleAt < 300) return; // doublon du long press Android
+            toggleSelect(msg, wrap);
+        });
+
+        (function attachTouch(wrap, msg) {
+            let startX = null;
+            let startY = null;
+            let touchTimer = null;
+            let longPressFired = false;
+
+            wrap.addEventListener('touchstart', (e) => {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+                longPressFired = false;
+                clearTimeout(touchTimer);
+                touchTimer = setTimeout(() => {
+                    longPressFired = true;
+                    if (!msg.deleted_for_all) toggleSelect(msg, wrap);
+                }, 500);
+            }, { passive: true });
+            wrap.addEventListener('touchend', (e) => {
+                clearTimeout(touchTimer);
+                if (startX === null) return;
+                const touch = e.changedTouches[0];
+                const dx = touch.clientX - startX;
+                const dy = touch.clientY - startY;
+                if (Date.now() - lastToggleAt < 300) { startX = null; return; }
+                if (selectedMsgs.size > 0) {
+                    if (!longPressFired && Math.abs(dx) < 10 && Math.abs(dy) < 10 && !msg.deleted_for_all) {
+                        toggleSelect(msg, wrap);
+                    }
+                } else if (!longPressFired && dx > 60 && Math.abs(dy) < 40) {
+                    setReply(msg);
+                }
+                startX = null;
+            }, { passive: true });
+            wrap.addEventListener('touchcancel', () => { clearTimeout(touchTimer); startX = null; });
+        })(wrap, msg);
+    }
+
     function buildBubble(msg) {
         if (renderedIds.has(msg.id)) {
             return;
@@ -721,61 +823,14 @@
             audio.src = msg.audio_url;
             audio.preload = 'none';
 
-            // Durée totale : compteur de l'enregistreur (fiable même si le blob
-            // MediaRecorder n'a pas de durée), affinée par le décodage réel.
-            const totalMs = msg.audio_duration || 0;
-            let realDur = 0;
-            realAudioDuration(msg.audio_url).then((d) => {
-                if (d > 0) {
-                    realDur = d;
-                    time.textContent = formatAudioTime(d);
-                }
-            });
-            const effDuration = () => realDur > 0 ? realDur
-                : ((isFinite(audio.duration) && audio.duration > 0) ? audio.duration : totalMs);
-
-            const setIcon = (playing) => {
-                playBtn.classList.toggle('playing', playing);
-                playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
-            };
-            const setProgress = (pct) => { prog.style.width = Math.min(100, Math.max(0, pct)) + '%'; };
-            const showElapsed = () => {
-                const t = audio.currentTime;
-                time.textContent = formatAudioTime((isFinite(t) && t >= 0) ? t : (realDur || totalMs));
-            };
-
-            audio.addEventListener('play', () => { setIcon(true); setProgress(0); });
-            audio.addEventListener('timeupdate', () => {
-                const t = audio.currentTime;
-                if (isFinite(t) && effDuration() > 0) {
-                    setProgress((t / effDuration()) * 100);
-                    if (!audio.paused) showElapsed();
-                }
-            });
-            audio.addEventListener('pause', () => { setIcon(false); showElapsed(); });
-            audio.addEventListener('ended', () => {
-                setIcon(false);
-                setProgress(100);
-                time.textContent = formatAudioTime(realDur || totalMs);
-                activeAudio = null;
-            });
-            playBtn.addEventListener('click', () => {
-                if (activeAudio && activeAudio !== audio && !activeAudio.paused) activeAudio.pause();
-                if (audio.paused) {
-                    audio.play().catch(() => toast('Lecture impossible.', 'error'));
-                    activeAudio = audio;
-                } else {
-                    audio.pause();
-                    activeAudio = null;
-                }
-            });
-
             body.appendChild(vw);
             body.appendChild(time);
             audioWrap.appendChild(playBtn);
             audioWrap.appendChild(body);
             audioWrap.appendChild(audio);
             bubble.appendChild(audioWrap);
+            // Câble la lecture (partagé avec les bulles pré-rendues côté serveur).
+            wireAudio(audioWrap, msg);
         }
 
         if (msg.body) {
@@ -805,63 +860,9 @@
         wrap.appendChild(meta);
         MESSAGES_EL.appendChild(wrap);
 
-        // Clic droit (desktop) → sélectionner le message.
-        // NB : sur Android, l'appui long déclenche AUSSI un `contextmenu` natif,
-        // juste après le long press (timer touche). Sans garde, les deux appelleraient
-        // toggleSelect → sélection puis désélection immédiate → la barre clignote et
-        // disparaît. On ignore donc le contextmenu s'il survient juste après un toggle.
-        wrap.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            if (Date.now() - lastToggleAt < 300) return; // doublon du long press Android
-            toggleSelect(msg, wrap);
-        });
-
-        // Interactions tactiles : appui long = sélection, swipe droite = répondre.
-        (function attachTouch(wrap, msg) {
-            let startX = null;
-            let startY = null;
-            let touchTimer = null;
-            let longPressFired = false;
-
-            wrap.addEventListener('touchstart', (e) => {
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-                longPressFired = false;
-                clearTimeout(touchTimer);
-                touchTimer = setTimeout(() => {
-                    longPressFired = true;
-                    if (!msg.deleted_for_all) toggleSelect(msg, wrap);
-                }, 500);
-            }, { passive: true });
-
-            // En mode sélection, un simple appui bascule la sélection ; sinon,
-            // un swipe net vers la droite répond au message.
-            wrap.addEventListener('touchend', (e) => {
-                clearTimeout(touchTimer);
-                if (startX === null) return;
-                const touch = e.changedTouches[0];
-                const dx = touch.clientX - startX;
-                const dy = touch.clientY - startY;
-
-                // Verrouillage anti-rebond : un changement de layout (entrée en
-                // mode sélection) peut générer des touchestart/touchend parasites
-                // juste après un long press, qui désélectionneraient le message et
-                // feraient clignoter la barre. On ignore donc les taps pendant un
-                // court instant après chaque bascule.
-                if (Date.now() - lastToggleAt < 300) { startX = null; return; }
-
-                if (selectedMsgs.size > 0) {
-                    if (!longPressFired && Math.abs(dx) < 10 && Math.abs(dy) < 10 && !msg.deleted_for_all) {
-                        toggleSelect(msg, wrap);
-                    }
-                } else if (!longPressFired && dx > 60 && Math.abs(dy) < 40) {
-                    setReply(msg);
-                }
-                startX = null;
-            }, { passive: true });
-
-            wrap.addEventListener('touchcancel', () => { clearTimeout(touchTimer); startX = null; });
-        })(wrap, msg);
+        // Sélection (clic droit/long press) + répondre (swipe droite) : partagé
+        // avec les bulles pré-rendues côté serveur.
+        wireMessage(wrap, msg);
     }
 
     // Met à jour le statut "lu" (✓✓) des bulles déjà affichées.
@@ -916,10 +917,10 @@
                 // Au tout premier chargement on colle directement tout en bas (scroll
                 // instantané), sinon on reste en bas de façon animée à chaque poll.
                 if (initialLoad) {
-                    scrollToBottom(false); // non animé : permet d'atteindre le bas exact
+                    scrollToBottom();
                     stickyToBottomOnce();
                 } else if (bottom || hasIncoming) {
-                    scrollToBottom(true);
+                    scrollToBottom();
                 }
             }
 
@@ -1019,7 +1020,7 @@
             } : null,
         };
         buildBubble(optimistic);
-        if (wasAtBottom()) scrollToBottom(true);
+        scrollToBottom();
         setReply(null);
         pendingGif = null;
         pendingPhoto = null;
@@ -1038,7 +1039,7 @@
         INPUT_EL.blur();
         window.setTimeout(function () {
             layout();
-            scrollToBottom(false);
+            scrollToBottom();
         }, 350);
 
         try {

@@ -57,6 +57,45 @@ class DiscussionController extends Controller
         ]);
     }
 
+    /**
+     * Transforme une collection de messages en le tableau sérialisable (même
+     * forme que la réponse du fetch) utilisé par le JS pour le rendu.
+     */
+    protected function mapMessages($couple, int $userId, $messages): array
+    {
+        return $messages->map(function (Message $m) use ($userId) {
+            $deletedForAll = $m->isDeletedForAll();
+
+            return [
+                'id' => $m->id,
+                'sender_id' => $m->sender_id,
+                'sender_name' => $m->sender?->name ?? 'Ancien·ne partenaire',
+                'body' => $deletedForAll ? null : $m->body,
+                'gif_url' => $deletedForAll ? null : $m->gif_url,
+                'gif_alt' => $deletedForAll ? null : $m->gif_alt,
+                'photo_url' => $deletedForAll ? null : $this->photoUrl($m->photo_path),
+                'audio_url' => $deletedForAll ? null : $this->audioUrl($m->audio_path),
+                'audio_duration' => $deletedForAll ? null : $m->audio_duration,
+                'audio_bars' => $deletedForAll ? null : $m->audio_bars,
+                'is_gif' => $deletedForAll ? false : $m->isGif(),
+                'is_photo' => $deletedForAll ? false : $m->isPhoto(),
+                'is_audio' => $deletedForAll ? false : $m->isAudio(),
+                'sender_photo_url' => $m->sender?->avatar_url ? '/storage/'.$m->sender->avatar_url : null,
+                'lu' => $m->isRead(),
+                'deleted_for_all' => $deletedForAll,
+                'deleted_by_me' => $deletedForAll && $m->deleted_by === $userId,
+                'created_at' => $m->created_at->format('H:i'),
+                'date' => $m->created_at->format('Y-m-d'),
+                'reply_to' => $m->replyTo && ! $deletedForAll ? [
+                    'id' => $m->replyTo->id,
+                    'sender_id' => $m->replyTo->sender_id,
+                    'sender_name' => $m->replyTo->sender?->name ?? 'Ancien·ne partenaire',
+                    'body' => $m->replyTo->body,
+                ] : null,
+            ];
+        })->values()->all();
+    }
+
     public function fetch(Request $request): JsonResponse
     {
         $couple = $request->user()->coupleModel;
@@ -88,39 +127,7 @@ class DiscussionController extends Controller
         }
 
         $userId = $request->user()->id;
-        $messages = $messages->map(function (Message $m) use ($userId) {
-            $deletedForAll = $m->isDeletedForAll();
-
-            return [
-                'id' => $m->id,
-                'sender_id' => $m->sender_id,
-                'sender_name' => $m->sender?->name ?? 'Ancien·ne partenaire',
-                'body' => $deletedForAll ? null : $m->body,
-                'gif_url' => $deletedForAll ? null : $m->gif_url,
-                'gif_alt' => $deletedForAll ? null : $m->gif_alt,
-                'photo_url' => $deletedForAll ? null : $this->photoUrl($m->photo_path),
-                'audio_url' => $deletedForAll ? null : $this->audioUrl($m->audio_path),
-                'audio_duration' => $deletedForAll ? null : $m->audio_duration,
-                'audio_bars' => $deletedForAll ? null : $m->audio_bars,
-                'is_gif' => $deletedForAll ? false : $m->isGif(),
-                'is_photo' => $deletedForAll ? false : $m->isPhoto(),
-                'is_audio' => $deletedForAll ? false : $m->isAudio(),
-                // URL racine-relative de la photo de profil de l'expéditeur :
-                // fonctionne depuis tout appareil du couple même si APP_URL diffère.
-                'sender_photo_url' => $m->sender?->avatar_url ? '/storage/'.$m->sender->avatar_url : null,
-                'lu' => $m->isRead(),
-                'deleted_for_all' => $deletedForAll,
-                'deleted_by_me' => $deletedForAll && $m->deleted_by === $userId,
-                'created_at' => $m->created_at->format('H:i'),
-                'date' => $m->created_at->format('Y-m-d'),
-                'reply_to' => $m->replyTo && ! $deletedForAll ? [
-                    'id' => $m->replyTo->id,
-                    'sender_id' => $m->replyTo->sender_id,
-                    'sender_name' => $m->replyTo->sender?->name ?? 'Ancien·ne partenaire',
-                    'body' => $m->replyTo->body,
-                ] : null,
-            ];
-        });
+        $messages = $this->mapMessages($couple, $userId, $messages);
 
         $nonLus = Message::where('couple_id', $couple->id)
             ->where('sender_id', '!=', $request->user()->id)
