@@ -62,6 +62,8 @@ class InfoPagesTest extends TestCase
             ->assertSee(route('info.show', 'confidentialite'))
             ->assertSee(route('info.show', 'cgu'))
             ->assertSee(route('info.show', 'contact'))
-            ->assertSee(route('info.show', 'installation'));
+            ->assertSee(route('info.show', 'installation'))
+            ->assertSee('data-theme-toggle')
+            ->assertSee('Apparence');
     }
 }

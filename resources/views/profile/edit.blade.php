@@ -112,21 +112,30 @@
         {{-- Infos & légal --}}
         <section class="card pad-lg">
             <h2 class="section-title">ℹ️ Infos & légal</h2>
-            <div class="row gap8 wrap" style="display:flex;flex-wrap:wrap;gap:8px">
-                <a href="{{ route('info.show', 'modes-de-jeu') }}" class="btn btn-sm btn-soft">🎮 Modes de jeu</a>
-                <a href="{{ route('info.show', 'categories-questions') }}" class="btn btn-sm btn-soft">🗂️ Catégories de questions</a>
-                <a href="{{ route('info.show', 'installation') }}" class="btn btn-sm btn-soft">📲 Installer l'app</a>
-                <a href="{{ route('info.show', 'a-propos') }}" class="btn btn-sm btn-soft">💞 À propos</a>
-                <a href="{{ route('info.show', 'contact') }}" class="btn btn-sm btn-soft">💬 Contact & support</a>
+            <div>
+                <a class="flex between items-center info-link" href="{{ route('info.show', 'modes-de-jeu') }}"><span>🎮 Modes de jeu</span><span class="info-arrow">></span></a>
+                <a class="flex between items-center info-link" href="{{ route('info.show', 'categories-questions') }}"><span>🗂️ Catégories de questions</span><span class="info-arrow">></span></a>
+                <a class="flex between items-center info-link" href="{{ route('info.show', 'installation') }}"><span>📲 Installer l'app</span><span class="info-arrow">></span></a>
+                <a class="flex between items-center info-link" href="{{ route('info.show', 'a-propos') }}"><span>💞 À propos</span><span class="info-arrow">></span></a>
+                <a class="flex between items-center info-link" href="{{ route('info.show', 'contact') }}"><span>💬 Contact & support</span><span class="info-arrow">></span></a>
             </div>
             <div class="divider"></div>
-            <div class="row gap8 wrap" style="display:flex;flex-wrap:wrap;gap:8px">
-                <a href="{{ route('info.show', 'confidentialite') }}" class="btn btn-sm btn-ghost">🔒 Confidentialité</a>
-                <a href="{{ route('info.show', 'cgu') }}" class="btn btn-sm btn-ghost">📜 Conditions d'utilisation</a>
-                <a href="{{ route('info.show', 'mentions-legales') }}" class="btn btn-sm btn-ghost">⚖️ Mentions légales</a>
-                <a href="{{ route('info.show', 'cookies') }}" class="btn btn-sm btn-ghost">🍪 Cookies</a>
-                <a href="{{ route('info.show', 'securite') }}" class="btn btn-sm btn-ghost">🛡️ Sécurité</a>
+            <div>
+                <a class="flex between items-center info-link" href="{{ route('info.show', 'confidentialite') }}"><span>🔒 Confidentialité</span><span class="info-arrow">></span></a>
+                <a class="flex between items-center info-link" href="{{ route('info.show', 'cgu') }}"><span>📜 Conditions d'utilisation</span><span class="info-arrow">></span></a>
+                <a class="flex between items-center info-link" href="{{ route('info.show', 'mentions-legales') }}"><span>⚖️ Mentions légales</span><span class="info-arrow">></span></a>
+                <a class="flex between items-center info-link" href="{{ route('info.show', 'cookies') }}"><span>🍪 Cookies</span><span class="info-arrow">></span></a>
+                <a class="flex between items-center info-link info-link-last" href="{{ route('info.show', 'securite') }}"><span>🛡️ Sécurité</span><span class="info-arrow">></span></a>
             </div>
+        </section>
+
+        {{-- Apparence --}}
+        <section class="card pad-lg">
+            <h2 class="section-title">🎨 Apparence</h2>
+            <button type="button" class="flex between items-center info-link info-link-last" data-theme-toggle style="background:none;border:none;cursor:pointer;width:100%;text-align:left">
+                <span><span class="theme-ico">🌗</span> Basculer le thème (sombre / blanc)</span>
+                <span class="info-arrow">></span>
+            </button>
         </section>
 
         {{-- Déconnexion --}}

@@ -3,6 +3,36 @@ import Alpine from 'alpinejs';
 window.Alpine = Alpine;
 Alpine.start();
 
+/* ============ Thème clair / sombre ============ */
+(function () {
+    const root = document.documentElement;
+
+    function applyTheme(t) {
+        if (t === 'light') {
+            root.setAttribute('data-theme', 'light');
+        } else {
+            root.removeAttribute('data-theme');
+        }
+        try { localStorage.setItem('dj_theme', t); } catch (e) {}
+        document.querySelectorAll('[data-theme-toggle]').forEach((b) => {
+            const ico = b.querySelector('.theme-ico') || b;
+            ico.textContent = t === 'light' ? '🌙' : '☀️';
+        });
+    }
+
+    let current = 'dark';
+    try { current = localStorage.getItem('dj_theme') || 'dark'; } catch (e) {}
+
+    applyTheme(current);
+
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-theme-toggle]');
+        if (!btn) return;
+        const next = root.hasAttribute('data-theme') ? 'dark' : 'light';
+        applyTheme(next);
+    });
+})();
+
 const csrf = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
 /**
