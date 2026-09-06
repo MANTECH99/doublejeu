@@ -2,6 +2,30 @@
 
 @section('title', 'Mots Croisés du Couple')
 
+@push('head')
+<style>
+    /* Quand le clavier est ouvert (brouillon de la grille), on cache la barre
+       de navigation du bas : sinon elle remonte au-dessus du clavier. */
+    body.kb-open .bottom-nav { display: none !important; }
+</style>
+<script>
+    // Détecte l'ouverture/fermeture du clavier via le redimensionnement de la
+    // zone visible (visualViewport) et masque la barre de navigation du bas.
+    (function () {
+        var base = window.innerHeight;
+        function maj() {
+            var k = window.visualViewport && window.visualViewport.height < base - 60;
+            document.body.classList.toggle('kb-open', !!k);
+        }
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', maj);
+            window.visualViewport.addEventListener('scroll', maj);
+        }
+        window.addEventListener('resize', maj);
+    })();
+</script>
+@endpush
+
 @section('content')
     @php $partenaire = $couple->partnerOf(auth()->user()); @endphp
     <div class="fadeIn">
@@ -104,6 +128,21 @@
                     </div>`;
         }
 
+        // Indicateur Mastermind : nombre de lettres correctes et bien placées,
+        // sans jamais révéler lesquelles.
+        function mcFeedbackTexte(fb) {
+            const f = fb || {};
+            const c = f.correctes || 0;
+            const b = f.bien_placees || 0;
+            if (!c && !b) return '💡 Tape des lettres pour voir combien sont justes';
+            const pl = (n, s) => n > 1 ? s + 's' : s;
+            return '✨ ' + c + ' lettre' + pl(c, '') + ' correcte' + pl(c, '') + ' · 🎯 ' + b + ' bien placée' + pl(b, '');
+        }
+
+        function feedbackBar(fb) {
+            return '<div class="mc-feedback" id="mc-feedback">' + mcFeedbackTexte(fb) + '</div>';
+        }
+
         function renderSolve() {
             const box = document.getElementById('mc-solve');
             const prog = document.getElementById('mc-solve-progress');
@@ -123,11 +162,15 @@
                 ? '🏆 Grille terminée ! Bravo ' + esc(nom)
                 : ('🔎 ' + g.progress.trouvees + ' / ' + g.progress.total + ' lettres');
 
-            box.innerHTML = buildGrilleHtml(g, true) + `<div class="tiny muted center mt8">Clique les cases du mot, tape ses lettres : la vérification se fait quand il est complet 🎯</div>`;
+            box.innerHTML = buildGrilleHtml(g, true) + feedbackBar(g.feedback) + `<div class="tiny muted center mt8">Clique les cases du mot, tape ses lettres : la vérification se fait quand il est complet 🎯</div>`;
             box.querySelectorAll('.mc-input').forEach(inp => {
                 inp.addEventListener('input', () => onMcInput(inp));
                 inp.addEventListener('blur', () => inp.classList.remove('actif'));
-                inp.addEventListener('focus', () => inp.classList.add('actif'));
+                inp.addEventListener('focus', () => {
+                    inp.classList.add('actif');
+                    // Tape une lettre remplace l'existante (pas besoin d'effacer).
+                    inp.select();
+                });
             });
 
             indices.style.display = 'block';
@@ -229,6 +272,8 @@
                     ? '🏆 Grille terminée ! Bravo ' + esc(mcState.partenaire)
                     : ('🔎 ' + etat.progress.trouvees + ' / ' + etat.progress.total + ' lettres');
             }
+            const fb = document.getElementById('mc-feedback');
+            if (fb) fb.textContent = mcFeedbackTexte(etat.feedback);
         }
 
         function flashCell(k) {

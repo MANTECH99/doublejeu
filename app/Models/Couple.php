@@ -103,4 +103,14 @@ class Couple extends Model
     {
         return $this->hasMany(GifFavorite::class);
     }
+
+    public function bucketListItems(): HasMany
+    {
+        return $this->hasMany(BucketListItem::class);
+    }
+
+    public function calendrierCreneaux(): HasMany
+    {
+        return $this->hasMany(CalendrierCreneau::class);
+    }
 }

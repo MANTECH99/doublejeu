@@ -382,8 +382,47 @@ class MotsCroisesController extends Controller
             'numeros' => $numeros,
             'mots' => $mots,
             'progress' => ['trouvees' => $comptees, 'total' => $total],
+            'feedback' => $this->feedbackPour($grilleArray, $reponses, $brouillon),
             'complete' => $grille->estComplete(),
         ];
+    }
+
+    /**
+     * Feedback type Mastermind : nombre de lettres correctes (présentes dans leur
+     * mot) et bien placées (à la bonne position), sans jamais révéler lesquelles.
+     */
+    private function feedbackPour(array $grilleArray, array $reponses, array $brouillon): array
+    {
+        $cases = $grilleArray['cases'] ?? [];
+        $correctes = 0;
+        $bienPlacees = 0;
+
+        foreach (($grilleArray['mots'] ?? []) as $mot) {
+            $sol = [];
+            $eff = [];
+            foreach ($this->casesDuMot($mot) as $kk) {
+                if (($cases[$kk] ?? '') === '') {
+                    continue;
+                }
+                $sol[] = self::normaliseLettre($cases[$kk]);
+                $lettre = ($reponses[$kk] ?? '') !== '' ? $reponses[$kk] : ($brouillon[$kk] ?? '');
+                $eff[] = self::normaliseLettre((string) $lettre);
+            }
+
+            for ($i = 0, $n = count($sol); $i < $n; $i++) {
+                if ($eff[$i] !== '' && $eff[$i] === $sol[$i]) {
+                    $bienPlacees++;
+                }
+            }
+
+            $freqEff = array_count_values(array_filter($eff, fn ($l) => $l !== ''));
+            $freqSol = array_count_values($sol);
+            foreach ($freqEff as $lettre => $quantite) {
+                $correctes += min($quantite, $freqSol[$lettre] ?? 0);
+            }
+        }
+
+        return ['correctes' => $correctes, 'bien_placees' => $bienPlacees];
     }
 
     /** Clés des cases (r,c) couvertes par un mot de la grille. */

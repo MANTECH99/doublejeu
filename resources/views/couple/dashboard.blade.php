@@ -5,7 +5,7 @@
 @section('content')
     <div class="fadeIn">
         {{-- Couple header --}}
-        <div class="card" style="background:linear-gradient(150deg, rgba(230,57,70,.14), rgba(255,107,107,.05)), var(--card)">
+        <div class="card" style="background:linear-gradient(150deg, rgba(93,173,226,.16), rgba(52,152,219,.06)), var(--card)">
             <div class="flex between items-center">
                 <div class="flex items-center gap12">
                     <x-avatar :user="$me" class="lg" />
@@ -137,6 +137,16 @@
                 <div class="t-ico">🧩</div>
                 <div class="t-name">Mots croisés</div>
                 <div class="t-desc">Une grille, à deux</div>
+            </a>
+            <a href="{{ route('bucket-list.index') }}" class="game-tile tile-bucket-list fadeIn" style="animation-delay:.34s">
+                <div class="t-ico">🧳</div>
+                <div class="t-name">Bucket List</div>
+                <div class="t-desc">Vos projets, vos souvenirs</div>
+            </a>
+            <a href="{{ route('calendrier.index') }}" class="game-tile tile-calendrier fadeIn" style="animation-delay:.38s">
+                <div class="t-ico">🗓️</div>
+                <div class="t-name">Calendrier</div>
+                <div class="t-desc">Votre journée côte à côte</div>
             </a>
         </div>
 

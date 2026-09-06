@@ -848,6 +848,8 @@ class JeuxFlowTest extends TestCase
         $this->assertArrayHasKey('noires', $grillePourMoi);
         $this->assertArrayHasKey('numeros', $grillePourMoi);
         $this->assertGreaterThan(0, $grillePourMoi['progress']['total']);
+        // Feedback Mastermind vide au départ.
+        $this->assertSame(['correctes' => 0, 'bien_placees' => 0], $grillePourMoi['feedback']);
 
         // Couverture cases noires + blanches de toute la grille.
         $this->assertCount($grillePourMoi['lignes'] * $grillePourMoi['colonnes'], array_unique(array_merge(
@@ -889,6 +891,9 @@ class JeuxFlowTest extends TestCase
         $this->assertSame(0, $res['points_gagnes']);
         $this->assertSame($fausse, $res['etat']['brouillon'][$cle0]);
         $this->assertSame('', $res['etat']['cases'][$cle0]);
+        // La mauvaise lettre n'est bien placée nulle part.
+        $this->assertSame(0, $res['etat']['feedback']['bien_placees']);
+        $this->assertLessThanOrEqual(1, $res['etat']['feedback']['correctes']);
 
         // Alice observe en temps réel la lettre même fausse que Bob est en train d'écrire.
         $etatObserve = $this->actingAs($this->alice)->getJson(route('mots-croises.state'))->assertOk()->json();
@@ -908,6 +913,10 @@ class JeuxFlowTest extends TestCase
         $this->assertNotNull($resMot0);
         $this->assertSame('correct', $resMot0['statuts'][0]['statut']);
         $this->assertSame(count($clesMot0), $resMot0['points_gagnes']);
+        // Le mot 0 est entièrement correct : toutes ses cases comptent au moins
+        // comme bien placées (l'intersection peut les compter dans les deux mots).
+        $this->assertGreaterThanOrEqual(count($clesMot0), $resMot0['etat']['feedback']['bien_placees']);
+        $this->assertGreaterThanOrEqual($resMot0['etat']['feedback']['bien_placees'], $resMot0['etat']['feedback']['correctes']);
         foreach ($clesMot0 as $kk) {
             $this->assertSame($cases[$kk], $resMot0['etat']['cases'][$kk]);
             $this->assertArrayNotHasKey($kk, $resMot0['etat']['brouillon']);
@@ -962,6 +971,10 @@ class JeuxFlowTest extends TestCase
 
         $etatFin = $this->getJson(route('mots-croises.state'))->assertOk()->json();
         $this->assertTrue($etatFin['aGrillePourMoi']['complete']);
+        // Grille entièrement juste : toutes les lettres sont correctes ET bien placées.
+        $sommeMots = array_sum(array_map(fn ($m) => mb_strlen($m['mot']), $grilleMots));
+        $this->assertSame($sommeMots, $etatFin['aGrillePourMoi']['feedback']['correctes']);
+        $this->assertSame($sommeMots, $etatFin['aGrillePourMoi']['feedback']['bien_placees']);
     }
 
     public function test_mots_croises_creer_gerer_mots_personnels(): void

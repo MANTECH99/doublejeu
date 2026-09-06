@@ -35,7 +35,9 @@ window.api = async function api(url, options = {}) {
         const contentType = res.headers.get('content-type') || '';
         const data = contentType.includes('application/json') ? await res.json() : await res.text();
         if (!res.ok) {
-            const message = typeof data === 'object' && data.error ? data.error : 'Une erreur est survenue.';
+            const message = typeof data === 'object' && (data.error || data.message)
+                ? (data.error || data.message)
+                : 'Une erreur est survenue.';
             toast(message, 'error');
             return { ok: false, data, status: res.status };
         }

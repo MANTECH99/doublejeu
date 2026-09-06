@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\BucketListController;
+use App\Http\Controllers\CalendrierController;
 use App\Http\Controllers\CardsController;
 use App\Http\Controllers\CoupleController;
 use App\Http\Controllers\DiscussionController;
@@ -143,6 +145,22 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::get('/jeux/mots-croises/mots', [MotsCroisesController::class, 'mots'])->name('mots-croises.mots');
     Route::post('/jeux/mots-croises/mots', [MotsCroisesController::class, 'creerMot'])->name('mots-croises.mots.creer');
     Route::delete('/jeux/mots-croises/mots/{id}', [MotsCroisesController::class, 'detruireMot'])->name('mots-croises.mots.detruire');
+
+    // ---- Bucket List du couple ----
+    Route::get('/jeux/bucket-list', [BucketListController::class, 'index'])->name('bucket-list.index');
+    Route::get('/jeux/bucket-list/etat', [BucketListController::class, 'state'])->name('bucket-list.state');
+    Route::post('/jeux/bucket-list/creer', [BucketListController::class, 'creer'])->name('bucket-list.creer');
+    Route::post('/jeux/bucket-list/{item}/photo', [BucketListController::class, 'photo'])->name('bucket-list.photo');
+    Route::post('/jeux/bucket-list/{item}/realiser', [BucketListController::class, 'realiser'])->name('bucket-list.realiser');
+    Route::post('/jeux/bucket-list/{item}/reouvrir', [BucketListController::class, 'reouvrir'])->name('bucket-list.reouvrir');
+    Route::delete('/jeux/bucket-list/{item}', [BucketListController::class, 'detruire'])->name('bucket-list.detruire');
+
+    // ---- Calendrier quotidien ----
+    Route::get('/jeux/calendrier', [CalendrierController::class, 'index'])->name('calendrier.index');
+    Route::get('/jeux/calendrier/etat', [CalendrierController::class, 'state'])->name('calendrier.state');
+    Route::post('/jeux/calendrier/creer', [CalendrierController::class, 'creer'])->name('calendrier.creer');
+    Route::put('/jeux/calendrier/{creneau}', [CalendrierController::class, 'modifier'])->name('calendrier.modifier');
+    Route::delete('/jeux/calendrier/{creneau}', [CalendrierController::class, 'detruire'])->name('calendrier.detruire');
 
     // ---- Récompenses ----
     Route::get('/recompenses', [RecompenseController::class, 'index'])->name('recompenses.index');
