@@ -505,7 +505,6 @@
     const renderedIds = new Set();
     let lastMessageId = 0;
     let lastDate = '';
-    let bootBuilding = true; // vrai tant que le pré-rendu initial n'est pas fini
     let sending = false;
     let replyTarget = null; // {id, sender_name, body, is_gif, gif_url, is_photo, photo_url, is_video, video_url, video_poster_url}
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
@@ -1197,10 +1196,7 @@
             const bottom = wasAtBottom();
             const hasIncoming = (data.messages || []).some(m => String(m.sender_id) !== String(MY_ID) && !renderedIds.has(m.id));
 
-            // Pendant le pré-rendu initial (par lots), on ne construit rien ici :
-            // les messages arrivent de toute façon par les lots restants, et
-            // construire en parallèle créerait des doublons (ids pas encore rendus).
-            if (data.messages && data.messages.length > 0 && !bootBuilding) {
+            if (data.messages && data.messages.length > 0) {
                 for (const msg of data.messages) {
                     buildBubble(msg);
                 }
@@ -2527,12 +2523,13 @@ function grabVideoThumb(videoEl) {
 
 // "Pré-rendu" côté client : les messages injectés par le serveur dans
     // #disc-init-messages sont construits avec buildBubble (le MÊME rendu que le
-    // fetch), en lots successifs. Le PREMIER lot est construit pendant le parse
-    // (avant la première peinture) puis la zone devient visible : l'écran peint
-    // avec des bulles déjà en place, jamais d'écran noir. Les lots suivants sont
-    // construits via requestAnimationFrame, quelques bulles par frame : le
-    // navigateur peint entre les lots et le fil se complète sans jamais bloquer
-    // l'affichage. Le fil reste collé en bas pendant tout le remplissage.
+    // fetch) pendant le parse, donc avant la première peinture. Aucun HTML de
+    // bulle n'est écrit côté serveur : l'affichage ne peut pas différer.
+    // La zone reste invisible (visibility:hidden) seulement le temps de construire
+    // toutes les bulles de façon synchrone pendant le parse. Les photos ont une
+    // hauteur réservée (aspect-ratio) → le chargement ne peut plus décaler le
+    // fil : on révèle d'un coup, sur la hauteur finale, avant la première
+    // peinture → ouverture directe sur le dernier message, sans défilement.
     let discRevealed = false;
     function revealDisc() {
         if (discRevealed) return;
@@ -2581,40 +2578,12 @@ function grabVideoThumb(videoEl) {
             } catch (err) {
                 list = [];
             }
+            for (const m of list) buildBubble(m);
         }
-        // Lot initial construit en synchrone (avant la première peinture) : la
-        // zone s'ouvre sur du contenu déjà présent, c'est ce qui évite l'écran
-        // noir en production (Hostinger), où le build synchrone de tout
-        // l'historique prenait ~2 s.
-        const CHUNK = 24;
-        const finish = () => {
-            bootBuilding = false;
-            MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
-        };
-        const total = list.length;
-        const firstN = Math.min(CHUNK, total);
-        for (let i = 0; i < firstN; i++) buildBubble(list[i]);
+        // Tous les médias ont une hauteur réservée (photos via dimensions natives,
+        // GIF via carré 1/1) : le chargement ne peut pas décaler le fil, donc on
+        // révèle immédiatement, sans écran noir.
         revealDisc();
-        if (total <= CHUNK) {
-            finish();
-            return;
-        }
-        // Lots suivants par rAF : le navigateur peint entre chaque lot. On
-        // recalle le fil en bas à chaque lot pour rester sur le dernier message.
-        let i = firstN;
-        const buildNextChunks = () => {
-            const end = Math.min(i + CHUNK, total);
-            let j = i;
-            for (; j < end; j++) buildBubble(list[j]);
-            i = end;
-            MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
-            if (i < total) {
-                requestAnimationFrame(buildNextChunks);
-            } else {
-                finish();
-            }
-        };
-        requestAnimationFrame(buildNextChunks);
     }
 
     // Mobile : la barre d'URL se replie ~0,5 s après l'arrivée et agrandit le
