@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['couple_id', 'sender_id', 'body', 'reply_to_id', 'gif_url', 'gif_alt', 'photo_path', 'photo_w', 'photo_h', 'audio_path', 'audio_duration', 'audio_bars', 'read_at', 'deleted_at', 'deleted_by'])]
+#[Fillable(['couple_id', 'sender_id', 'body', 'reply_to_id', 'gif_url', 'gif_alt', 'photo_path', 'photo_w', 'photo_h', 'video_path', 'video_w', 'video_h', 'video_poster_path', 'audio_path', 'audio_duration', 'audio_bars', 'read_at', 'deleted_at', 'deleted_by'])]
 class Message extends Model
 {
     use HasFactory;
@@ -59,6 +59,11 @@ class Message extends Model
     public function isPhoto(): bool
     {
         return ! empty($this->photo_path);
+    }
+
+    public function isVideo(): bool
+    {
+        return ! empty($this->video_path);
     }
 
     public function isAudio(): bool

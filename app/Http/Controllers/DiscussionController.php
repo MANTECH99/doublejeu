@@ -42,6 +42,15 @@ class DiscussionController extends Controller
         return parse_url(Storage::disk('public')->url($path), PHP_URL_PATH) ?: null;
     }
 
+    protected function videoUrl(?string $path): ?string
+    {
+        if (blank($path)) {
+            return null;
+        }
+
+        return parse_url(Storage::disk('public')->url($path), PHP_URL_PATH) ?: null;
+    }
+
     public function index(): View
     {
         ActivityService::touch(Auth::user());
@@ -56,7 +65,7 @@ class DiscussionController extends Controller
         // strictement le rendu JS habituel, mais l'ouverture arrive directe en bas.
         $messages = Message::where('couple_id', $couple->id)
             ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', Auth::id()))
-            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id'])
+            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path'])
             ->orderByDesc('id')
             ->get()
             ->reverse()
@@ -88,11 +97,16 @@ class DiscussionController extends Controller
                 'photo_url' => $deletedForAll ? null : $this->photoUrl($m->photo_path),
                 'photo_w' => $deletedForAll ? null : $m->photo_w,
                 'photo_h' => $deletedForAll ? null : $m->photo_h,
+                'video_url' => $deletedForAll ? null : $this->videoUrl($m->video_path),
+                'video_w' => $deletedForAll ? null : $m->video_w,
+                'video_h' => $deletedForAll ? null : $m->video_h,
+                'video_poster_url' => $deletedForAll ? null : $this->photoUrl($m->video_poster_path),
                 'audio_url' => $deletedForAll ? null : $this->audioUrl($m->audio_path),
                 'audio_duration' => $deletedForAll ? null : $m->audio_duration,
                 'audio_bars' => $deletedForAll ? null : $m->audio_bars,
                 'is_gif' => $deletedForAll ? false : $m->isGif(),
                 'is_photo' => $deletedForAll ? false : $m->isPhoto(),
+                'is_video' => $deletedForAll ? false : $m->isVideo(),
                 'is_audio' => $deletedForAll ? false : $m->isAudio(),
                 'sender_photo_url' => $m->sender?->avatar_url ? '/storage/'.$m->sender->avatar_url : null,
                 'lu' => $m->isRead(),
@@ -105,6 +119,14 @@ class DiscussionController extends Controller
                     'sender_id' => $m->replyTo->sender_id,
                     'sender_name' => $m->replyTo->sender?->name ?? 'Ancien·ne partenaire',
                     'body' => $m->replyTo->body,
+                    'is_gif' => $m->replyTo->isGif(),
+                    'gif_url' => $m->replyTo->gif_url,
+                    'is_photo' => $m->replyTo->isPhoto(),
+                    'photo_url' => $this->photoUrl($m->replyTo->photo_path),
+                    'is_video' => $m->replyTo->isVideo(),
+                    'video_url' => $this->videoUrl($m->replyTo->video_path),
+                    'video_poster_url' => $this->photoUrl($m->replyTo->video_poster_path),
+                    'is_audio' => $m->replyTo->isAudio(),
                 ] : null,
             ];
         })->values()->all();
@@ -123,7 +145,7 @@ class DiscussionController extends Controller
 
         $query = Message::where('couple_id', $couple->id)
             ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', $request->user()->id))
-            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id']);
+            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path']);
 
         if ($apresId > 0) {
             // Poll incrémental : seuls les nouveaux messages depuis le dernier id.
@@ -318,20 +340,30 @@ class DiscussionController extends Controller
             'photo_path' => ['nullable', 'string', 'max:255'],
             'photo_w' => ['nullable', 'integer', 'min:1', 'max:10000'],
             'photo_h' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'video_path' => ['nullable', 'string', 'max:255'],
+            'video_w' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'video_h' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'video_poster_path' => ['nullable', 'string', 'max:255'],
             'audio_path' => ['nullable', 'string', 'max:255'],
             'audio_duration' => ['nullable', 'integer', 'min:1', 'max:600'],
             'audio_bars' => ['nullable', 'string', 'max:2048'],
             'reply_to_id' => ['nullable', 'integer'],
         ]);
 
-        // Un message doit contenir du texte, un GIF, une photo ou un vocal.
-        if (blank($data['body'] ?? null) && blank($data['gif_url'] ?? null) && blank($data['photo_path'] ?? null) && blank($data['audio_path'] ?? null)) {
+        // Un message doit contenir du texte, un GIF, une photo, une vidéo ou un vocal.
+        if (blank($data['body'] ?? null) && blank($data['gif_url'] ?? null) && blank($data['photo_path'] ?? null) && blank($data['video_path'] ?? null) && blank($data['audio_path'] ?? null)) {
             return response()->json(['error' => 'Le message est vide.'], 422);
         }
 
         // Vérifier que le fichier existe sur le disque public.
         if (! blank($data['photo_path'] ?? null) && ! Storage::disk('public')->exists($data['photo_path'])) {
             return response()->json(['error' => 'Photo introuvable.'], 422);
+        }
+        if (! blank($data['video_path'] ?? null) && ! Storage::disk('public')->exists($data['video_path'])) {
+            return response()->json(['error' => 'Vidéo introuvable.'], 422);
+        }
+        if (! blank($data['video_poster_path'] ?? null) && ! Storage::disk('public')->exists($data['video_poster_path'])) {
+            return response()->json(['error' => 'Miniature de vidéo introuvable.'], 422);
         }
         if (! blank($data['audio_path'] ?? null) && ! Storage::disk('public')->exists($data['audio_path'])) {
             return response()->json(['error' => 'Vocal introuvable.'], 422);
@@ -354,6 +386,10 @@ class DiscussionController extends Controller
             'photo_path' => $data['photo_path'] ?? null,
             'photo_w' => $data['photo_w'] ?? null,
             'photo_h' => $data['photo_h'] ?? null,
+            'video_path' => $data['video_path'] ?? null,
+            'video_w' => $data['video_w'] ?? null,
+            'video_h' => $data['video_h'] ?? null,
+            'video_poster_path' => $data['video_poster_path'] ?? null,
             'audio_path' => $data['audio_path'] ?? null,
             'audio_duration' => $data['audio_duration'] ?? null,
             'audio_bars' => $data['audio_bars'] ?? null,
@@ -368,9 +404,11 @@ class DiscussionController extends Controller
                 ? '🎤 Message vocal'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
                 : (! empty($data['photo_path'] ?? null)
                     ? '📷 Envoie une photo'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
-                    : (! empty($data['gif_url'] ?? null)
-                        ? '📷 Envoie un GIF'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
-                        : ($data['body'] ?? 'Nouveau message')));
+                    : (! empty($data['video_path'] ?? null)
+                        ? '📹 Envoie une vidéo'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                        : (! empty($data['gif_url'] ?? null)
+                            ? '📷 Envoie un GIF'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                            : ($data['body'] ?? 'Nouveau message'))));
             $nonLus = Message::where('couple_id', $couple->id)
                 ->where('sender_id', '!=', $partner->id)
                 ->whereNull('read_at')
@@ -411,6 +449,43 @@ class DiscussionController extends Controller
             'path' => $path,
             'url' => $this->photoUrl($path),
         ]);
+    }
+
+    /**
+     * Envoie une vidéo (et éventuellement sa miniature « poster ») dans la
+     * discussion. Les fichiers sont stockés tels quels sur le disque public (dans
+     * la limite de taille, aucune compression), puis référencés par `send()`.
+     * La miniature est générée côté client (1ère frame) pour servir de vignette
+     * iOS : sans poster, Safari affiche un cadre noir.
+     */
+    public function uploadVideo(Request $request): JsonResponse
+    {
+        $request->validate([
+            'video' => ['nullable', 'file', 'mimes:mp4,webm,mov,m4v,3gp,mpg,mpeg,avi,mkv', 'max:102400'],
+            'poster' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        $result = ['ok' => true];
+
+        if ($request->hasFile('video')) {
+            /** @var UploadedFile $file */
+            $file = $request->file('video');
+            $result['path'] = $file->store('discussion-videos', 'public');
+            $result['url'] = $this->videoUrl($result['path']);
+        }
+
+        if ($request->hasFile('poster')) {
+            /** @var UploadedFile $file */
+            $file = $request->file('poster');
+            $result['poster_path'] = $file->store('discussion-video-posters', 'public');
+            $result['poster_url'] = $this->photoUrl($result['poster_path']);
+        }
+
+        if (empty($result['path']) && empty($result['poster_path'])) {
+            return response()->json(['error' => 'Aucun fichier envoyé.'], 422);
+        }
+
+        return response()->json($result);
     }
 
     /**

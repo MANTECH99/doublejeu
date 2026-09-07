@@ -286,7 +286,10 @@
         <div class="disc-replybar" id="disc-replybar" style="display:none">
             <div class="disc-reply-info">
                 <div class="disc-reply-name" id="disc-reply-name">Répondre</div>
-                <div class="disc-reply-body" id="disc-reply-body"></div>
+                <div class="disc-reply-row" id="disc-reply-row">
+                    <div class="disc-reply-thumb-host"></div>
+                    <div class="disc-reply-body" id="disc-reply-body"></div>
+                </div>
             </div>
             <button class="disc-reply-close" id="disc-reply-close" aria-label="Annuler la réponse">✕</button>
         </div>
@@ -301,18 +304,13 @@
                     <path d="M13 9v3c0 1.1.9 2 2 2"></path>
                 </svg>
             </button>
-            <button class="disc-camera-btn" id="disc-camera-btn" type="button" aria-label="Envoyer une photo">
+            <button class="disc-camera-btn" id="disc-camera-btn" type="button" aria-label="Envoyer une photo ou une vidéo">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                     <circle cx="12" cy="13" r="4"></circle>
                 </svg>
             </button>
-            <input type="file" id="disc-photo-input" accept="image/*" style="display:none">
-            {{-- Aperçu de la photo à envoyer, au-dessus du composer --}}
-            <div class="disc-photo-preview" id="disc-photo-preview" style="display:none">
-                <img id="disc-photo-preview-img" alt="Aperçu de la photo">
-                <button class="disc-photo-preview-close" id="disc-photo-preview-close" aria-label="Retirer la photo">✕</button>
-            </div>
+            <input type="file" id="disc-photo-input" accept="image/*,video/*" style="display:none">
             <button class="disc-mic-btn" id="disc-mic-btn" type="button" aria-label="Enregistrer un message vocal">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="9" y="2" width="6" height="12" rx="3"></rect>
@@ -380,6 +378,39 @@
         <button type="button" class="disc-sheet-btn disc-sheet-cancel" id="disc-sheet-cancel">Annuler</button>
     </div>
 
+    {{-- Écran de prévisualisation avant envoi (façon WhatsApp) : couvre toute la
+         page de la discussion ; le média + une légende + l'envoi s'y font. --}}
+    <div class="disc-send-sheet" id="disc-send-sheet" style="display:none">
+        <div class="disc-send-sheet-head">
+            <button type="button" class="disc-send-sheet-back" id="disc-send-sheet-back" aria-label="Annuler">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <span class="disc-send-sheet-title">Aperçu</span>
+        </div>
+        <div class="disc-send-sheet-media">
+            <div class="disc-send-sheet-loader" id="disc-send-sheet-loader" style="display:none">
+                <span class="disc-send-sheet-spinner" aria-hidden="true"></span>
+                <span>Chargement de l'aperçu… veuillez patienter</span>
+            </div>
+            <img id="disc-send-sheet-img" alt="Aperçu de la photo" style="display:none">
+            <video id="disc-send-sheet-video" playsinline preload="metadata" controls style="display:none"></video>
+            <span class="disc-send-sheet-chip" id="disc-send-sheet-chip" style="display:none"></span>
+        </div>
+        <div class="disc-send-sheet-foot">
+            <div class="disc-send-caption">
+                <input type="text" id="disc-send-caption" placeholder="Ajouter une légende…" maxlength="2000" autocomplete="off" enterkeyhint="send" />
+            </div>
+            <button type="button" class="disc-send-sheet-send" id="disc-send-sheet-send" aria-label="Envoyer">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
     {{-- Visionneuse plein écran d'une photo : zoom + téléchargement (style WhatsApp) --}}
     <div class="disc-photo-viewer" id="disc-photo-viewer" style="display:none">
         <button class="disc-photo-viewer-close" id="disc-photo-viewer-close" aria-label="Fermer">✕</button>
@@ -410,9 +441,14 @@
     const TAB_STICKERS = document.getElementById('disc-tab-stickers');
     const CAMERA_BTN = document.getElementById('disc-camera-btn');
     const PHOTO_INPUT = document.getElementById('disc-photo-input');
-    const PHOTO_PREVIEW = document.getElementById('disc-photo-preview');
-    const PHOTO_PREVIEW_IMG = document.getElementById('disc-photo-preview-img');
-    const PHOTO_PREVIEW_CLOSE = document.getElementById('disc-photo-preview-close');
+    const SEND_SHEET = document.getElementById('disc-send-sheet');
+    const SEND_SHEET_LOADER = document.getElementById('disc-send-sheet-loader');
+    const SEND_SHEET_BACK = document.getElementById('disc-send-sheet-back');
+    const SEND_SHEET_IMG = document.getElementById('disc-send-sheet-img');
+    const SEND_SHEET_VIDEO = document.getElementById('disc-send-sheet-video');
+    const SEND_SHEET_CHIP = document.getElementById('disc-send-sheet-chip');
+    const SEND_SHEET_CAPTION = document.getElementById('disc-send-caption');
+    const SEND_SHEET_SEND = document.getElementById('disc-send-sheet-send');
     const PHOTO_VIEWER = document.getElementById('disc-photo-viewer');
     const PHOTO_VIEWER_IMG = document.getElementById('disc-photo-viewer-img');
     const PHOTO_VIEWER_CLOSE = document.getElementById('disc-photo-viewer-close');
@@ -428,6 +464,7 @@
     const REC_CANCEL = document.getElementById('disc-rec-cancel');
     const REPLYBAR_EL = document.getElementById('disc-replybar');
     const REPLY_NAME_EL = document.getElementById('disc-reply-name');
+    const REPLY_ROW_EL = document.getElementById('disc-reply-row');
     const REPLY_BODY_EL = document.getElementById('disc-reply-body');
     const REPLY_CLOSE_EL = document.getElementById('disc-reply-close');
     const SEL_BAR = document.getElementById('disc-selectionbar');
@@ -447,6 +484,7 @@
     const STATE_URL = '{{ route("discussion.fetch") }}';
     const SEND_URL = '{{ route("discussion.send") }}';
     const PHOTO_URL = '{{ route("discussion.photo") }}';
+    const VIDEO_URL = '{{ route("discussion.video") }}';
     const AUDIO_URL = '{{ route("discussion.audio") }}';
     const TYPING_URL = '{{ route("discussion.typing") }}';
     const RECORDING_URL = '{{ route("discussion.recording") }}';
@@ -468,9 +506,11 @@
     let lastMessageId = 0;
     let lastDate = '';
     let sending = false;
-    let replyTarget = null; // {id, sender_name, body}
+    let replyTarget = null; // {id, sender_name, body, is_gif, gif_url, is_photo, photo_url, is_video, video_url, video_poster_url}
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
     let pendingPhoto = null; // {path, url} photo choisie à envoyer
+    let pendingVideo = null; // {path, url, w, h, posterPath, posterUrl} vidéo choisie à envoyer
+    let pendingCaption = null; // légende éditée dans l'écran de prévisualisation avant envoi
     let pendingAudio = null; // {path, url, duration, bars} vocal enregistré à envoyer
     let activeAudio = null; // <audio> en cours de lecture (un seul à la fois)
     let micRecorder = null;
@@ -541,11 +581,80 @@
     }
 
     /* ---------- Répondre à un message ---------- */
+    // Pour un message cité en réponse, on mémorise aussi le média : cela permet
+    // d'afficher la vignette (stickers/photo/vidéo) dans la barre « Répondre » et
+    // dans la bulle citée du destinataire (msg.body est vide pour ces types).
+    function quoteSnapshot(msg) {
+        if (!msg) return null;
+        return {
+            id: msg.id,
+            sender_id: msg.sender_id ?? null,
+            sender_name: msg.sender_name,
+            body: msg.body,
+            is_gif: !!msg.is_gif,
+            gif_url: msg.gif_url || null,
+            is_photo: !!msg.is_photo,
+            photo_url: msg.photo_url || null,
+            is_video: !!msg.is_video,
+            video_url: msg.video_url || null,
+            video_poster_url: msg.video_poster_url || null,
+            is_audio: !!msg.is_audio,
+        };
+    }
+
+    // Libellé textuel le plus court représentant le message cité (pour les
+    // types sans corps : sticker/photo/vidéo/vocal).
+    function quoteLabel(q) {
+        if (q && q.body) return q.body;
+        if (q && q.is_gif) return 'Sticker';
+        if (q && q.is_photo) return '📷 Photo';
+        if (q && q.is_video) return '🎬 Vidéo';
+        if (q && q.is_audio) return '🎤 Vocal';
+        return '';
+    }
+
+    // Source de la miniature à afficher pour le message cité. Seuls le sticker
+    // et la photo ont une vraie image (petite). La vidéo n'a volontairement pas
+    // de miniature : on affiche juste une petite icône ▶ sur fond sombre (façon
+    // WhatsApp), jamais la vraie vignette qui est lourde et hors de propos à
+    // cette taille.
+    function quoteThumbSrc(q) {
+        if (!q) return null;
+        if (q.is_gif && q.gif_url) return q.gif_url;
+        if (q.is_photo && q.photo_url) return q.photo_url;
+        return null;
+    }
+
+    // Construit la miniature (sticker/photo) OU le petit repère vidéo ▶ (vocal :
+    // rien). Renvoie null quand il n'y a aucun média à montrer.
+    function quoteThumbNode(q, kindCls) {
+        if (!q) return null;
+        if (q.is_video) {
+            const box = document.createElement('span');
+            box.className = 'disc-quote-thumb disc-quote-thumb-video' + (kindCls || '');
+            box.setAttribute('aria-hidden', 'true');
+            return box;
+        }
+        const src = quoteThumbSrc(q);
+        if (!src) return null;
+        const img = document.createElement('img');
+        img.className = 'disc-quote-thumb disc-quote-thumb-img' + (kindCls || '');
+        img.src = src;
+        img.alt = quoteLabel(q);
+        img.loading = 'lazy';
+        img.addEventListener('click', (e) => e.stopPropagation());
+        return img;
+    }
+
     function setReply(msg) {
-        replyTarget = msg ? { id: msg.id, sender_name: msg.sender_name, body: msg.body } : null;
+        replyTarget = quoteSnapshot(msg);
+        const host = REPLY_ROW_EL.querySelector('.disc-reply-thumb-host');
+        host && (host.innerHTML = '');
         if (replyTarget) {
             REPLY_NAME_EL.textContent = '↩️ Répondre à ' + (replyTarget.sender_name || '…');
-            REPLY_BODY_EL.textContent = replyTarget.body;
+            const node = quoteThumbNode(replyTarget, ' disc-reply-thumb');
+            if (node && host) host.appendChild(node);
+            REPLY_BODY_EL.textContent = quoteLabel(replyTarget);
             REPLYBAR_EL.style.display = 'flex';
             INPUT_EL.focus();
         } else {
@@ -836,12 +945,21 @@
         if (msg.reply_to) {
             const quoted = document.createElement('div');
             quoted.className = 'disc-quoted';
+            const qRow = document.createElement('div');
+            qRow.className = 'disc-quoted-row';
             const qName = document.createElement('div');
             qName.className = 'disc-quoted-name';
             const meSaid = String(msg.reply_to.sender_id) === String(MY_ID);
             const who = meSaid ? 'Toi' : (msg.reply_to.sender_name || '…');
-            qName.textContent = '↪️ ' + who + ' : ' + escHtml(msg.reply_to.body);
-            quoted.appendChild(qName);
+            qName.textContent = '↪️ ' + who + ' : ' + quoteLabel(msg.reply_to);
+            const qThumb = quoteThumbNode(msg.reply_to, ' disc-quoted-thumb');
+            if (qThumb) {
+                // Clic sur la vignette citée : aucun passage en mode sélection.
+                qThumb.addEventListener('click', (e) => e.stopPropagation());
+                qRow.appendChild(qThumb);
+            }
+            qRow.appendChild(qName);
+            quoted.appendChild(qRow);
             bubble.appendChild(quoted);
         }
 
@@ -892,6 +1010,61 @@
             });
             imgWrap.appendChild(img);
             bubble.appendChild(imgWrap);
+        }
+
+        // Message vidéo : lecteur natif dans la bulle (façon WhatsApp). La taille
+        // native est réservée comme pour les photos → ni le fil ni la lecture ne
+        // décalent le contenu. Un bouton play recouvre la vignette (première frame,
+        // chargée via preload=metadata) tant que la vidéo est en pause.
+        if (msg.is_video && msg.video_url) {
+            const vidWrap = document.createElement('div');
+            vidWrap.className = 'disc-video';
+            const video = document.createElement('video');
+            video.src = msg.video_url;
+            video.preload = 'metadata';
+            video.setAttribute('playsinline', '');
+            video.controls = true;
+            video.setAttribute('aria-label', 'Vidéo');
+            // Poster = miniature de la première frame (générée par l'expéditeur) :
+            // iOS ne décode aucune image d'un <video> sans poster → cadre noir.
+            if (msg.video_poster_url) video.poster = msg.video_poster_url;
+            if (msg.video_w && msg.video_h) {
+                const maxW = Math.min(260, Math.max(120, Math.round((window.innerWidth || 360) * 0.6)));
+                let w = maxW;
+                let h = Math.round((w * msg.video_h) / msg.video_w);
+                const maxH = Math.round(maxW * 1.4);
+                if (h > maxH) {
+                    h = maxH;
+                    w = Math.round((h * msg.video_w) / msg.video_h);
+                }
+                video.style.width = w + 'px';
+                video.style.height = h + 'px';
+            }
+            const play = document.createElement('button');
+            play.type = 'button';
+            play.className = 'disc-video-play';
+            play.setAttribute('aria-label', 'Lire la vidéo');
+            play.innerHTML = ICON_PLAY;
+            // Le bouton central lance la lecture et disparaît ; il revient en
+            // pause. Le tap sur la vidéo fait aussi play/pause. Les événements
+            // sont isolés de la sélection/long-press de la bulle (wireMessage).
+            play.addEventListener('click', () => {
+                video.play();
+            });
+            video.addEventListener('play', () => { play.style.display = 'none'; });
+            video.addEventListener('pause', () => { play.style.display = 'grid'; });
+            video.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (video.paused) {
+                    video.play();
+                } else {
+                    video.pause();
+                }
+            });
+            vidWrap.appendChild(video);
+            vidWrap.appendChild(play);
+            bubble.appendChild(vidWrap);
         }
 
         // Message vocal (façon WhatsApp) : avatar du partenaire DANS la bulle (avec
@@ -1082,8 +1255,10 @@
     }
 
     async function sendMessage() {
-        const body = INPUT_EL.value.trim();
-        if ((!body && !pendingGif && !pendingPhoto && !pendingAudio) || sending) return;
+        // Depuis l'écran de prévisualisation, le texte envoyé est la légende.
+        const sheetOpen = (pendingPhoto || pendingVideo) && SEND_SHEET.style.display !== 'none';
+        const body = sheetOpen ? SEND_SHEET_CAPTION.value.trim() : INPUT_EL.value.trim();
+        if ((!body && !pendingGif && !pendingPhoto && !pendingVideo && !pendingAudio) || sending) return;
 
         sending = true;
         SEND_BTN.disabled = true;
@@ -1100,6 +1275,14 @@
                 payload.photo_w = pendingPhoto.w;
                 payload.photo_h = pendingPhoto.h;
             }
+        }
+        if (pendingVideo) {
+            payload.video_path = pendingVideo.path;
+            if (pendingVideo.w && pendingVideo.h) {
+                payload.video_w = pendingVideo.w;
+                payload.video_h = pendingVideo.h;
+            }
+            if (pendingVideo.posterPath) payload.video_poster_path = pendingVideo.posterPath;
         }
         if (pendingAudio) {
             payload.audio_path = pendingAudio.path;
@@ -1127,6 +1310,11 @@
             photo_url: pendingPhoto ? pendingPhoto.url : null,
             photo_w: pendingPhoto && pendingPhoto.w ? pendingPhoto.w : null,
             photo_h: pendingPhoto && pendingPhoto.h ? pendingPhoto.h : null,
+            is_video: !!pendingVideo,
+            video_url: pendingVideo ? pendingVideo.url : null,
+            video_w: pendingVideo && pendingVideo.w ? pendingVideo.w : null,
+            video_h: pendingVideo && pendingVideo.h ? pendingVideo.h : null,
+            video_poster_url: pendingVideo ? (pendingVideo.posterUrl || null) : null,
             is_audio: !!pendingAudio,
             audio_url: pendingAudio ? pendingAudio.url : null,
             audio_duration: pendingAudio ? pendingAudio.duration : null,
@@ -1136,9 +1324,17 @@
             date: nowLocal.getFullYear() + '-' + pad2(nowLocal.getMonth() + 1) + '-' + pad2(nowLocal.getDate()),
             reply_to: replyTarget ? {
                 id: replyTarget.id,
-                sender_id: null,
+                sender_id: replyTarget.sender_id,
                 sender_name: replyTarget.sender_name,
                 body: replyTarget.body,
+                is_gif: replyTarget.is_gif,
+                gif_url: replyTarget.gif_url,
+                is_photo: replyTarget.is_photo,
+                photo_url: replyTarget.photo_url,
+                is_video: replyTarget.is_video,
+                video_url: replyTarget.video_url,
+                video_poster_url: replyTarget.video_poster_url,
+                is_audio: replyTarget.is_audio,
             } : null,
         };
         buildBubble(optimistic);
@@ -1146,6 +1342,7 @@
         setReply(null);
         pendingGif = null;
         pendingPhoto = null;
+        pendingVideo = null;
         hidePhotoPreview();
         closeGifPanel();
         // Envoi d'un vocal seul : on garde le texte déjà saisi (WhatsApp ne
@@ -1195,7 +1392,7 @@
             rollbackOptimistic(tmpId);
         } finally {
             sending = false;
-            SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto && !pendingAudio && !isMicRecording();
+            SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto && !pendingVideo && !pendingAudio && !isMicRecording();
         }
     }
 
@@ -1273,10 +1470,163 @@
     let favCache = [];      // {id, url, alt} des favoris
     let favUrlSet = new Set();
 
-    function hidePhotoPreview() {
-        PHOTO_PREVIEW.style.display = 'none';
-        PHOTO_PREVIEW_IMG.removeAttribute('src');
+    /* ---------- Prévisualisation pleine page avant envoi (façon WhatsApp) ---------- */
+    let mediaSheetHideTimer = null;
+    let mediaSheetExiting = false;
+
+    // Ouverture de l'écran de prévisualisation à la place du composer.
+    function openMediaSheet() {
+        // Le texte saisi dans le composer devient la légende initiale du média
+        // (comme WhatsApp) afin qu'aucun texte ne soit perdu.
+        const composed = INPUT_EL.value.trim();
+        if (composed) {
+            SEND_SHEET_CAPTION.value = composed;
+            pendingCaption = composed;
+            INPUT_EL.value = '';
+            autosize();
+            refreshSendBtn();
+        } else {
+            SEND_SHEET_CAPTION.value = pendingCaption || '';
+        }
+        SEND_SHEET.style.display = 'flex';
+        SEND_SHEET.classList.remove('disc-send-sheet-show');
+        // petite frame pour que le navigateur amarre l'animation d'entrée
+        SEND_SHEET.offsetHeight;
+        SEND_SHEET.classList.add('disc-send-sheet-show');
+        updateSheetControls();
+        if (SEND_SHEET.requestFullscreen) {
+            SEND_SHEET.requestFullscreen().catch(() => {});
+        }
+        bindSheetKeyboardLayout();
+        layoutSheetForKeyboard();
+        setTimeout(() => SEND_SHEET_CAPTION.focus(), 60);
+    }
+
+    // Remet la légende (non envoyée) dans le composer après annulation.
+    function restoreCaptionToComposer() {
+        const caption = SEND_SHEET_CAPTION.value.trim();
+        if (!caption) return;
+        const existing = INPUT_EL.value;
+        INPUT_EL.value = existing ? existing + '\n' + caption : caption;
+        autosize();
+        refreshSendBtn();
+    }
+
+    // Bouton d'envoi + chip d'état de la vidéo dans l'écran de prévisualisation.
+    // La ligne affiche « taille · durée » à gauche du statut (ex. « 37 Mo · 0:21 ·
+    // Vidéo prête »), comme demandé.
+    function updateSheetControls() {
+        let ready = true;
+        if (pendingVideo) ready = !pendingVideo.uploading && !pendingVideo.posterPending;
+        if (pendingPhoto) ready = !pendingPhoto.uploading;
+        SEND_SHEET_SEND.disabled = !ready;
+        if (pendingVideo && !pendingPhoto) {
+            SEND_SHEET_CHIP.style.display = 'block';
+            let status;
+            if (pendingVideo.uploading) {
+                status = 'Envoi de la vidéo… veuillez patienter';
+            } else if (pendingVideo.posterPending) {
+                status = 'Préparation de la vignette…';
+            } else {
+                status = 'Vidéo prête';
+            }
+            const info = [pendingVideo.sizeLabel, pendingVideo.durationLabel].filter(Boolean).join(' · ');
+            SEND_SHEET_CHIP.textContent = (info ? info + ' · ' : '') + status;
+        } else {
+            SEND_SHEET_CHIP.style.display = 'none';
+        }
+    }
+
+    // Spinner « Chargement de l'aperçu… » tant que le média n'est pas affiché.
+    function setSheetMediaLoading(on) {
+        SEND_SHEET_LOADER.style.display = on ? 'flex' : 'none';
+    }
+
+    function reallyHidePhotoPreview() {
+        // Libère les aperçus locaux (fichiers non encore téléversés).
+        if (pendingVideo && pendingVideo.localUrl) {
+            try { URL.revokeObjectURL(pendingVideo.localUrl); } catch (e) {}
+        }
+        if (pendingPhoto && pendingPhoto.localUrl) {
+            try { URL.revokeObjectURL(pendingPhoto.localUrl); } catch (e) {}
+        }
+        pendingPhoto = null;
+        pendingVideo = null;
+        pendingCaption = null;
+        SEND_SHEET_VIDEO.pause();
+        SEND_SHEET_IMG.removeAttribute('src');
+        SEND_SHEET_VIDEO.removeAttribute('src');
+        SEND_SHEET_VIDEO.removeAttribute('poster');
+        SEND_SHEET_CAPTION.value = '';
+        setSheetMediaLoading(false);
+        SEND_SHEET.style.display = 'none';
+        SEND_SHEET.classList.remove('disc-send-sheet-show');
+        resetSheetKeyboardLayout();
         PHOTO_INPUT.value = '';
+        refreshSendBtn();
+    }
+
+    // Sortie de l'écran de prévisualisation.
+    function hidePhotoPreview() {
+        clearTimeout(mediaSheetHideTimer);
+        if (mediaSheetExiting) {
+            return;
+        }
+        if (document.fullscreenElement === SEND_SHEET) {
+            // En plein écran, le navigateur a besoin d'un court délai pour
+            // annuler le plein écran : masquer avant provoquerait un flash du
+            // média. On attend l'évènement fullscreenchange (filet de sécurité).
+            mediaSheetExiting = true;
+            document.removeEventListener('fullscreenchange', mediaSheetOnExit);
+            document.addEventListener('fullscreenchange', mediaSheetOnExit, { once: true });
+            document.exitFullscreen().catch(() => {
+                mediaSheetExiting = false;
+                reallyHidePhotoPreview();
+            });
+            mediaSheetHideTimer = setTimeout(() => {
+                if (mediaSheetExiting) {
+                    mediaSheetExiting = false;
+                    reallyHidePhotoPreview();
+                }
+            }, 500);
+        } else {
+            reallyHidePhotoPreview();
+        }
+    }
+
+    function mediaSheetOnExit() {
+        if (document.fullscreenElement) return; // le plein écran est passé à un autre élément
+        clearTimeout(mediaSheetHideTimer);
+        mediaSheetExiting = false;
+        reallyHidePhotoPreview();
+    }
+
+    /* ---------- Clavier iOS : l'écran doit rester au-dessus du clavier ----------
+       iOS ne redimensionne pas les éléments position:fixed quand le clavier
+       s'ouvre (contrairement à Android) : on recale l'écran sur la zone
+       réellement visible grâce au visualViewport. */
+    let sheetKeyboardBound = false;
+    function layoutSheetForKeyboard() {
+        if (SEND_SHEET.style.display === 'none') return;
+        const vv = window.visualViewport;
+        if (!vv) return;
+        SEND_SHEET.style.top = (vv.offsetTop || 0) + 'px';
+        SEND_SHEET.style.height = vv.height + 'px';
+    }
+    function bindSheetKeyboardLayout() {
+        if (!window.visualViewport || sheetKeyboardBound) return;
+        sheetKeyboardBound = true;
+        let raf = null;
+        const apply = () => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(layoutSheetForKeyboard);
+        };
+        window.visualViewport.addEventListener('resize', apply);
+        window.visualViewport.addEventListener('scroll', apply);
+    }
+    function resetSheetKeyboardLayout() {
+        SEND_SHEET.style.top = '';
+        SEND_SHEET.style.height = '';
     }
 
     /* ---------- Messages vocaux ---------- */
@@ -1288,6 +1638,14 @@
         const m = Math.floor(sec / 60);
         const s = sec % 60;
         return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    // Taille d'un fichier vidéo en Mo, format français (ex. « 37 Mo », « 2,4 Mo »).
+    function formatVideoSize(bytes) {
+        const mb = bytes / (1024 * 1024);
+        if (!isFinite(mb) || mb <= 0) return '';
+        if (mb >= 10) return Math.round(mb) + ' Mo';
+        return (Math.round(mb * 10) / 10).toString().replace('.', ',') + ' Mo';
     }
 
     // Hauteurs (0-100) de la bande son stockées sur le message, complétées à n.
@@ -1361,7 +1719,7 @@
     }
 
     function refreshSendBtn() {
-        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto && !isMicRecording();
+        SEND_BTN.disabled = !INPUT_EL.value.trim() && !pendingGif && !pendingPhoto && !pendingVideo && !isMicRecording();
     }
 
     // Bande son « en direct » pendant l'enregistrement : barres pilotées par
@@ -1850,28 +2208,142 @@
         else openGifPanel();
     });
 
-    /* ---------- Envoi de photo ---------- */
+    /* ---------- Envoi de photo / vidéo ---------- */
+
+// Capture la première frame exploitable d'une vidéo chargée (metadata OK) et la
+// renvoie en Blob JPEG. Un <video> jamais joué affiche volontiers une image noire
+// au drawImage : on fait donc tourner la vidéo (muted) le temps que le décodeur
+// présente de vrais frames, et on ignore les frames quasi noirs. Sur iOS il faut
+// amorcer une lecture muted pour forcer le décodage. En cas d'échec complet
+// (> ~2 s), on rend un frame quand même plutôt que de bloquer.
+function grabVideoThumb(videoEl) {
+    return new Promise((resolve) => {
+        if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
+            resolve(null);
+            return;
+        }
+        const maxW = 640;
+        const maxH = Math.max(1, Math.round(maxW * videoEl.videoHeight / videoEl.videoWidth));
+
+        let settled = false;
+        let tries = 0;
+        const finish = (canvas) => {
+            if (settled) return;
+            settled = true;
+            try { videoEl.pause(); } catch (e) { /* sans conséquence */ }
+            if (!canvas) { resolve(null); return; }
+            canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.75);
+        };
+
+        // Luminance moyenne du cadre : un décodage pas encore prêt donne un cadre
+        // (quasi) noir, inutilisable comme miniature. Seuil volontairement bas
+        // pour ne pas écarter les vidéos sombres légitimes.
+        const luminance = (canvas) => {
+            try {
+                const ctx = canvas.getContext('2d');
+                const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                let sum = 0;
+                for (let i = 0; i < data.length; i += 40) {
+                    sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                }
+                return sum / (data.length / 40);
+            } catch (e) {
+                return 255; // canvas illisible → on garde quand même le frame
+            }
+        };
+
+        const drawFrame = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = maxW;
+                canvas.height = maxH;
+                canvas.getContext('2d').drawImage(videoEl, 0, 0, maxW, maxH);
+                return canvas;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const tryCapture = () => {
+            if (settled) return;
+            const canvas = drawFrame();
+            if (canvas && luminance(canvas) > 10) { finish(canvas); return; }
+            if (++tries >= 8) { finish(canvas); return; }
+            setTimeout(tryCapture, 120);
+        };
+
+        // On vise légèrement après le début pour éviter la première image noire.
+        const target = Math.min(2, Math.max(0.1, (videoEl.duration || 2) * 0.2));
+        videoEl.muted = true;
+        videoEl.currentTime = target;
+        videoEl.addEventListener('seeked', () => {
+            videoEl.play().catch(() => {});
+            setTimeout(tryCapture, 200);
+        }, { once: true });
+        // Filet de sécurité (iOS : un seek seul peut ne rien décoder)…
+        setTimeout(() => {
+            if (settled) return;
+            videoEl.play().catch(() => {});
+            setTimeout(tryCapture, 300);
+        }, 900);
+    });
+}
+
+    // Envoie la miniature (poster) au serveur pour la stocker et la joindre au
+    // message vidéo. Sans conséquences en cas d'échec : la vidéo part quand même.
+    async function uploadVideoPoster(blob, pending) {
+        if (!blob) return;
+        const fd = new FormData();
+        fd.append('poster', blob, 'poster.jpg');
+        const res = await fetch(VIDEO_URL, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: fd,
+        });
+        if (res.ok && pending) {
+            const data = await res.json();
+            pending.posterPath = data.poster_path || null;
+            pending.posterUrl = data.poster_url || null;
+        }
+    }
+
     CAMERA_BTN.addEventListener('click', () => {
         closeGifPanel();
-        PHOTO_INPUT.accept = 'image/*';
+        PHOTO_INPUT.accept = 'image/*,video/*';
         // Pas de capture : sur iOS, sans cet attribut le picker ouvre la
-        // bibliothèque de photos (avec capture, il force l'appareil photo).
+        // bibliothèque de photos/vidéos (avec capture, il force l'appareil photo).
         PHOTO_INPUT.removeAttribute('capture');
         PHOTO_INPUT.removeAttribute('multiple');
         PHOTO_INPUT.click();
     });
-    PHOTO_INPUT.addEventListener('change', async () => {
+    PHOTO_INPUT.addEventListener('change', () => {
         const file = PHOTO_INPUT.files[0];
         if (!file) return;
-        if (file.size > 10 * 1024 * 1024) {
-            toast('Image trop lourde (max 10 Mo).', 'error');
+        const isVideo = (file.type || '').indexOf('video/') === 0;
+        const maxBytes = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
+        if (file.size > maxBytes) {
+            toast(isVideo ? 'Vidéo trop lourde (max 100 Mo).' : 'Image trop lourde (max 10 Mo).', 'error');
             PHOTO_INPUT.value = '';
             return;
         }
-        const fd = new FormData();
-        fd.append('photo', file);
-        try {
-            const res = await fetch(PHOTO_URL, {
+        // Aperçu INSTANTANÉ depuis le fichier local : l'écran s'ouvre tout de
+        // suite, avant même la fin de l'envoi (indispensable pour les vidéos
+        // lourdes). L'upload se fait en arrière-plan, puis on réutilise le chemin
+        // serveur pour l'envoi du message.
+        const localUrl = URL.createObjectURL(file);
+        SEND_SHEET_IMG.style.display = 'none';
+        SEND_SHEET_IMG.removeAttribute('src');
+        SEND_SHEET_VIDEO.style.display = 'none';
+        SEND_SHEET_VIDEO.removeAttribute('src');
+        SEND_SHEET_VIDEO.removeAttribute('poster');
+        setSheetMediaLoading(true);
+
+        const upload = async (fd) => {
+            const res = await fetch(isVideo ? VIDEO_URL : PHOTO_URL, {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
@@ -1880,36 +2352,112 @@
                 },
                 body: fd,
             });
-            if (res.ok) {
-                const data = await res.json();
-                pendingPhoto = { path: data.path, url: data.url };
-                PHOTO_PREVIEW_IMG.src = data.url;
-                PHOTO_PREVIEW_IMG.onload = () => {
-                    // On retient les dimensions natives : elles réservent la
-                    // hauteur de la bulle sans attendre le chargement côté fil.
-                    if (pendingPhoto) {
-                        pendingPhoto.w = PHOTO_PREVIEW_IMG.naturalWidth || 0;
-                        pendingPhoto.h = PHOTO_PREVIEW_IMG.naturalHeight || 0;
-                    }
-                };
-                PHOTO_PREVIEW.style.display = 'flex';
-                SEND_BTN.disabled = false;
-                INPUT_EL.focus();
-            } else {
+            if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                toast(err.message || 'Photo invalide.', 'error');
-                PHOTO_INPUT.value = '';
+                throw new Error(err.message || (isVideo ? 'Vidéo invalide.' : 'Photo invalide.'));
             }
-        } catch (e) {
-            toast('Connexion perdue.', 'error');
-            PHOTO_INPUT.value = '';
+            return res.json();
+        };
+
+        if (isVideo) {
+            pendingPhoto = null;
+            const v = {
+                localUrl,
+                path: null, url: null,
+                w: 0, h: 0,
+                sizeLabel: formatVideoSize(file.size),
+                durationLabel: '',
+                posterPath: null, posterUrl: null,
+                uploading: true, posterPending: true,
+            };
+            pendingVideo = v;
+            SEND_SHEET_VIDEO.style.display = 'block';
+            SEND_SHEET_VIDEO.onloadedmetadata = async () => {
+                if (pendingVideo !== v) return;
+                // Les dimensions natives réservent la hauteur de la bulle sans
+                // attendre le chargement de la vignette côté fil.
+                v.w = SEND_SHEET_VIDEO.videoWidth || 0;
+                v.h = SEND_SHEET_VIDEO.videoHeight || 0;
+                v.durationLabel = formatAudioTime(SEND_SHEET_VIDEO.duration);
+                // Miniature de la première frame (poster) : indispensable sur iOS,
+                // où un <video> sans poster reste noir. En cas d'échec (décodage
+                // impossible), on envoie quand même.
+                setSheetMediaLoading(true);
+                const blob = await grabVideoThumb(SEND_SHEET_VIDEO);
+                if (pendingVideo !== v) return;
+                if (blob !== null) {
+                    SEND_SHEET_VIDEO.poster = URL.createObjectURL(blob);
+                }
+                setSheetMediaLoading(false);
+                updateSheetControls();
+                uploadVideoPoster(blob, v)
+                    .then(() => { if (pendingVideo === v) { v.posterPending = false; updateSheetControls(); } })
+                    .catch(() => { if (pendingVideo === v) { v.posterPending = false; updateSheetControls(); } });
+            };
+            SEND_SHEET_VIDEO.src = localUrl;
+            openMediaSheet();
+            const fd = new FormData();
+            fd.append('video', file);
+            upload(fd)
+                .then((data) => {
+                    if (pendingVideo !== v) return;
+                    v.path = data.path;
+                    v.url = data.url;
+                    v.uploading = false;
+                    updateSheetControls();
+                })
+                .catch((err) => {
+                    toast(err && err.message ? err.message : 'Connexion perdue.', 'error');
+                    if (pendingVideo === v) hidePhotoPreview();
+                });
+        } else {
+            pendingVideo = null;
+            const p = { localUrl, path: null, url: null, w: 0, h: 0, uploading: true };
+            pendingPhoto = p;
+            SEND_SHEET_IMG.style.display = 'block';
+            SEND_SHEET_IMG.onload = () => {
+                // On retient les dimensions natives : elles réservent la hauteur
+                // de la bulle sans attendre le chargement côté fil.
+                if (pendingPhoto !== p) return;
+                p.w = SEND_SHEET_IMG.naturalWidth || 0;
+                p.h = SEND_SHEET_IMG.naturalHeight || 0;
+                setSheetMediaLoading(false);
+            };
+            SEND_SHEET_IMG.onerror = () => setSheetMediaLoading(false);
+            SEND_SHEET_IMG.src = localUrl;
+            openMediaSheet();
+            const fd = new FormData();
+            fd.append('photo', file);
+            upload(fd)
+                .then((data) => {
+                    if (pendingPhoto !== p) return;
+                    p.path = data.path;
+                    p.url = data.url;
+                    p.uploading = false;
+                    updateSheetControls();
+                })
+                .catch((err) => {
+                    toast(err && err.message ? err.message : 'Connexion perdue.', 'error');
+                    if (pendingPhoto === p) hidePhotoPreview();
+                });
         }
     });
-    PHOTO_PREVIEW_CLOSE.addEventListener('click', () => {
-        pendingPhoto = null;
+    SEND_SHEET_BACK.addEventListener('click', () => {
+        restoreCaptionToComposer();
         hidePhotoPreview();
-        refreshSendBtn();
     });
+    SEND_SHEET_CAPTION.addEventListener('input', () => {
+        pendingCaption = SEND_SHEET_CAPTION.value.trim();
+    });
+    SEND_SHEET_CAPTION.addEventListener('focus', layoutSheetForKeyboard);
+    SEND_SHEET_CAPTION.addEventListener('blur', layoutSheetForKeyboard);
+    SEND_SHEET_CAPTION.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (!SEND_SHEET_SEND.disabled) sendMessage();
+        }
+    });
+    SEND_SHEET_SEND.addEventListener('click', sendMessage);
     GIF_CLOSE.addEventListener('click', closeGifPanel);
     GIF_SEARCH.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -1994,6 +2542,32 @@
         requestAnimationFrame(() => {
             MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
         });
+// iOS : la barre d'URL se replie ~0,5 s après l'arrivée et redimensionne
+        // le viewport, ce qui décollait le fil du bas APRÈS le collage initial
+        // (on retombait quelques messages avant, puis le re-collage tardif créait
+        // un saut visible). Pendant les ~1,5 premières secondes, on maintient le
+        // fil en bas à chaque frame tant que rien ne l'a décroché : la correction
+        // est invisible. Dès que l'utilisateur fait défiler vers le haut (au-delà
+        // de la marge de tolérance), on libère tout et on ne recolle plus.
+        let initialScrollAway = false;
+        const watchInitialScroll = () => {
+            if (!wasAtBottom()) initialScrollAway = true;
+        };
+        MESSAGES_EL.addEventListener('scroll', watchInitialScroll, { passive: true });
+        const settleStart = Date.now();
+        const settleEnd = () => {
+            initialScrollAway = true;
+            MESSAGES_EL.removeEventListener('scroll', watchInitialScroll);
+        };
+        const pinDuringSettle = () => {
+            if (initialScrollAway || Date.now() - settleStart > 1500) {
+                settleEnd();
+                return;
+            }
+            if (!wasAtBottom()) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+            requestAnimationFrame(pinDuringSettle);
+        };
+        requestAnimationFrame(pinDuringSettle);
     }
     function bootPrerendered() {
         const el = document.getElementById('disc-init-messages');

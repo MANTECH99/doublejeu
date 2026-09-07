@@ -170,6 +170,82 @@ class DiscussionFlowTest extends TestCase
         $this->assertSame('Alice', $reply['reply_to']['sender_name']);
     }
 
+    public function test_reply_snapshot_carries_media_for_sticker_photo_and_video(): void
+    {
+        Storage::fake('public');
+
+        // Alice envoie un sticker (gif), une photo et une vidéo, sans texte.
+        $gif = $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), [
+                'body' => '',
+                'gif_url' => 'https://media.giphy.com/media/sticker/giphy.gif',
+                'gif_alt' => 'Chat qui rigole',
+            ])
+            ->assertOk()
+            ->json();
+
+        $photoUpload = $this->actingAs($this->alice)
+            ->post(route('discussion.photo'), ['photo' => UploadedFile::fake()->image('pique.png')])
+            ->assertOk()
+            ->json();
+        $photo = $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), [
+                'photo_path' => $photoUpload['path'],
+                'photo_w' => 800,
+                'photo_h' => 600,
+            ])
+            ->assertOk()
+            ->json();
+
+        $videoUpload = $this->actingAs($this->alice)
+            ->post(route('discussion.video'), ['video' => $this->smallMp4('film.mp4')])
+            ->assertOk()
+            ->json();
+        $video = $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), [
+                'video_path' => $videoUpload['path'],
+                'video_w' => 1280,
+                'video_h' => 720,
+            ])
+            ->assertOk()
+            ->json();
+
+        // Bob répond aux trois messages (avec un texte, comme en vrai — le corps
+        // du message cité, lui, est vide pour les média).
+        foreach ([[$gif['id'], 'Ha ha !'], [$photo['id'], 'Magnifique !'], [$video['id'], 'Joli film !']] as [$targetId, $replyBody]) {
+            $this->actingAs($this->bob)
+                ->postJson(route('discussion.send'), [
+                    'body' => $replyBody,
+                    'reply_to_id' => $targetId,
+                ])
+                ->assertOk();
+        }
+
+        // Le snapshot envoyé au couple expose la vignette du message cité (le corps
+        // est vide pour ces types → rien ne doit manquer côté destinataire).
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $replies = collect($fetch['messages'])->filter(fn ($m) => ! empty($m['reply_to']))->values();
+        $this->assertCount(3, $replies);
+
+        $rGif = $replies->first(fn ($m) => $m['reply_to']['is_gif']);
+        $this->assertSame($gif['id'], $rGif['reply_to']['id']);
+        $this->assertSame('https://media.giphy.com/media/sticker/giphy.gif', $rGif['reply_to']['gif_url']);
+        $this->assertFalse($rGif['reply_to']['is_photo']);
+        $this->assertFalse($rGif['reply_to']['is_video']);
+
+        $rPhoto = $replies->first(fn ($m) => $m['reply_to']['is_photo']);
+        $this->assertSame($photo['id'], $rPhoto['reply_to']['id']);
+        $this->assertSame('/storage/'.$photoUpload['path'], $rPhoto['reply_to']['photo_url']);
+
+        $rVideo = $replies->first(fn ($m) => $m['reply_to']['is_video']);
+        $this->assertSame($video['id'], $rVideo['reply_to']['id']);
+        $this->assertSame('/storage/'.$videoUpload['path'], $rVideo['reply_to']['video_url']);
+    }
+
     public function test_partner_sees_typing_indicator_while_other_is_typing(): void
     {
         // Personne ne tape au départ.
@@ -736,6 +812,169 @@ class DiscussionFlowTest extends TestCase
         $this->actingAs($this->alice)
             ->postJson(route('discussion.send'), ['audio_path' => 'discussion-audio/introuvable.webm'])
             ->assertStatus(422);
+    }
+
+    public function test_partners_can_upload_send_and_receive_videos(): void
+    {
+        Storage::fake('public');
+
+        // Alice envoie une vidéo avec une légende.
+        $upload = $this->actingAs($this->alice)
+            ->post(route('discussion.video'), ['video' => $this->smallMp4('danse.mp4')])
+            ->assertOk()
+            ->json();
+
+        $path = $upload['path'];
+        Storage::disk('public')->assertExists($path);
+        $this->assertStringStartsWith('discussion-videos/', $path);
+        // L'URL est racine-relative : elle fonctionne depuis n'importe quel appareil
+        // du couple (même logique que les photos).
+        $this->assertSame('/storage/'.$path, $upload['url']);
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), [
+                'body' => 'La vidéo de notre week-end !',
+                'video_path' => $path,
+                'video_w' => 1280,
+                'video_h' => 720,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('messages', [
+            'couple_id' => $this->couple->id,
+            'video_path' => $path,
+            'video_w' => 1280,
+            'video_h' => 720,
+        ]);
+
+        // Bob reçoit la vidéo avec son URL publique et ses dimensions réservées.
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $video = $fetch['messages'][0];
+        $this->assertTrue($video['is_video']);
+        $this->assertSame('/storage/'.$path, $video['video_url']);
+        $this->assertSame('La vidéo de notre week-end !', $video['body']);
+        $this->assertSame(1280, $video['video_w']);
+        $this->assertSame(720, $video['video_h']);
+    }
+
+    public function test_video_upload_requires_a_valid_video_file(): void
+    {
+        Storage::fake('public');
+
+        // Sans fichier → 422.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.video'))
+            ->assertStatus(422);
+
+        // Fichier non-vidéo → 422.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.video'), ['video' => UploadedFile::fake()->create('note.txt', 10)])
+            ->assertStatus(422);
+
+        Storage::disk('public')->assertDirectoryEmpty('discussion-videos');
+    }
+
+    public function test_video_path_must_exist_on_disk_to_send(): void
+    {
+        Storage::fake('public');
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['video_path' => 'discussion-videos/introuvable.mp4'])
+            ->assertStatus(422);
+    }
+
+    public function test_video_poster_is_uploaded_stored_and_returned(): void
+    {
+        Storage::fake('public');
+
+        // Alice stocke une miniature (1ère frame) pour sa vidéo.
+        $poster = $this->actingAs($this->alice)
+            ->post(route('discussion.video'), ['poster' => UploadedFile::fake()->image('miniature.jpg')])
+            ->assertOk()
+            ->json();
+
+        $posterPath = $poster['poster_path'];
+        Storage::disk('public')->assertExists($posterPath);
+        $this->assertStringStartsWith('discussion-video-posters/', $posterPath);
+        $this->assertSame('/storage/'.$posterPath, $poster['poster_url']);
+
+        // Un poster seul n'est pas un message.
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['video_poster_path' => $posterPath])
+            ->assertStatus(422);
+
+        // Vidéo + poster : le poster est persisté sur le message.
+        $path = Storage::disk('public')->putFileAs('discussion-videos', $this->smallMp4('danse.mp4'), 'danse.mp4');
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), [
+                'body' => '',
+                'video_path' => $path,
+                'video_poster_path' => $posterPath,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('messages', [
+            'couple_id' => $this->couple->id,
+            'video_path' => $path,
+            'video_poster_path' => $posterPath,
+        ]);
+
+        // Bob reçoit la miniature : sans elle, iOS afficherait un cadre noir.
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $video = $fetch['messages'][0];
+        $this->assertTrue($video['is_video']);
+        $this->assertSame('/storage/'.$posterPath, $video['video_poster_url']);
+    }
+
+    public function test_video_cleared_when_message_deleted_for_all(): void
+    {
+        Storage::fake('public');
+
+        $path = Storage::disk('public')->putFileAs('discussion-videos', $this->smallMp4('secret.mp4'), 'secret.mp4');
+
+        $msg = Message::create([
+            'couple_id' => $this->couple->id,
+            'sender_id' => $this->alice->id,
+            'body' => '',
+            'video_path' => $path,
+        ]);
+
+        $this->actingAs($this->alice)
+            ->deleteJson(route('discussion.delete', $msg->id), ['mode' => 'all'])
+            ->assertOk();
+
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $this->assertTrue($fetch['messages'][0]['deleted_for_all']);
+        $this->assertNull($fetch['messages'][0]['video_url']);
+        $this->assertFalse($fetch['messages'][0]['is_video']);
+    }
+
+    /**
+     * Construit un vrai fichier MP4 minimal (boîte ftyp valide) pour passer la
+     * validation mimes:mp4. Les fichiers "fake" de Laravel ne contiennent que des
+     * zéros : finfo les détecterait comme octet-stream et les rejetterait.
+     */
+    private function smallMp4(string $name, int $kilobytes = 64): UploadedFile
+    {
+        $header = "\x00\x00\x00\x20ftypisom\x00\x00\x02\x00isomiso2avc1mp41";
+
+        $temp = tempnam(sys_get_temp_dir(), 'video');
+        file_put_contents($temp, $header.str_repeat("\0", max(0, $kilobytes * 1024 - strlen($header))));
+
+        return new UploadedFile($temp, $name, 'video/mp4', null, true);
     }
 
     /**
