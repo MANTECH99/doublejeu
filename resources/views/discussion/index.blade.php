@@ -504,7 +504,13 @@
     // Ensemble des id déjà rendus pour éviter tout doublon.
     const renderedIds = new Set();
     let lastMessageId = 0;
-    let lastDate = '';
+    // Pré-rendu « derniers messages d'abord » : on construit de façon synchrone
+    // uniquement la fin du fil (ce qui est visible en arrivant), puis les plus
+    // anciens s'empilent AU-DESSUS par lots (rAF). bootAnchor est le point
+    // d'insertion invisible qui sépare l'historique construit des suivants ;
+    // prefillDone est faux tant que l'historique injecté n'est pas tout rendu.
+    let bootAnchor = null;
+    let prefillDone = true;
     let sending = false;
     let replyTarget = null; // {id, sender_name, body, is_gif, gif_url, is_photo, photo_url, is_video, video_url, video_poster_url}
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
@@ -908,21 +914,36 @@
 
         const isMe = String(msg.sender_id) === String(MY_ID);
 
+        // Les messages plus anciens que le point d'ancrage s'insèrent AVANT lui
+        // (au-dessus du fil) ; les autres (id positif plus grand, y compris les
+        // nouveaux et les optimistes, dont l'id est négatif) sont ajoutés en fin.
+        // L'ordre chronologique est donc toujours respecté, même quand
+        // l'historique est construit en plusieurs passes.
+        const before = (bootAnchor && Number(msg.id) > 0 && Number(msg.id) < Number(bootAnchor.dataset.id))
+            ? bootAnchor
+            : null;
+
         // Retire le bloc d'accueil dès le premier message rendu.
         const welcome = MESSAGES_EL.querySelector('.disc-welcome');
         if (welcome) welcome.remove();
 
-        if (msg.date !== lastDate) {
-            lastDate = msg.date;
+        // Le 1er message du pré-rendu n'a pas de séparateur si un historique
+        // plus ancien (non encore construit) le précède : le drapeau est
+        // consommé au premier buildBubble.
+        const bootNoSep = MESSAGES_EL.dataset.bootNoSep === '1';
+        if (bootNoSep) delete MESSAGES_EL.dataset.bootNoSep;
+        if (!bootNoSep && msg.date !== msgDateBefore(before)) {
             const sep = document.createElement('div');
             sep.className = 'disc-date-sep';
             sep.innerHTML = '<span>' + escHtml(formatDate(msg.date)) + '</span>';
-            MESSAGES_EL.appendChild(sep);
+            if (before) MESSAGES_EL.insertBefore(sep, before);
+            else MESSAGES_EL.appendChild(sep);
         }
 
         const wrap = document.createElement('div');
         wrap.className = 'disc-bubble-wrap ' + (isMe ? 'me' : 'them');
         wrap.dataset.id = msg.id;
+        wrap.dataset.date = msg.date;
 
         const bubble = document.createElement('div');
         bubble.className = 'disc-bubble ' + (isMe ? 'me' : 'them');
@@ -937,7 +958,8 @@
                 : 'Ce message a été supprimé';
             bubble.appendChild(txt);
             wrap.appendChild(bubble);
-            MESSAGES_EL.appendChild(wrap);
+            if (before) MESSAGES_EL.insertBefore(wrap, before);
+            else MESSAGES_EL.appendChild(wrap);
             return;
         }
 
@@ -1145,7 +1167,8 @@
 
         wrap.appendChild(bubble);
         wrap.appendChild(meta);
-        MESSAGES_EL.appendChild(wrap);
+        if (before) MESSAGES_EL.insertBefore(wrap, before);
+        else MESSAGES_EL.appendChild(wrap);
 
         // Sélection (clic droit/long press) + répondre (swipe droite) : partagé
         // avec les bulles pré-rendues côté serveur.
@@ -1164,6 +1187,22 @@
             check.textContent = isLu ? '✓✓' : '✓';
             check.classList.toggle('lu', isLu);
         }
+    }
+
+    // Date du message rendu juste avant un point d'insertion (ou dernière bulle
+    // du fil pour un ajout en fin). On remonte les .disc-bubble-wrap ; les
+    // séparateurs de date sont ignorés car seule la bulle compte : un séparateur
+    // est posé quand la date change par rapport au message voisin RÉEL dans le
+    // DOM. Robuste quel que soit l'ordre des passes de construction.
+    function msgDateBefore(before) {
+        let node = before ? before.previousElementSibling : MESSAGES_EL.lastElementChild;
+        while (node) {
+            if (node.classList && node.classList.contains('disc-bubble-wrap')) {
+                return node.dataset.date || '';
+            }
+            node = node.previousElementSibling;
+        }
+        return '';
     }
 
     function wasAtBottom() {
@@ -1197,17 +1236,26 @@
             const hasIncoming = (data.messages || []).some(m => String(m.sender_id) !== String(MY_ID) && !renderedIds.has(m.id));
 
             if (data.messages && data.messages.length > 0) {
-                for (const msg of data.messages) {
-                    buildBubble(msg);
-                }
-                syncReadState(data.messages);
-                // Au tout premier chargement on colle directement tout en bas (scroll
-                // instantané), sinon on reste en bas de façon animée à chaque poll.
-                if (initialLoad) {
-                    scrollToBottom();
-                    stickyToBottomOnce();
-                } else if (bottom || hasIncoming) {
-                    scrollToBottom();
+                if (!prefillDone) {
+                    // Pendant le pré-rendu des plus anciens (lots rAF), on ne
+                    // construit RIEN ici : le batch les insère dans l'ordre au
+                    //-dessus du fil. On synchronise seulement l'état "lu" des
+                    // bulles déjà affichées.
+                    syncReadState(data.messages);
+                } else {
+                    for (const msg of data.messages) {
+                        buildBubble(msg);
+                    }
+                    syncReadState(data.messages);
+                    // Au tout premier chargement on colle directement tout en bas
+                    // (scroll instantané), sinon on reste en bas de façon animée à
+                    // chaque poll.
+                    if (initialLoad) {
+                        scrollToBottom();
+                        stickyToBottomOnce();
+                    } else if (bottom || hasIncoming) {
+                        scrollToBottom();
+                    }
                 }
             }
 
@@ -2525,11 +2573,16 @@ function grabVideoThumb(videoEl) {
     // #disc-init-messages sont construits avec buildBubble (le MÊME rendu que le
     // fetch) pendant le parse, donc avant la première peinture. Aucun HTML de
     // bulle n'est écrit côté serveur : l'affichage ne peut pas différer.
-    // La zone reste invisible (visibility:hidden) seulement le temps de construire
-    // toutes les bulles de façon synchrone pendant le parse. Les photos ont une
-    // hauteur réservée (aspect-ratio) → le chargement ne peut plus décaler le
-    // fil : on révèle d'un coup, sur la hauteur finale, avant la première
-    // peinture → ouverture directe sur le dernier message, sans défilement.
+    // Pour ne pas bloquer la première peinture (écran noir sur les longs
+    // historiques), on construit de façon synchrone seulement LA FIN du fil
+    // (les ~50 derniers messages, la partie visible en arrivant) ; les plus
+    // anciens sont ensuite construits après la peinture, par lots (rAF), et
+    // insérés AU-DESSUS. Sur le visible, rien ne bouge : la zone reste invisible
+    // (visibility:hidden) seulement le temps de pré-afficher la fin du fil.
+    // Les photos réservent leur hauteur (aspect-ratio/width) → le chargement ne
+    // décale pas le fil : on révèle d'un coup sur la hauteur finale des derniers
+    // messages, avant la première peinture → ouverture directe sur le dernier
+    // message, sans défilement.
     let discRevealed = false;
     function revealDisc() {
         if (discRevealed) return;
@@ -2578,12 +2631,92 @@ function grabVideoThumb(videoEl) {
             } catch (err) {
                 list = [];
             }
-            for (const m of list) buildBubble(m);
         }
-        // Tous les médias ont une hauteur réservée (photos via dimensions natives,
-        // GIF via carré 1/1) : le chargement ne peut pas décaler le fil, donc on
-        // révèle immédiatement, sans écran noir.
+        if (list.length === 0) {
+            revealDisc();
+            return;
+        }
+
+        // On sépare : la fin du fil (pré-affiche synchrone) et les plus anciens
+        // (construits après la peinture, sans bloquer).
+        const TAIL_LEN = 50;
+        const splitAt = Math.max(0, list.length - TAIL_LEN);
+        const older = list.slice(0, splitAt);
+        const tail = list.slice(splitAt);
+
+        // Point d'insertion invisible placé à la fin : la fin du fil se rend en
+        // dessous de lui, les plus anciens s'empileront juste au-dessus →
+        // ordre chronologique conservé quelle que soit l'ordre des passes.
+        bootAnchor = document.createElement('i');
+        bootAnchor.className = 'disc-boot-anchor';
+        bootAnchor.style.display = 'none';
+        bootAnchor.dataset.id = tail[0].id;
+        bootAnchor.dataset.bootDate = tail[0].date || '';
+        MESSAGES_EL.appendChild(bootAnchor);
+
+        // Le premier message du pré-rendu succède à un historique non construit :
+        // on ne pose AUCUN séparateur devant lui (le joint est géré quand les
+        // plus anciens arrivent). Le très premier message de la conversation
+        // garde son séparateur (cas où tout tient dans la fin pré-affichée).
+        if (older.length > 0 && tail[0]) {
+            MESSAGES_EL.dataset.bootNoSep = '1';
+        }
+        for (const m of tail) buildBubble(m);
+        // Tous les médias réservent leur hauteur (photos via dimensions natives,
+        // GIF via carré 1/1) : le chargement ne décale pas le fil, on révèle
+        // immédiatement sans écran noir pour la partie visible.
         revealDisc();
+
+        // Les messages plus anciens se construisent après la première peinture,
+        // par lots (rAF), sans rien bloquer (le visible reste en bas).
+        if (older.length > 0) {
+            prefillDone = false;
+            prefillOlder(older);
+        }
+    }
+
+    // Colle le séparateur de date manquant au joint : le premier message du
+    // pré-rendu n'en a pas (hérité d'un historique non encore construit) ; quand
+    // les plus anciens arrivent et changent de jour, on le pose a posteriori.
+    function joinSep(anchor) {
+        if (!anchor || !anchor.dataset.bootDate) return;
+        const prev = anchor.previousElementSibling;
+        if (!prev || prev.classList.contains('disc-bubble-wrap') === false) return;
+        if ((prev.dataset.date || '') === anchor.dataset.bootDate) return;
+        const sep = document.createElement('div');
+        sep.className = 'disc-date-sep';
+        sep.innerHTML = '<span>' + escHtml(formatDate(anchor.dataset.bootDate)) + '</span>';
+        MESSAGES_EL.insertBefore(sep, anchor);
+    }
+
+    function prefillOlder(older) {
+        // On construit l'historique restant par petits lots sur plusieurs frames :
+        // la page est déjà affichée et reste interactive pendant ce temps. Les
+        // bulles s'insèrent avant bootAnchor (au-dessus du fil), dans l'ordre.
+        const CHUNK = 20;
+        let i = 0;
+        const step = () => {
+            const h0 = MESSAGES_EL.scrollHeight;
+            const end = Math.min(i + CHUNK, older.length);
+            for (; i < end; i++) buildBubble(older[i]);
+            // Compense l'insertion du lot : si l'utilisateur est en bas, on reste
+            // collé ; sinon on garde la portion affichée stable (le contenu ajouté
+            // au-dessus ne le fait pas sauter).
+            const added = MESSAGES_EL.scrollHeight - h0;
+            if (wasAtBottom()) {
+                MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+            } else if (added > 0) {
+                MESSAGES_EL.scrollTop += added;
+            }
+            if (i < older.length) {
+                requestAnimationFrame(step);
+            } else {
+                joinSep(bootAnchor);
+                prefillDone = true;
+                if (wasAtBottom()) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+            }
+        };
+        requestAnimationFrame(step);
     }
 
     // Mobile : la barre d'URL se replie ~0,5 s après l'arrivée et agrandit le
