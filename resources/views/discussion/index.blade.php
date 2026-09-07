@@ -648,8 +648,24 @@
         img.src = src;
         img.alt = quoteLabel(q);
         img.loading = 'lazy';
-        img.addEventListener('click', (e) => e.stopPropagation());
         return img;
+    }
+
+    // Scroll vers le message cité (façon WhatsApp) + anneau de repérage. Si la
+    // bulle n'est pas encore construite (pré-rendu des plus anciens en cours),
+    // on réessaie pendant quelques secondes.
+    function gotoMessage(id, attempts) {
+        const tries = attempts || 0;
+        const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + id + '"]');
+        if (!wrap) {
+            if (tries < 20) setTimeout(() => gotoMessage(id, tries + 1), 200);
+            return;
+        }
+        MESSAGES_EL.querySelector('.disc-bubble-wrap.disc-flash')?.classList.remove('disc-flash');
+        wrap.classList.add('disc-flash');
+        setTimeout(() => wrap.classList.remove('disc-flash'), 2400);
+        const top = wrap.offsetTop - MESSAGES_EL.clientHeight / 2 + wrap.offsetHeight / 2;
+        MESSAGES_EL.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     }
 
     function setReply(msg) {
@@ -975,13 +991,20 @@
             const who = meSaid ? 'Toi' : (msg.reply_to.sender_name || '…');
             qName.textContent = '↪️ ' + who + ' : ' + quoteLabel(msg.reply_to);
             const qThumb = quoteThumbNode(msg.reply_to, ' disc-quoted-thumb');
-            if (qThumb) {
-                // Clic sur la vignette citée : aucun passage en mode sélection.
-                qThumb.addEventListener('click', (e) => e.stopPropagation());
-                qRow.appendChild(qThumb);
-            }
+            if (qThumb) qRow.appendChild(qThumb);
             qRow.appendChild(qName);
             quoted.appendChild(qRow);
+            // Clic sur la citation → scroll vers le message cité (façon WhatsApp).
+            quoted.setAttribute('role', 'button');
+            quoted.setAttribute('aria-label', 'Voir le message cité');
+            quoted.addEventListener('click', (e) => {
+                e.stopPropagation();
+                gotoMessage(msg.reply_to.id);
+            });
+            // Le tap/long-press sur la citation n'ouvre PAS la sélection de la
+            // bulle : on ne fait que sauter vers le message cité.
+            quoted.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            quoted.addEventListener('contextmenu', (e) => e.stopPropagation());
             bubble.appendChild(quoted);
         }
 

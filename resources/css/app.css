@@ -913,6 +913,19 @@ summary.btn::-webkit-details-marker { display: none; }
     border-radius: 8px;
     padding: 6px 10px;
     margin: -4px -2px 8px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+.disc-quoted:active {
+    opacity: 0.7;
+}
+/* Repère du message cité au scroll (façon WhatsApp) : anneau doré pulsant. */
+@keyframes discFlash {
+    0% { box-shadow: 0 0 0 0 rgba(255, 224, 87, 0.85); }
+    100% { box-shadow: 0 0 0 16px rgba(255, 224, 87, 0); }
+}
+.disc-bubble-wrap.disc-flash .disc-bubble {
+    animation: discFlash 0.9s ease-out 2;
 }
 .disc-bubble.them .disc-quoted {
     background: rgba(230, 57, 70, 0.08);
