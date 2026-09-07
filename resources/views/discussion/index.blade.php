@@ -1325,6 +1325,51 @@
         }
     }
 
+    // Petit son d'envoi (façon WhatsApp/sent moderne) : généré par Web Audio, sans
+    // fichier audio. Simple retour sonore au moment où l'on envoie (aucun rapport
+    // avec le son des notifications système).
+    let sendCtx = null;
+    // iOS : un AudioContext créé ou repris hors d'un geste utilisateur reste
+    // suspendu (aucun son). On le crée et le déverrouille dès le TOUT PREMIER
+    // geste sur la page (même un tap sans rapport) : pour le premier envoi, le
+    // contexte est déjà prêt à jouer.
+    function unlockSendAudio() {
+        if (sendCtx) return;
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        try {
+            sendCtx = new AC();
+            sendCtx.resume().catch(() => {});
+        } catch (e) {
+            sendCtx = null;
+        }
+    }
+    ['pointerdown', 'touchstart', 'keydown'].forEach((ev) =>
+        document.addEventListener(ev, () => unlockSendAudio(), { once: true, passive: true })
+    );
+    function playSendSound() {
+        if (!sendCtx) unlockSendAudio();
+        if (!sendCtx) return;
+        try {
+            if (sendCtx.state === 'suspended') sendCtx.resume().catch(() => {});
+            // On joue même si l'état n'est pas encore 'running' : sur iOS la
+            // reprise est asynchrone, les notes partiront dès que possible (petit
+            // décalage imperceptible, jamais de son perdu).
+            const t = sendCtx.currentTime + 0.02;
+            const osc = sendCtx.createOscillator();
+            const gain = sendCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(520, t);
+            osc.frequency.exponentialRampToValueAtTime(980, t + 0.1);
+            gain.gain.setValueAtTime(0.0001, t);
+            gain.gain.exponentialRampToValueAtTime(0.09, t + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+            osc.connect(gain).connect(sendCtx.destination);
+            osc.start(t);
+            osc.stop(t + 0.3);
+        } catch (e) { /* ignore */ }
+    }
+
     async function sendMessage() {
         // Depuis l'écran de prévisualisation, le texte envoyé est la légende.
         const sheetOpen = (pendingPhoto || pendingVideo) && SEND_SHEET.style.display !== 'none';
@@ -1410,6 +1455,7 @@
         };
         buildBubble(optimistic);
         scrollToBottom();
+        playSendSound();
         setReply(null);
         pendingGif = null;
         pendingPhoto = null;
