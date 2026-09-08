@@ -278,6 +278,47 @@ class CalendrierFlowTest extends TestCase
         $this->assertStringContainsString('id="cal-save-spinner"', $view->getContent());
     }
 
+    public function test_activity_time_is_serialized_in_requester_timezone(): void
+    {
+        // Alice (Paris, UTC+2) crée une activité à 15h30.
+        $this->actingAs($this->alice)
+            ->postJson(route('calendrier.creer'), [
+                'date' => '2026-09-10',
+                'titre' => 'Rendez-vous',
+                'heure_debut' => '15:30',
+                'heure_fin' => '16:30',
+                'timezone' => 'Europe/Paris',
+            ])->assertOk()
+            ->assertJsonPath('creneau.heure_debut', '15:30')
+            ->assertJsonPath('creneau.heure_fin', '16:30');
+
+        // L'instant est stocké en UTC (13h30).
+        $this->assertDatabaseHas('calendrier_creneaux', [
+            'titre' => 'Rendez-vous',
+            'date_jour' => '2026-09-10',
+            'heure_debut' => '15:30',
+            'debut_utc' => '2026-09-10 13:30:00',
+            'fin_utc' => '2026-09-10 14:30:00',
+        ]);
+
+        // Bob (Sénégal, UTC+0) voit l'activité convertie à son heure locale.
+        $etatBob = $this->actingAs($this->bob)
+            ->getJson(route('calendrier.state', ['date' => '2026-09-10', 'tz' => 'Africa/Dakar']))
+            ->assertOk()
+            ->json();
+        $this->assertCount(1, $etatBob['creneaux']);
+        $this->assertSame('13:30', $etatBob['creneaux'][0]['heure_debut']);
+        $this->assertSame('14:30', $etatBob['creneaux'][0]['heure_fin']);
+
+        // Alice la revoit à son heure (15h30) de son côté.
+        $etatAlice = $this->actingAs($this->alice)
+            ->getJson(route('calendrier.state', ['date' => '2026-09-10', 'tz' => 'Europe/Paris']))
+            ->assertOk()
+            ->json();
+        $this->assertSame('15:30', $etatAlice['creneaux'][0]['heure_debut']);
+        $this->assertSame('16:30', $etatAlice['creneaux'][0]['heure_fin']);
+    }
+
     public function test_state_defaults_to_today_and_filters_by_date(): void
     {
         $this->travelTo('2026-09-10 15:00:00');

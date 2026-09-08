@@ -107,6 +107,9 @@
         const calPartnerId = @json($couple->partnerOf(Auth::user())->id);
         const CAL_COULEURS = @json($couleurs);
         const CAL_DEFAUT = @json(\App\Http\Controllers\CalendrierController::DEFAULT_COULEUR);
+        // Fuseau du visiteur (nom IANA) : le serveur stocke l'instant en UTC et
+        // renvoie les heures converties dans LE fuseau de celui qui regarde.
+        const calTz = () => (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
 
         function calEsc(s) {
             const d = document.createElement('div');
@@ -213,7 +216,7 @@
         }
 
         async function calCharger() {
-            const res = await api(calStateUrl + '?date=' + calJour, { json: false });
+            const res = await api(calStateUrl + '?date=' + calJour + '&tz=' + encodeURIComponent(calTz()), { json: false });
             if (res.ok) {
                 calCreneaux = res.data.creneaux;
                 calRender();
@@ -328,9 +331,9 @@
             let res;
             try {
                 if (etaitModif) {
-                    res = await api(calBaseUrl + '/' + calEditeId, { method: 'PUT', body: { titre, raison, heure_debut: debut, heure_fin: fin, couleur } });
+                    res = await api(calBaseUrl + '/' + calEditeId, { method: 'PUT', body: { titre, raison, heure_debut: debut, heure_fin: fin, couleur, timezone: calTz() } });
                 } else {
-                    res = await api(calBaseUrl + '/creer', { method: 'POST', body: { date: calJour, titre, raison, heure_debut: debut, heure_fin: fin, couleur } });
+                    res = await api(calBaseUrl + '/creer', { method: 'POST', body: { date: calJour, titre, raison, heure_debut: debut, heure_fin: fin, couleur, timezone: calTz() } });
                 }
             } finally {
                 calSaving = false;
@@ -377,7 +380,7 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             calJour = calTodayStr();
-            startPolling(calStateUrl + '?date=' + calJour, (data) => {
+            startPolling(calStateUrl + '?date=' + calJour + '&tz=' + encodeURIComponent(calTz()), (data) => {
                 // On ne met à jour que si on regarde toujours le même jour.
                 if (data.date === calJour) {
                     calCreneaux = data.creneaux;
