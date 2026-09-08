@@ -7,6 +7,7 @@ use App\Models\GifFavorite;
 use App\Models\Message;
 use App\Models\User;
 use App\Services\PushService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
@@ -79,6 +80,32 @@ class DiscussionFlowTest extends TestCase
             ->json();
 
         $this->assertTrue($aliceFetch['messages'][0]['lu']);
+    }
+
+    public function test_fetch_returns_utc_timestamps_for_client_localization(): void
+    {
+        // Message envoyé à 15h30 : le client doit recevoir un timestamp ISO
+        // complet en UTC (jamais une heure pré-formatée) — chacun des deux
+        // partenaires affiche alors l'heure de SON fuseau.
+        $createdAt = Carbon::parse('2026-09-08 15:30:00', config('app.timezone'));
+        $msg = Message::create([
+            'couple_id' => $this->couple->id,
+            'sender_id' => $this->alice->id,
+            'body' => 'Bonjour',
+        ]);
+        $msg->created_at = $createdAt;
+        $msg->save();
+
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $ts = $fetch['messages'][0]['created_at'];
+        $this->assertSame($createdAt->utc()->toIso8601String(), $ts);
+        $this->assertNotSame('15:30', $ts, 'L\'heure ne doit pas être pré-formatée côté serveur.');
+        $this->assertSame('2026-09-08 15:30:00', Carbon::parse($ts)->utc()->format('Y-m-d H:i:s'));
+        $this->assertArrayNotHasKey('date', $fetch['messages'][0], 'La date est désormais dérivée côté client.');
     }
 
     public function test_fetch_incrementally_returns_only_new_messages(): void

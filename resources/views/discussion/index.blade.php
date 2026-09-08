@@ -580,6 +580,23 @@
         return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     }
 
+    // Le serveur envoie un timestamp UTC : chaque lecteur doit voir l'heure de
+    // SON propre fuseau (ex. France vs Sénégal). On dérive ici l'heure et la
+    // date locales depuis le timestamp ; un message déjà créé côté client
+    // (optimiste) est déjà en heure locale et n'est pas retouché.
+    function localizeMsg(msg) {
+        if (!msg || /^\d{2}:\d{2}$/.test(msg.created_at || '')) return msg;
+        if (msg.created_at) {
+            const d = new Date(msg.created_at);
+            if (!isNaN(d.getTime())) {
+                const p2 = (n) => (n < 10 ? '0' : '') + n;
+                msg.created_at = p2(d.getHours()) + ':' + p2(d.getMinutes());
+                msg.date = d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+            }
+        }
+        return msg;
+    }
+
     function escHtml(s) {
         const el = document.createElement('div');
         el.textContent = s;
@@ -922,6 +939,7 @@
     }
 
     function buildBubble(msg) {
+        localizeMsg(msg);
         if (renderedIds.has(msg.id)) {
             return;
         }
@@ -2701,6 +2719,7 @@ function grabVideoThumb(videoEl) {
                 list = [];
             }
         }
+        list = list.map(localizeMsg);
         if (list.length === 0) {
             revealDisc();
             return;

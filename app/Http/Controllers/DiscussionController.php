@@ -112,8 +112,7 @@ class DiscussionController extends Controller
                 'lu' => $m->isRead(),
                 'deleted_for_all' => $deletedForAll,
                 'deleted_by_me' => $deletedForAll && $m->deleted_by === $userId,
-                'created_at' => $m->created_at->format('H:i'),
-                'date' => $m->created_at->format('Y-m-d'),
+                'created_at' => $m->created_at->utc()->toIso8601String(),
                 'reply_to' => $m->replyTo && ! $deletedForAll ? [
                     'id' => $m->replyTo->id,
                     'sender_id' => $m->replyTo->sender_id,
