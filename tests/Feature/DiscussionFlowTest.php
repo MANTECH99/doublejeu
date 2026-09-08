@@ -273,6 +273,38 @@ class DiscussionFlowTest extends TestCase
         $this->assertSame('/storage/'.$videoUpload['path'], $rVideo['reply_to']['video_url']);
     }
 
+    public function test_reply_to_audio_preserves_is_audio_and_duration(): void
+    {
+        // Alice envoie un vocal.
+        $audio = Message::create([
+            'couple_id' => $this->couple->id,
+            'sender_id' => $this->alice->id,
+            'audio_path' => 'discussion-audio/vocal.webm',
+            'audio_duration' => 7,
+            'body' => '',
+        ]);
+
+        // Bob répond à ce vocal.
+        $this->actingAs($this->bob)
+            ->postJson(route('discussion.send'), [
+                'body' => 'J\'ai bien entendu',
+                'reply_to_id' => $audio->id,
+            ])
+            ->assertOk();
+
+        // Après rechargement, le destinataire voit toujours le type vocal ET la
+        // durée du message cité (le champ audio_duration doit être eagerly-loaded).
+        $fetch = $this->actingAs($this->alice)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $reply = collect($fetch['messages'])->firstWhere(fn ($m) => ! empty($m['reply_to']));
+        $this->assertNotNull($reply);
+        $this->assertTrue($reply['reply_to']['is_audio']);
+        $this->assertSame(7, $reply['reply_to']['audio_duration']);
+    }
+
     public function test_partner_sees_typing_indicator_while_other_is_typing(): void
     {
         // Personne ne tape au départ.

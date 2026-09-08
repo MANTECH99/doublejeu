@@ -622,6 +622,7 @@
             video_url: msg.video_url || null,
             video_poster_url: msg.video_poster_url || null,
             is_audio: !!msg.is_audio,
+            audio_duration: msg.audio_duration || null,
         };
     }
 
@@ -632,7 +633,7 @@
         if (q && q.is_gif) return 'Sticker';
         if (q && q.is_photo) return '📷 Photo';
         if (q && q.is_video) return '🎬 Vidéo';
-        if (q && q.is_audio) return '🎤 Vocal';
+        if (q && q.is_audio) return '🎤 Vocal : ' + formatAudioTime(q.audio_duration);
         return '';
     }
 

@@ -65,7 +65,7 @@ class DiscussionController extends Controller
         // strictement le rendu JS habituel, mais l'ouverture arrive directe en bas.
         $messages = Message::where('couple_id', $couple->id)
             ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', Auth::id()))
-            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path'])
+            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path,audio_path,audio_duration'])
             ->orderByDesc('id')
             ->get()
             ->reverse()
@@ -126,6 +126,7 @@ class DiscussionController extends Controller
                     'video_url' => $this->videoUrl($m->replyTo->video_path),
                     'video_poster_url' => $this->photoUrl($m->replyTo->video_poster_path),
                     'is_audio' => $m->replyTo->isAudio(),
+                    'audio_duration' => $m->replyTo->audio_duration,
                 ] : null,
             ];
         })->values()->all();
@@ -144,7 +145,7 @@ class DiscussionController extends Controller
 
         $query = Message::where('couple_id', $couple->id)
             ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', $request->user()->id))
-            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path']);
+            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path,audio_path,audio_duration']);
 
         if ($apresId > 0) {
             // Poll incrémental : seuls les nouveaux messages depuis le dernier id.
