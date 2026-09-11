@@ -504,6 +504,9 @@
     // Ensemble des id déjà rendus pour éviter tout doublon.
     const renderedIds = new Set();
     let lastMessageId = 0;
+    // Correspondance id temporaire (optimiste) → id serveur, pour retrouver un
+    // message envoyé juste avant sa réconciliation (ex. suppression immédiate).
+    const tmpToRealId = new Map();
     // Pré-rendu « derniers messages d'abord » : on construit de façon synchrone
     // uniquement la fin du fil (ce qui est visible en arrivant), puis les plus
     // anciens s'empilent AU-DESSUS par lots (rAF). bootAnchor est le point
@@ -788,9 +791,19 @@
         deleteMessages(Array.from(selectedMsgs.keys()), 'all');
     });
 
+    // L'id d'un message optimiste est négatif (temporaire) jusqu'à la réponse
+    // du serveur. Pour une action (suppression) effectuée avant réconciliation,
+    // on retourne l'id serveur via tmpToRealId ; sinon on garde l'id tel quel.
+    function resolveServerId(id) {
+        if (Number(id) > 0) return id;
+        return tmpToRealId.get(id) ?? null;
+    }
+
     async function deleteMessages(ids, mode) {
         let failed = false;
-        for (const id of ids) {
+        for (const rawId of ids) {
+            const id = await resolveServerId(rawId);
+            if (id == null) continue;
             try {
                 const res = await fetch(DELETE_URL + id, {
                     method: 'DELETE',
@@ -817,9 +830,11 @@
                             }
                             wrap.replaceWith(wrap.cloneNode(true));
                         }
+                        selectedMsgs.delete(rawId);
                         selectedMsgs.delete(id);
                     } else {
                         if (wrap) wrap.remove();
+                        selectedMsgs.delete(rawId);
                         selectedMsgs.delete(id);
                         renderedIds.delete(id);
                     }
@@ -1515,9 +1530,12 @@
                 if (msg) {
                     // Réconcilie le message affiché avec le vrai id du serveur.
                     msg.dataset.id = data.id;
+                    tmpToRealId.set(tmpId, data.id);
                     renderedIds.delete(tmpId);
                     renderedIds.add(data.id);
                     if (data.id > lastMessageId) lastMessageId = data.id;
+                } else {
+                    tmpToRealId.set(tmpId, data.id);
                 }
             } else {
                 toast(hasGif ? 'Erreur lors de l\'envoi du GIF.' : 'Erreur lors de l\'envoi.', 'error');

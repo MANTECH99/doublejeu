@@ -388,6 +388,7 @@ body {
 .tile-discussion { background: linear-gradient(135deg, #2563eb, #818cf8); }
 .tile-bucket-list { background: linear-gradient(135deg, #b45309, #f59e0b); }
 .tile-calendrier { background: linear-gradient(135deg, #334155, #64748b); }
+.tile-ludo { background: linear-gradient(135deg, #b91c1c, #f87171); }
 
 /* ---------- Mots croisés du couple ---------- */
 .mc-grid {

@@ -148,6 +148,11 @@
                 <div class="t-name">Calendrier</div>
                 <div class="t-desc">Votre journée côte à côte</div>
             </a>
+            <a href="{{ route('ludo.index') }}" class="game-tile tile-ludo fadeIn" style="animation-delay:.42s">
+                <div class="t-ico">🎲</div>
+                <div class="t-name">Ludo à deux</div>
+                <div class="t-desc">La course des pions</div>
+            </a>
         </div>
 
         {{-- Activité du couple --}}

@@ -7,6 +7,7 @@ use App\Http\Controllers\CoupleController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\EnveloppeController;
 use App\Http\Controllers\InfoController;
+use App\Http\Controllers\LudoController;
 use App\Http\Controllers\MeteoController;
 use App\Http\Controllers\MissionSecreteController;
 use App\Http\Controllers\MotsCroisesController;
@@ -155,6 +156,15 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::post('/jeux/bucket-list/{item}/realiser', [BucketListController::class, 'realiser'])->name('bucket-list.realiser');
     Route::post('/jeux/bucket-list/{item}/reouvrir', [BucketListController::class, 'reouvrir'])->name('bucket-list.reouvrir');
     Route::delete('/jeux/bucket-list/{item}', [BucketListController::class, 'detruire'])->name('bucket-list.detruire');
+
+    // ---- Ludo à deux ----
+    Route::get('/jeux/ludo', [LudoController::class, 'index'])->name('ludo.index');
+    Route::post('/jeux/ludo', [LudoController::class, 'start'])->name('ludo.start');
+    Route::get('/jeux/ludo/{partie}', [LudoController::class, 'play'])->name('ludo.jouer');
+    Route::get('/jeux/ludo/{partie}/etat', [LudoController::class, 'state'])->name('ludo.state');
+    Route::post('/jeux/ludo/{partie}/lancer', [LudoController::class, 'lancer'])->name('ludo.lancer');
+    Route::post('/jeux/ludo/{partie}/bouger', [LudoController::class, 'bouger'])->name('ludo.bouger');
+    Route::post('/jeux/ludo/{partie}/abandonner', [LudoController::class, 'abandonner'])->name('ludo.abandonner');
 
     // ---- Calendrier quotidien ----
     Route::get('/jeux/calendrier', [CalendrierController::class, 'index'])->name('calendrier.index');
