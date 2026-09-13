@@ -9,6 +9,7 @@ use App\Models\QuestionQuiDeNous;
 use App\Models\ReponseQuiDeNous;
 use App\Services\ActivityService;
 use App\Services\PushService;
+use App\Services\QuestionBankService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,8 @@ use Illuminate\View\View;
 class QuiDeNousDeuxController extends Controller
 {
     const NB_QUESTIONS = 8;
+
+    public function __construct(private readonly QuestionBankService $bank) {}
 
     public function index(): View
     {
@@ -51,11 +54,7 @@ class QuiDeNousDeuxController extends Controller
             ->where('statut', 'en_cours')
             ->update(['statut' => 'terminee']);
 
-        $questions = QuestionQuiDeNous::whereNull('created_by')
-            ->orWhereIn('created_by', [$couple->user1_id, $couple->user2_id])
-            ->inRandomOrder()
-            ->limit(self::NB_QUESTIONS)
-            ->get();
+        $questions = $this->bank->questionsQuiDeNousPour($couple, self::NB_QUESTIONS);
 
         if ($questions->count() < 2) {
             return back()->with('flash', ['type' => 'error', 'message' => 'Pas assez de questions disponibles pour lancer une partie.']);

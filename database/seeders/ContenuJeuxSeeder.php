@@ -42,6 +42,14 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Qu\'est-ce qui te fait rire chez moi ?', 'niveau' => 'doux'],
             ['texte' => 'Quelle habitude de moi te manque le plus à distance ?', 'niveau' => 'doux'],
             ['texte' => 'Quel serait notre premier voyage ensemble idéal ?', 'niveau' => 'doux'],
+            ['texte' => 'Quelle est ta plus grande preuve d\'amour pour moi ?', 'niveau' => 'doux'],
+            ['texte' => 'Quel souvenir de notre début racontes-tu le plus souvent ?', 'niveau' => 'doux'],
+            ['texte' => 'Quelle petite attention de moi te fait fondre ?', 'niveau' => 'doux'],
+            ['texte' => 'Quel est ton surnom préféré que je te donne ?', 'niveau' => 'doux'],
+            ['texte' => 'Quel projet te fait le plus rêver pour nous ?', 'niveau' => 'doux'],
+            ['texte' => 'Qu\'est-ce que tu admires le plus chez moi ?', 'niveau' => 'doux'],
+            ['texte' => 'Quelle est la plus belle déclaration que je t\'ai faite ?', 'niveau' => 'doux'],
+            ['texte' => 'Quel moment de complicité quotidienne préfères-tu ?', 'niveau' => 'doux'],
             // Niveau chaud
             ['texte' => 'Quelle photo de moi regardes-tu le plus ?', 'niveau' => 'chaud'],
             ['texte' => 'Quel message de moi t\'a le plus excité(e) ?', 'niveau' => 'chaud'],
@@ -55,6 +63,14 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Où as-tu eu envie de m\'embrasser la première fois ?', 'niveau' => 'chaud'],
             ['texte' => 'Quel est ton souvenir le plus sensuel de nous ?', 'niveau' => 'chaud'],
             ['texte' => 'Quelle promesse me ferais-tu les yeux fermés ?', 'niveau' => 'chaud'],
+            ['texte' => 'Quel est le moment où j\'ai été le plus sexy à tes yeux ?', 'niveau' => 'chaud'],
+            ['texte' => 'Quel est ton fantasme de vacances avec moi ?', 'niveau' => 'chaud'],
+            ['texte' => 'Qu\'est-ce qui te rend le plus impatient(e) de me revoir ?', 'niveau' => 'chaud'],
+            ['texte' => 'Quelle est la chose la plus romantique que tu veuilles que je te fasse ?', 'niveau' => 'chaud'],
+            ['texte' => 'Quel rapprochement physique te manque le plus ?', 'niveau' => 'chaud'],
+            ['texte' => 'Raconte le moment où l\'attirance a commencé', 'niveau' => 'chaud'],
+            ['texte' => 'Quel serait un dimanche parfait à deux, selon toi ?', 'niveau' => 'chaud'],
+            ['texte' => 'Qu\'est-ce que tu me ferais dès que je passe la porte ?', 'niveau' => 'chaud'],
             // Niveau brûlant
             ['texte' => 'Quel est ton fantasme que tu ne m\'as jamais dit ?', 'niveau' => 'brulant'],
             ['texte' => 'Décris ce que tu me ferais si j\'étais là maintenant', 'niveau' => 'brulant'],
@@ -67,10 +83,21 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Quelle est la chose la plus audacieuse que je pourrais te faire pour te surprendre ?', 'niveau' => 'brulant'],
             ['texte' => 'Décris-moi notre nuit idéale de retrouvailles, du début à la fin', 'niveau' => 'brulant'],
             ['texte' => 'Quel est ton plus grand désir inavoué pour nous deux ?', 'niveau' => 'brulant'],
+            ['texte' => 'Décris le vêtement que tu veux me voir porter', 'niveau' => 'brulant'],
+            ['texte' => 'Quel est l\'endroit le plus osé où tu voudrais m\'embrasser ?', 'niveau' => 'brulant'],
+            ['texte' => 'Quel jeu sensuel veux-tu tester à deux ?', 'niveau' => 'brulant'],
+            ['texte' => 'Raconte en détail ta nuit de rêve à deux', 'niveau' => 'brulant'],
+            ['texte' => 'Qu\'est-ce qui t\'excite le plus dans la distance ?', 'niveau' => 'brulant'],
+            ['texte' => 'Quel est ton désir le plus secret une fois seuls ?', 'niveau' => 'brulant'],
+            ['texte' => 'Décris ce que tu veux entendre à mon oreille', 'niveau' => 'brulant'],
+            ['texte' => 'Quelle promesse coquine me ferais-tu maintenant ?', 'niveau' => 'brulant'],
         ];
 
         foreach ($verites as $carte) {
-            CarteVerite::create(['texte' => $carte['texte'], 'niveau' => $carte['niveau'], 'created_by' => null]);
+            CarteVerite::firstOrCreate(
+                ['texte' => $carte['texte'], 'niveau' => $carte['niveau']],
+                ['created_by' => null]
+            );
         }
     }
 
@@ -90,6 +117,14 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Écris un petit poème de 4 vers et envoie-le', 'niveau' => 'doux'],
             ['texte' => 'Fais-nous un défi impossible : un selfie avec ton reflet dans une cuillère', 'niveau' => 'doux'],
             ['texte' => 'Montre ton lit tout fait en photo', 'niveau' => 'doux'],
+            ['texte' => 'Montre ton livre de chevet en photo', 'niveau' => 'doux'],
+            ['texte' => 'Envoie une photo de ton café ou thé du matin', 'niveau' => 'doux'],
+            ['texte' => 'Fais une petite routine sportive de 1 minute en vidéo', 'niveau' => 'doux'],
+            ['texte' => 'Prends une photo de toi souriant sur commande', 'niveau' => 'doux'],
+            ['texte' => 'Écris 5 raisons de sourire aujourd\'hui', 'niveau' => 'doux'],
+            ['texte' => 'Montre ton plus vieux souvenir que tu gardes en photo', 'niveau' => 'doux'],
+            ['texte' => 'Fais un tuto de 15 secondes de ce que tu sais faire', 'niveau' => 'doux'],
+            ['texte' => 'Envoie une photo de ton coin confort préféré', 'niveau' => 'doux'],
             // Niveau chaud
             ['texte' => 'Envoie une photo de la partie de ton corps que tu préfères', 'niveau' => 'chaud'],
             ['texte' => 'Écris un scénario coquin en 5 messages', 'niveau' => 'chaud'],
@@ -103,6 +138,14 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Raconte en détail ce que tu ressens quand tu penses à moi', 'niveau' => 'chaud'],
             ['texte' => 'Fais une vidéo de 15 secondes en me soufflant des mots doux', 'niveau' => 'chaud'],
             ['texte' => 'Envoie une photo de toi dans un endroit inattendu de ta maison', 'niveau' => 'chaud'],
+            ['texte' => 'Envoie un vocal de 30 secondes en racontant ton fantasme du moment', 'niveau' => 'chaud'],
+            ['texte' => 'Envoie une photo de toi avec une expression de séducteur ou séductrice', 'niveau' => 'chaud'],
+            ['texte' => 'Écris un poème sensuel de 4 lignes', 'niveau' => 'chaud'],
+            ['texte' => 'Envoie une photo de ton regard par-dessus l\'épaule', 'niveau' => 'chaud'],
+            ['texte' => 'Décris ce que tu ferais dans notre première minute de retrouvailles', 'niveau' => 'chaud'],
+            ['texte' => 'Envoie un vocal très doux en chuchotant un mot doux', 'niveau' => 'chaud'],
+            ['texte' => 'Envoie une photo de toi dans ta tenue la plus confortable', 'niveau' => 'chaud'],
+            ['texte' => 'Raconte en 4 messages le début de ton fantasme préféré', 'niveau' => 'chaud'],
             // Niveau brûlant
             ['texte' => 'Fais un strip-tease en vidéo de 30 secondes', 'niveau' => 'brulant'],
             ['texte' => 'Envoie une photo très suggestive', 'niveau' => 'brulant'],
@@ -116,10 +159,21 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Simule un rendez-vous coquin en vidéo de 20 secondes', 'niveau' => 'brulant'],
             ['texte' => 'Envoie une photo de ton moment de la journée le plus intime', 'niveau' => 'brulant'],
             ['texte' => 'Écris 3 promesses osées pour nos prochaines retrouvailles', 'niveau' => 'brulant'],
+            ['texte' => 'Envoie une photo de sous-vêtements élégante si tu en as une', 'niveau' => 'brulant'],
+            ['texte' => 'Écris un scénario érotique complet en 8 lignes', 'niveau' => 'brulant'],
+            ['texte' => 'Envoie un vocal sensuel de 30 secondes', 'niveau' => 'brulant'],
+            ['texte' => 'Décris en détail ton fantasme de pouvoir', 'niveau' => 'brulant'],
+            ['texte' => 'Fais une vidéo de 10 secondes en mode tentateur ou tentatrice', 'niveau' => 'brulant'],
+            ['texte' => 'Choisis notre prochaine grande aventure intime', 'niveau' => 'brulant'],
+            ['texte' => 'Écris 3 confessions coquines', 'niveau' => 'brulant'],
+            ['texte' => 'Envoie une photo suggestive mais élégante', 'niveau' => 'brulant'],
         ];
 
         foreach ($actions as $carte) {
-            CarteAction::create(['texte' => $carte['texte'], 'niveau' => $carte['niveau'], 'created_by' => null]);
+            CarteAction::firstOrCreate(
+                ['texte' => $carte['texte'], 'niveau' => $carte['niveau']],
+                ['created_by' => null]
+            );
         }
     }
 
@@ -138,10 +192,22 @@ class ContenuJeuxSeeder extends Seeder
             'Raconte un secret drôle en vocal',
             'Fais 10 squats en te filmant',
             'Envoie un vocal avec une voix déformée amusante',
+            'Fais une chorégraphie complète de 30 secondes en vidéo',
+            'Imite ton/ta partenaire en 3 situations de la vie courante',
+            'Raconte ton plus gros fou rire en vocal',
+            'Envoie une photo de toi avec une tête de très surpris(e)',
+            'Chante une chanson d\'amour à tue-tête en vocal',
+            'Fais un selfie en mode mascotte de dessin animé',
+            'Récite une comptine en rap / beatbox en vidéo',
+            'Danse une tribu à la pluie en vidéo',
+            'Envoie un vocal en imitant ta meilleure amie ou ton meilleur ami',
+            'Fais 30 secondes d\'abdominaux en te filmant',
+            'Envoie une photo de toi portant un accessoire ridicule',
+            'Fais un monologue drôle de 30 secondes face caméra',
         ];
 
         foreach ($gages as $gage) {
-            Gage::create(['texte' => $gage, 'created_by' => null]);
+            Gage::firstOrCreate(['texte' => $gage], ['created_by' => null]);
         }
     }
 
@@ -159,6 +225,12 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Accepterais-tu de te coucher 15 minutes plus tôt chaque soir pour m\'appeler ?', 'categorie' => 'vie_quotidienne'],
             ['texte' => 'Accepterais-tu de cuisiner mon plat préféré en vidéo pour moi ?', 'categorie' => 'vie_quotidienne'],
             ['texte' => 'Accepterais-tu de partager ton écran pendant une heure ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Accepterais-tu de m\'appeler tous les soirs à heure fixe pendant un mois ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Accepterais-tu de renverser nos rôles une journée entière ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Accepterais-tu de faire mon petit déjeuner le matin de nos retrouvailles ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Accepterais-tu de me laisser choisir la musique pendant toute une soirée ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Accepterais-tu de me montrer tes réseaux sociaux sans filtre ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Accepterais-tu de faire 10 000 pas par jour pendant une semaine ?', 'categorie' => 'vie_quotidienne'],
             // Intimité
             ['texte' => 'Accepterais-tu de faire une soirée pyjama en visio complète ?', 'categorie' => 'intimite'],
             ['texte' => 'Accepterais-tu de porter une tenue que je choisirais ?', 'categorie' => 'intimite'],
@@ -170,6 +242,13 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Accepterais-tu de danser pour moi uniquement en visio ?', 'categorie' => 'intimite'],
             ['texte' => 'Accepterais-tu de me raconter tes rêves les plus intimes ?', 'categorie' => 'intimite'],
             ['texte' => 'Accepterais-tu de rester en visio pendant que tu te changes ?', 'categorie' => 'intimite'],
+            ['texte' => 'Accepterais-tu qu\'on se raconte tous nos fantasmes pendant une soirée ?', 'categorie' => 'intimite'],
+            ['texte' => 'Accepterais-tu de m\'envoyer une photo de toi en tenue de nuit ?', 'categorie' => 'intimite'],
+            ['texte' => 'Accepterais-tu de me masser pendant 20 minutes lors des retrouvailles ?', 'categorie' => 'intimite'],
+            ['texte' => 'Accepterais-tu de rejouer notre premier baiser ?', 'categorie' => 'intimite'],
+            ['texte' => 'Accepterais-tu de me révéler ta plus grande insécurité ?', 'categorie' => 'intimite'],
+            ['texte' => 'Accepterais-tu de dormir en visio une nuit entière ?', 'categorie' => 'intimite'],
+            ['texte' => 'Accepterais-tu de danser un slow avec moi en visio ?', 'categorie' => 'intimite'],
             // Fantasmes
             ['texte' => 'Accepterais-tu de réaliser un de mes fantasmes lors de nos prochaines retrouvailles ?', 'categorie' => 'fantasmes'],
             ['texte' => 'Accepterais-tu de faire un shooting photo sexy pour moi ?', 'categorie' => 'fantasmes'],
@@ -181,6 +260,12 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Accepterais-tu de porter une tenue surprise que je t\'enverrais ?', 'categorie' => 'fantasmes'],
             ['texte' => 'Accepterais-tu de faire une mise à nu progressive en visio sur ma demande ?', 'categorie' => 'fantasmes'],
             ['texte' => 'Accepterais-tu de tester un jeu coquin proposé par moi chaque semaine ?', 'categorie' => 'fantasmes'],
+            ['texte' => 'Accepterais-tu de jouer le jeu du « de plus en plus près » ?', 'categorie' => 'fantasmes'],
+            ['texte' => 'Accepterais-tu de m\'obéir pendant une heure entière ?', 'categorie' => 'fantasmes'],
+            ['texte' => 'Accepterais-tu de porter un déguisement que je choisirai ?', 'categorie' => 'fantasmes'],
+            ['texte' => 'Accepterais-tu de réaliser notre liste de fantasmes un à un ?', 'categorie' => 'fantasmes'],
+            ['texte' => 'Accepterais-tu de t\'adresser à moi en utilisant un surnom coquin ?', 'categorie' => 'fantasmes'],
+            ['texte' => 'Accepterais-tu de me laisser te décrire une scène sensuelle en vocal ?', 'categorie' => 'fantasmes'],
             // Aventure
             ['texte' => 'Accepterais-tu qu\'on fasse un voyage surprise ensemble ?', 'categorie' => 'aventure'],
             ['texte' => 'Accepterais-tu de faire une randonnée de nuit avec moi en visio ?', 'categorie' => 'aventure'],
@@ -192,10 +277,19 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Accepterais-tu de te lever à 5h pour voir le lever de soleil avec moi ?', 'categorie' => 'aventure'],
             ['texte' => 'Accepterais-tu de découvrir ta ville comme un touriste avec moi en visio ?', 'categorie' => 'aventure'],
             ['texte' => 'Accepterais-tu de m\'embrasser sur un lieu insolite de ta ville lors de nos retrouvailles ?', 'categorie' => 'aventure'],
+            ['texte' => 'Accepterais-tu de sauter en parachute avec moi ?', 'categorie' => 'aventure'],
+            ['texte' => 'Accepterais-tu de faire un road-trip de 3 jours sans itinéraire ?', 'categorie' => 'aventure'],
+            ['texte' => 'Accepterais-tu de nous inscrire à un cours de danse à deux ?', 'categorie' => 'aventure'],
+            ['texte' => 'Accepterais-tu de passer une nuit à la belle étoile ?', 'categorie' => 'aventure'],
+            ['texte' => 'Accepterais-tu de goûter un plat que tu détestes pour moi ?', 'categorie' => 'aventure'],
+            ['texte' => 'Accepterais-tu de créer une capsule temporelle à ouvrir dans 5 ans ?', 'categorie' => 'aventure'],
         ];
 
         foreach ($questions as $question) {
-            QuestionOuiNon::create(['texte' => $question['texte'], 'categorie' => $question['categorie'], 'created_by' => null]);
+            QuestionOuiNon::firstOrCreate(
+                ['texte' => $question['texte']],
+                ['categorie' => $question['categorie'], 'created_by' => null]
+            );
         }
     }
 
@@ -257,11 +351,28 @@ class ContenuJeuxSeeder extends Seeder
             ['texte_soi' => 'Où aimes-tu te ressourcer ?', 'texte_partenaire' => 'Où aime-t-il/elle se ressourcer ?'],
             ['texte_soi' => 'Ton slogan de vie ?', 'texte_partenaire' => 'Quel est son slogan de vie ?'],
             ['texte_soi' => 'Ta plus grande fierté ?', 'texte_partenaire' => 'Quelle est sa plus grande fierté ?'],
+            ['texte_soi' => 'Ton plat préféré pour un dîner romantique ?', 'texte_partenaire' => 'Quel est son plat préféré pour un dîner romantique ?'],
+            ['texte_soi' => 'Ton souvenir d\'enfance préféré ?', 'texte_partenaire' => 'Quel est son souvenir d\'enfance préféré ?'],
+            ['texte_soi' => 'Ton hobby secret ?', 'texte_partenaire' => 'Quel est son hobby secret ?'],
+            ['texte_soi' => 'Ta chanson que tu écoutes en boucle ?', 'texte_partenaire' => 'Quelle chanson écoute-t-il/elle en boucle ?'],
+            ['texte_soi' => 'Le cadeau qui te ferait le plus plaisir ?', 'texte_partenaire' => 'Quel cadeau lui ferait le plus plaisir ?'],
+            ['texte_soi' => 'Ton moment préféré de la journée ?', 'texte_partenaire' => 'Quel est son moment préféré de la journée ?'],
+            ['texte_soi' => 'Ta plus grande qualité ?', 'texte_partenaire' => 'Quelle est sa plus grande qualité ?'],
+            ['texte_soi' => 'Ton défaut caché ?', 'texte_partenaire' => 'Quel est son défaut caché ?'],
+            ['texte_soi' => 'La destination de ta lune de miel rêvée ?', 'texte_partenaire' => 'Quelle serait sa destination de lune de miel rêvée ?'],
+            ['texte_soi' => 'Ton plat que tu refuses de manger ?', 'texte_partenaire' => 'Quel plat refuse-t-il/elle de manger ?'],
+            ['texte_soi' => 'Ton activité sportive préférée ?', 'texte_partenaire' => 'Quelle est son activité sportive préférée ?'],
+            ['texte_soi' => 'Série ou film : ton cocooning idéal ?', 'texte_partenaire' => 'Série ou film : quel est son cocooning idéal ?'],
+            ['texte_soi' => 'Ton petit-déjeuner idéal ?', 'texte_partenaire' => 'Quel est son petit-déjeuner idéal ?'],
+            ['texte_soi' => 'Ta peur la plus ridicule ?', 'texte_partenaire' => 'Quelle est sa peur la plus ridicule ?'],
+            ['texte_soi' => 'Ton surnom que tu détestes ?', 'texte_partenaire' => 'Quel surnom déteste-t-il/elle ?'],
+            ['texte_soi' => 'La qualité que tu cherches le plus chez un ami ?', 'texte_partenaire' => 'Quelle qualité cherche-t-il/elle chez un ami ?'],
         ];
 
         foreach ($questions as $question) {
-            QuestionQuiz::create([
+            QuestionQuiz::firstOrCreate([
                 'texte_soi' => $question['texte_soi'],
+            ], [
                 'texte_partenaire' => $question['texte_partenaire'],
                 'categorie' => null,
                 'created_by' => null,
@@ -283,6 +394,12 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Qui de nous deux est le plus timide en public ?', 'categorie' => 'personnalite'],
             ['texte' => 'Qui de nous deux rêvasse le plus souvent ?', 'categorie' => 'personnalite'],
             ['texte' => 'Qui de nous deux est le plus spontané ?', 'categorie' => 'personnalite'],
+            ['texte' => 'Qui de nous deux est le plus perfectionniste ?', 'categorie' => 'personnalite'],
+            ['texte' => 'Qui de nous deux est le plus dépensier ?', 'categorie' => 'personnalite'],
+            ['texte' => 'Qui de nous deux est le plus émotif ?', 'categorie' => 'personnalite'],
+            ['texte' => 'Qui de nous deux est le plus bavard au téléphone ?', 'categorie' => 'personnalite'],
+            ['texte' => 'Qui de nous deux est le plus tête en l\'air ?', 'categorie' => 'personnalite'],
+            ['texte' => 'Qui de nous deux est le plus confiant en soirée ?', 'categorie' => 'personnalite'],
             // Vie quotidienne
             ['texte' => 'Qui de nous deux se lève le plus tôt le week-end ?', 'categorie' => 'vie_quotidienne'],
             ['texte' => 'Qui de nous deux prend la plus longue douche ?', 'categorie' => 'vie_quotidienne'],
@@ -294,6 +411,12 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Qui de nous deux regarde le plus la télévision ?', 'categorie' => 'vie_quotidienne'],
             ['texte' => 'Qui de nous deux planifie le plus le week-end ?', 'categorie' => 'vie_quotidienne'],
             ['texte' => 'Qui de nous deux se couche le plus tard ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Qui de nous deux fait le plus de courses ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Qui de nous deux range le plus ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Qui de nous deux utilise le plus l\'aspirateur ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Qui de nous deux prend le plus de photos ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Qui de nous deux écoute le plus de podcasts ?', 'categorie' => 'vie_quotidienne'],
+            ['texte' => 'Qui de nous deux profite le plus de ses matins ?', 'categorie' => 'vie_quotidienne'],
             // Relation
             ['texte' => 'Qui de nous deux dit « je t\'aime » en premier le matin ?', 'categorie' => 'relation'],
             ['texte' => 'Qui de nous deux est le plus jaloux ?', 'categorie' => 'relation'],
@@ -305,6 +428,12 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Qui de nous deux tient le plus la main de l\'autre ?', 'categorie' => 'relation'],
             ['texte' => 'Qui de nous deux s\'ennuie le plus vite quand l\'autre est loin ?', 'categorie' => 'relation'],
             ['texte' => 'Qui de nous deux rêve le plus fort de l\'avenir à deux ?', 'categorie' => 'relation'],
+            ['texte' => 'Qui de nous deux envoie le premier message le matin ?', 'categorie' => 'relation'],
+            ['texte' => 'Qui de nous deux préfère les surprises ?', 'categorie' => 'relation'],
+            ['texte' => 'Qui de nous deux cède le plus facilement ?', 'categorie' => 'relation'],
+            ['texte' => 'Qui de nous deux se souvient le mieux des anniversaires ?', 'categorie' => 'relation'],
+            ['texte' => 'Qui de nous deux s\'excuse en premier après une dispute ?', 'categorie' => 'relation'],
+            ['texte' => 'Qui de nous deux a le plus hâte des retrouvailles ?', 'categorie' => 'relation'],
             // Habitudes
             ['texte' => 'Qui de nous deux ronfle le plus ?', 'categorie' => 'habitudes'],
             ['texte' => 'Qui de nous deux traîne le plus au lit le matin ?', 'categorie' => 'habitudes'],
@@ -316,10 +445,19 @@ class ContenuJeuxSeeder extends Seeder
             ['texte' => 'Qui de nous deux met le plus longtemps à se préparer ?', 'categorie' => 'habitudes'],
             ['texte' => 'Qui de nous deux vérifie le plus souvent la météo ?', 'categorie' => 'habitudes'],
             ['texte' => 'Qui de nous deux marche le plus vite ?', 'categorie' => 'habitudes'],
+            ['texte' => 'Qui de nous deux mange le plus vite ?', 'categorie' => 'habitudes'],
+            ['texte' => 'Qui de nous deux dort le plus ?', 'categorie' => 'habitudes'],
+            ['texte' => 'Qui de nous deux fait le plus de nuits blanches ?', 'categorie' => 'habitudes'],
+            ['texte' => 'Qui de nous deux s\'habille le plus vite ?', 'categorie' => 'habitudes'],
+            ['texte' => 'Qui de nous deux collectionne le plus de choses ?', 'categorie' => 'habitudes'],
+            ['texte' => 'Qui de nous deux écoute de la musique en boucle ?', 'categorie' => 'habitudes'],
         ];
 
         foreach ($questions as $question) {
-            QuestionQuiDeNous::create(['texte' => $question['texte'], 'categorie' => $question['categorie'], 'created_by' => null]);
+            QuestionQuiDeNous::firstOrCreate(
+                ['texte' => $question['texte']],
+                ['categorie' => $question['categorie'], 'created_by' => null]
+            );
         }
     }
 
@@ -334,6 +472,23 @@ class ContenuJeuxSeeder extends Seeder
             'Quelle vanne de ton/ta partenaire te fait toujours rire, même la 100e fois ?',
             'Si votre couple était un plat, lequel serait-il ?',
             'Quel surnom bizarre donnerais-tu à ton/ta partenaire devant tout le monde ?',
+            'Qui de vous deux a fait le voyage le plus long pour l\'autre dès le début ?',
+            'Quelle est l\'habitude la plus étrange de ton/ta partenaire quand il/elle est seul(e) ?',
+            'Si votre couple avait une chanson générique, laquelle serait-elle ?',
+            'Quel est le look le plus mémorable (et le plus douteux) que portait ton/ta partenaire ?',
+            'Quel mensonge innocent as-tu déjà raconté à ton/ta partenaire ?',
+            'Qui dans le couple s\'endort en premier le soir quasiment à chaque fois ?',
+            'Quelle photo de votre téléphone ne doit jamais être montrée à la famille ?',
+            'Si ton/ta partenaire faisait une téléréalité, laquelle ?',
+            'Quelle est la chose la plus embarrassante que ton/ta partenaire fait quand il/elle danse ?',
+            'Quel aliment dirait-on que ton/ta partenaire mange à toutes les sauces ?',
+            'Qui conduirait le mieux une citrouille transformée en carrosse ?',
+            'Quel est le compliment le plus drôle que ton/ta partenaire t\'ait fait ?',
+            'Si vous deviez refaire votre premier rendez-vous aujourd\'hui, où iriez-vous pour rire ?',
+            'Quelle est la fonctionnalité inutile que ton/ta partenaire utilise quand même ?',
+            'Quel est le pire karaoké de ton/ta partenaire en privé ?',
+            'Pour quelle blague répétée de ton/ta partenaire feins-tu de rire ?',
+            'Quel objet de votre appartement survivrait à une apocalypse ?',
         ];
 
         $profondes = [
@@ -347,13 +502,28 @@ class ContenuJeuxSeeder extends Seeder
             'Qu\'est-ce que tu aimerais entendre de la bouche de ton/ta partenaire ?',
             'Quel rêve veux-tu réaliser AVEC ton/ta partenaire avant vos 40 ans ?',
             'Pour quelle qualité de ton/ta partenaire es-tu le/la plus reconnaissant(e) ?',
+            'Quelle est la chose que tu as apprise sur toi grâce à votre relation ?',
+            'Quel est le moment où vous avez surmonté votre plus grosse dispute ?',
+            'Qu\'est-ce que tu ne pardonnerais jamais à ton/ta partenaire ?',
+            'Quelle émotion as-tu du mal à partager avec ton/ta partenaire ?',
+            'À quoi penses-tu quand tu regardes ton/ta partenaire dormir ?',
+            'Quel conseil donnerais-tu à votre couple de la première année ?',
+            'Quelle est la plus grande épreuve que ton/ta partenaire t\'a aidé·e à traverser ?',
+            'Qu\'est-ce que tu voudrais que ton/ta partenaire sache sans que tu aies à le dire ?',
+            'Quel endroit du monde te rappelle le plus votre amour ?',
+            'Qu\'est-ce qui a changé dans ta façon de vivre depuis que vous êtes ensemble ?',
+            'Quelle est ta définition de la réussite À DEUX ?',
+            'Quel secret aimerais-tu que ton/ta partenaire te confie sans peur ?',
+            'Qu\'est-ce que tu ferais différemment si vous réécriviez votre début d\'histoire ?',
+            'Quelle est la chose que tu aimerais transmettre à vos enfants ou à votre entourage ?',
+            'Qu\'est-ce qui te rassure le plus dans votre couple quand tout semble incertain ?',
         ];
 
         foreach ($droles as $texte) {
-            QuestionDuJour::create(['texte' => $texte, 'categorie' => 'drole', 'created_by' => null]);
+            QuestionDuJour::firstOrCreate(['texte' => $texte], ['categorie' => 'drole', 'created_by' => null]);
         }
         foreach ($profondes as $texte) {
-            QuestionDuJour::create(['texte' => $texte, 'categorie' => 'profonde', 'created_by' => null]);
+            QuestionDuJour::firstOrCreate(['texte' => $texte], ['categorie' => 'profonde', 'created_by' => null]);
         }
     }
 }

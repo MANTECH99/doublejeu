@@ -5,10 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\MissionOuiNon;
 use App\Models\PartieOuiNon;
 use App\Models\Point;
-use App\Models\QuestionOuiNon;
 use App\Models\ReponseOuiNon;
 use App\Services\ActivityService;
 use App\Services\PushService;
+use App\Services\QuestionBankService;
 use App\Services\RecompenseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +18,8 @@ use Illuminate\View\View;
 
 class OuiNonController extends Controller
 {
+    public function __construct(private readonly QuestionBankService $bank) {}
+
     public function index(): View
     {
         ActivityService::touch(Auth::user());
@@ -49,7 +51,7 @@ class OuiNonController extends Controller
             ->whereIn('status', ['en_attente', 'en_cours'])
             ->update(['status' => 'terminee']);
 
-        $questions = QuestionOuiNon::inRandomOrder()->limit(10)->get();
+        $questions = $this->bank->questionsOuiNonPour($couple, 10);
 
         $partie = PartieOuiNon::create([
             'couple_id' => $couple->id,

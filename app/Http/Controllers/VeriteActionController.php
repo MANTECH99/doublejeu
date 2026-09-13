@@ -2,15 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CarteAction;
-use App\Models\CarteVerite;
-use App\Models\Gage;
 use App\Models\PartieVO;
 use App\Models\Point;
 use App\Models\TourVO;
 use App\Models\User;
 use App\Services\ActivityService;
 use App\Services\PushService;
+use App\Services\QuestionBankService;
 use App\Services\RecompenseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -20,6 +18,8 @@ use Illuminate\View\View;
 
 class VeriteActionController extends Controller
 {
+    public function __construct(private readonly QuestionBankService $bank) {}
+
     public function index(): View
     {
         ActivityService::touch(Auth::user());
@@ -172,8 +172,7 @@ class VeriteActionController extends Controller
         }
 
         if ($data['type'] === 'verite') {
-            $carte = CarteVerite::where('niveau', $partie->niveau)
-                ->inRandomOrder()->first();
+            $carte = $this->bank->titrageVerite($partie);
             $tour = TourVO::create([
                 'partie_id' => $partie->id,
                 'joueur_id' => $partie->joueur_actif_id,
@@ -182,8 +181,7 @@ class VeriteActionController extends Controller
                 'statut' => 'en_attente',
             ]);
         } else {
-            $carte = CarteAction::where('niveau', $partie->niveau)
-                ->inRandomOrder()->first();
+            $carte = $this->bank->titrageAction($partie);
             $tour = TourVO::create([
                 'partie_id' => $partie->id,
                 'joueur_id' => $partie->joueur_actif_id,
@@ -242,7 +240,7 @@ class VeriteActionController extends Controller
         $this->addScore($partie, $user, -5, 'Refus d\'un défi (Vérité ou Action)');
         $this->addScore($partie, $partner, 5, 'Défi refusé par le partenaire (Vérité ou Action)');
 
-        $gage = Gage::inRandomOrder()->first();
+        $gage = $this->bank->titrageGage($couple);
         $tage = TourVO::create([
             'partie_id' => $partie->id,
             'joueur_id' => $user->id,

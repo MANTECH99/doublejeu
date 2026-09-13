@@ -3,12 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Point;
-use App\Models\QuestionQuiz;
 use App\Models\QuizReponse;
 use App\Models\QuizSession;
 use App\Models\QuizSessionQuestion;
 use App\Services\ActivityService;
 use App\Services\PushService;
+use App\Services\QuestionBankService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,6 +19,8 @@ use Illuminate\View\View;
 class QuizController extends Controller
 {
     const NB_QUESTIONS = 8; // 4 par cible
+
+    public function __construct(private readonly QuestionBankService $bank) {}
 
     public function index(): View
     {
@@ -51,7 +53,7 @@ class QuizController extends Controller
             ->where('statut', 'en_cours')
             ->update(['statut' => 'terminee']);
 
-        $questions = QuestionQuiz::inRandomOrder()->get();
+        $questions = $this->bank->questionsQuizPour($couple, self::NB_QUESTIONS);
         if ($questions->count() < 2) {
             return back()->with('flash', ['type' => 'error', 'message' => 'Pas assez de questions disponibles pour lancer une partie.']);
         }
@@ -65,11 +67,9 @@ class QuizController extends Controller
 
         $parCible = intdiv(self::NB_QUESTIONS, 2);
         $ordre = 0;
-        $pool = $questions->values();
 
         foreach ([$couple->user1_id, $couple->user2_id] as $cibleId) {
-            for ($i = 0; $i < $parCible; $i++) {
-                $question = $pool[$ordre % $pool->count()];
+            foreach ($questions->splice(0, $parCible) as $question) {
                 QuizSessionQuestion::create([
                     'session_id' => $session->id,
                     'question_id' => $question->id,

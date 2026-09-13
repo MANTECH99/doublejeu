@@ -25,6 +25,7 @@ use App\Models\QuizSessionQuestion;
 use App\Models\Recompense;
 use App\Models\ReponseOuiNon;
 use App\Models\User;
+use App\Services\QuestionBankService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -1078,5 +1079,130 @@ class JeuxFlowTest extends TestCase
             $response->assertOk();
             $this->assertStringContainsString($marker, $response->getContent(), "JS absent sur $url");
         }
+    }
+
+    public function test_bank_carte_exclut_textes_deja_vus(): void
+    {
+        CarteVerite::create(['texte' => 'Carte A', 'niveau' => 'brulant']);
+        CarteVerite::create(['texte' => 'Carte B', 'niveau' => 'brulant']);
+
+        $bank = app(QuestionBankService::class);
+        $tiree = $bank->carteAleatoire(CarteVerite::where('niveau', 'brulant'), ['Carte B']);
+
+        $this->assertSame('Carte A', $tiree->texte);
+    }
+
+    public function test_bank_carte_recycle_si_tout_vu(): void
+    {
+        CarteVerite::create(['texte' => 'Carte A', 'niveau' => 'brulant']);
+        CarteVerite::create(['texte' => 'Carte B', 'niveau' => 'brulant']);
+
+        $bank = app(QuestionBankService::class);
+        $tiree = $bank->carteAleatoire(CarteVerite::where('niveau', 'brulant'), ['Carte A', 'Carte B']);
+
+        $this->assertNotNull($tiree);
+        $this->assertContains($tiree->texte, ['Carte A', 'Carte B']);
+    }
+
+    public function test_bank_questions_distinctes_meme_avec_doublons(): void
+    {
+        QuestionOuiNon::create(['texte' => 'Question X', 'categorie' => 'aventure']);
+        QuestionOuiNon::create(['texte' => 'Question X', 'categorie' => 'aventure']);
+        QuestionOuiNon::create(['texte' => 'Question Y', 'categorie' => 'aventure']);
+        QuestionOuiNon::create(['texte' => 'Question Y', 'categorie' => 'aventure']);
+        QuestionOuiNon::create(['texte' => 'Question Z', 'categorie' => 'aventure']);
+
+        $bank = app(QuestionBankService::class);
+        $tirees = $bank->questionsAleatoires(QuestionOuiNon::query(), [], 3);
+
+        $this->assertCount(3, $tirees);
+        $this->assertSame(3, $tirees->pluck('texte')->unique()->count());
+    }
+
+    public function test_bank_questions_recycle_manque_apres_exclusion(): void
+    {
+        QuestionQuiDeNous::create(['texte' => 'Question A', 'categorie' => 'personnalite']);
+        QuestionQuiDeNous::create(['texte' => 'Question B', 'categorie' => 'personnalite']);
+
+        $bank = app(QuestionBankService::class);
+        $tirees = $bank->questionsAleatoires(QuestionQuiDeNous::query(), ['Question A', 'Question B'], 3);
+
+        // Tout le pool est déjà vu : on recycle, sans doublon de texte.
+        $this->assertCount(2, $tirees);
+        $this->assertSame(2, $tirees->pluck('texte')->unique()->count());
+    }
+
+    public function test_vo_ne_rejoue_pas_une_carte_deja_tiree(): void
+    {
+        CarteVerite::create(['texte' => 'Carte A', 'niveau' => 'brulant']);
+        CarteVerite::create(['texte' => 'Carte B', 'niveau' => 'brulant']);
+
+        $this->actingAs($this->alice);
+        $this->post(route('vo.start'), ['niveau' => 'brulant'])->assertRedirect();
+        $partie = PartieVO::first();
+        $actif = User::find($partie->joueur_actif_id);
+
+        $this->actingAs($actif)
+            ->postJson(route('vo.choisir', $partie), ['type' => 'verite'])
+            ->assertJson(['ok' => true]);
+        $premiere = $partie->tours()->first()->carteTexte();
+
+        $this->actingAs($actif)
+            ->postJson(route('vo.repondre', $partie), ['accepte' => 1, 'reponse' => 'ok'])
+            ->assertOk();
+
+        $valideur = $partie->couple->partnerOf($actif);
+        $this->actingAs($valideur)
+            ->postJson(route('vo.valider', $partie))
+            ->assertOk();
+
+        $actif2 = User::find($partie->fresh()->joueur_actif_id);
+        $this->actingAs($actif2)
+            ->postJson(route('vo.choisir', $partie), ['type' => 'verite'])
+            ->assertJson(['ok' => true]);
+        $seconde = $partie->tours()->latest('id')->first()->carteTexte();
+
+        $this->assertNotSame($premiere, $seconde);
+    }
+
+    public function test_ouinon_questions_distinctes_par_partie(): void
+    {
+        for ($i = 0; $i < 12; $i++) {
+            QuestionOuiNon::create(['texte' => "Question unique $i", 'categorie' => 'aventure']);
+        }
+
+        $this->actingAs($this->alice);
+        $this->post(route('ouinon.start'))->assertRedirect();
+        $partie1 = PartieOuiNon::first();
+        $textes1 = ReponseOuiNon::where('partie_id', $partie1->id)
+            ->with('question')
+            ->get()
+            ->pluck('question.texte')
+            ->unique()
+            ->values();
+        $this->assertCount(10, $textes1);
+        $this->assertSame(10, $textes1->count());
+    }
+
+    public function test_quiz_questions_distinctes_par_partie(): void
+    {
+        for ($i = 0; $i < 14; $i++) {
+            QuestionQuiz::create([
+                'texte_soi' => "Question $i sur moi",
+                'texte_partenaire' => "Question $i sur mon/ma partenaire",
+            ]);
+        }
+
+        $this->actingAs($this->alice);
+        $this->post(route('quiz.start'))->assertRedirect();
+        $session = QuizSession::first();
+
+        $textes = $session->sessionQuestions()
+            ->with('question')
+            ->get()
+            ->pluck('question.texte_soi')
+            ->values();
+        $this->assertCount(8, $textes);
+        $this->assertSame(8, $textes->unique()->count());
     }
 }
