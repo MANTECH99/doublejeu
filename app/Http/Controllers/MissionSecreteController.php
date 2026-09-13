@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MissionSecrete;
 use App\Models\Point;
+use App\Models\User;
 use App\Services\ActivityService;
 use App\Services\RecompenseService;
 use Illuminate\Http\JsonResponse;
@@ -34,11 +35,43 @@ class MissionSecreteController extends Controller
         ['texte' => 'Envoie un audio de toi en train de rire aux éclats', 'difficulte' => 'facile'],
     ];
 
-    public const DELAIS = [
-        'facile' => 24,
-        'moyen' => 48,
-        'difficile' => 168,
-    ];
+    /**
+     * Récupère (ou crée) la mission du jour d'un partenaire.
+     *
+     * @return array{0: ?MissionSecrete, 1: bool} la mission et « créée maintenant ? »
+     */
+    public static function genererPourUser($couple, User $user): array
+    {
+        $date = $user->localToday()->toDateString();
+        $trouvee = fn () => $couple->missionsSecrettes()
+            ->where('joueur_cible_id', $user->id)
+            ->whereDate('date_mission', $date)
+            ->first();
+
+        $mission = $trouvee();
+        if ($mission || $user->deadlineSoirPassee()) {
+            return [$mission, false];
+        }
+
+        $mission = self::MISSIONS[array_rand(self::MISSIONS)];
+
+        try {
+            MissionSecrete::create([
+                'couple_id' => $couple->id,
+                'joueur_cible_id' => $user->id,
+                'texte' => $mission['texte'],
+                'difficulte' => $mission['difficulte'],
+                'statut' => 'en_attente',
+                'date_mission' => $date,
+                'date_debut' => now(),
+                'date_fin' => $user->deadlineSoir()->setTimezone(config('app.timezone', 'UTC')),
+            ]);
+        } catch (\Throwable) {
+            return [$trouvee(), false];
+        }
+
+        return [$trouvee(), true];
+    }
 
     public function index(): View
     {
@@ -48,62 +81,38 @@ class MissionSecreteController extends Controller
         $me = Auth::user();
         $partner = $couple->partnerOf($me);
 
-        $mesMissions = $couple->missionsSecrettes()->where('joueur_cible_id', $me->id)->orderByDesc('id')->get();
-        $sesMissions = $couple->missionsSecrettes()->where('joueur_cible_id', $partner->id)->orderByDesc('id')->get();
+        $this->finaliserMissions($couple, $me);
+        $this->finaliserMissions($couple, $partner);
 
-        $ordre = ['en_attente' => 0, 'en_cours' => 1, 'accomplie' => 2, 'demasquee' => 3, 'echouee' => 4];
+        self::genererPourUser($couple, $me);
+
+        $today = $me->localToday()->toDateString();
+        $partnerToday = $partner->localToday()->toDateString();
+
+        $maMission = $couple->missionsSecrettes()
+            ->where('joueur_cible_id', $me->id)
+            ->whereDate('date_mission', $today)
+            ->first();
+
+        $saMission = $couple->missionsSecrettes()
+            ->where('joueur_cible_id', $partner->id)
+            ->whereDate('date_mission', $partnerToday)
+            ->first();
+
+        $questionOuverte = $me->deadlineSoirPassee();
 
         return view('jeux.mission.index', [
             'couple' => $couple,
             'me' => $me,
             'partner' => $partner,
-            'mesMissions' => $mesMissions->sortBy(fn ($m) => $ordre[$m->statut] ?? 5),
-            'sesMissions' => $sesMissions->sortBy(fn ($m) => $ordre[$m->statut] ?? 5),
-            'reponduAujourdhui' => $me->devin_mission_jour?->isToday() ?? false,
-            'nombreReponses' => $me->devin_mission_jour?->isToday()
-                ? (int) $me->devin_mission_compteur
-                : 0,
+            'maMission' => $maMission,
+            'saMission' => $saMission,
+            'questionOuverte' => $questionOuverte,
+            'reponduAujourdhui' => $me->devin_mission_jour?->toDateString() === $today,
+            'nombreReponses' => $me->devin_mission_jour?->toDateString() === $today ? 1 : 0,
             'derniereReponse' => $me->devin_mission_reponse,
             'resultatDevin' => $me->devin_mission_resultat,
         ]);
-    }
-
-    public function nouvelle(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        $couple = $user->coupleModel;
-        $partner = $couple->partnerOf($user);
-
-        $frequence = (int) $request->input('frequence', 24);
-        $frequence = in_array($frequence, [24, 48, 168], true) ? $frequence : 24;
-
-        $derniere = $couple->missionsSecrettes()
-            ->where('joueur_cible_id', $user->id)
-            ->where('created_at', '>', now()->subMinutes(5))
-            ->exists();
-
-        if ($derniere) {
-            return response()->json(['error' => 'Attends un peu avant de tirer une nouvelle mission.'], 429);
-        }
-
-        $mission = self::MISSIONS[array_rand(self::MISSIONS)];
-        $duree = self::DELAIS[$mission['difficulte']];
-
-        $details = session('frequence_perso_'.$user->id);
-
-        $created = MissionSecrete::create([
-            'couple_id' => $couple->id,
-            'joueur_cible_id' => $user->id,
-            'texte' => $mission['texte'],
-            'difficulte' => $mission['difficulte'],
-            'statut' => 'en_attente',
-            'date_debut' => now(),
-            'date_fin' => now()->addHours($details && ($details['frequence'] ?? $frequence) ? $frequence : $duree),
-        ]);
-
-        session(['frequence_perso_'.$user->id => ['frequence' => $frequence, 'date' => now()]]);
-
-        return response()->json(['ok' => true, 'id' => $created->id, 'message' => 'Mission secrète envoyée !']);
     }
 
     public function reveler(Request $request, MissionSecrete $mission): JsonResponse
@@ -118,9 +127,37 @@ class MissionSecreteController extends Controller
             return response()->json(['error' => 'Mission déjà révélée.'], 422);
         }
 
-        $mission->forceFill(['statut' => 'en_cours', 'revele_at' => now()])->save();
+        if ($request->user()->deadlineSoirPassee()) {
+            return response()->json(['error' => 'La mission du jour est terminée.'], 422);
+        }
+
+        $mission->forceFill([
+            'statut' => 'en_cours',
+            'revele_at' => now(),
+            'vue_par_cible' => true,
+        ])->save();
 
         return response()->json(['ok' => true]);
+    }
+
+    public function refuser(Request $request, MissionSecrete $mission): JsonResponse
+    {
+        $this->authorize($mission);
+
+        if ($mission->joueur_cible_id !== $request->user()->id) {
+            return response()->json(['error' => 'Ce n\'est pas ta mission.'], 403);
+        }
+
+        if ($mission->statut !== 'en_attente') {
+            return response()->json(['error' => 'Mission déjà traitée.'], 422);
+        }
+
+        $mission->forceFill([
+            'statut' => 'refusee',
+            'vue_par_cible' => true,
+        ])->save();
+
+        return response()->json(['ok' => true, 'message' => 'Mission refusée.']);
     }
 
     public function accomplir(Request $request, MissionSecrete $mission): JsonResponse
@@ -135,8 +172,12 @@ class MissionSecreteController extends Controller
             return response()->json(['error' => 'Mission déjà traitée.'], 422);
         }
 
-        // Silence total : le/la partenaire ne sait pas que la mission est accomplie.
-        $mission->forceFill(['statut' => 'accomplie', 'accomplie_at' => now(), 'revele_at' => now()])->save();
+        $mission->forceFill([
+            'statut' => 'accomplie',
+            'accomplie_at' => now(),
+            'revele_at' => now(),
+            'vue_par_cible' => true,
+        ])->save();
 
         return response()->json(['ok' => true, 'message' => 'Mission accomplie ! Le jeu du soir décidera si tu passes inaperçu·e.']);
     }
@@ -146,16 +187,14 @@ class MissionSecreteController extends Controller
         $user = $request->user();
         $couple = $user->coupleModel;
 
-        $aujourdhui = today()->toDateString();
-        $compteur = (int) $user->devin_mission_compteur;
-
-        // Nouveau jour → on repart à zéro (5 réponses par jour).
-        if ($user->devin_mission_jour?->toDateString() !== $aujourdhui) {
-            $compteur = 0;
+        if (! $user->deadlineSoirPassee()) {
+            return response()->json(['error' => 'La question du soir arrive à 20h.'], 422);
         }
 
-        if ($compteur >= 5) {
-            return response()->json(['error' => 'Tu as déjà répondu 5 fois à la question du soir aujourd\'hui.'], 422);
+        $today = $user->localToday()->toDateString();
+
+        if ($user->devin_mission_jour?->toDateString() === $today) {
+            return response()->json(['error' => 'Tu as déjà répondu à la question du soir aujourd\'hui.'], 422);
         }
 
         $data = $request->validate([
@@ -163,46 +202,43 @@ class MissionSecreteController extends Controller
         ]);
 
         $partenaire = $couple->partnerOf($user);
+        $partnerToday = $partenaire->localToday()->toDateString();
 
-        // Missions accomplies par le/la partenaire depuis la dernière réponse, pas encore devinées.
-        $missions = $couple->missionsSecrettes()
+        $mission = $couple->missionsSecrettes()
             ->where('joueur_cible_id', $partenaire->id)
-            ->where('statut', 'accomplie')
-            ->whereNull('devine')
-            ->when($user->devin_mission_jour, fn ($q, $jour) => $q->where('accomplie_at', '>', $jour->startOfDay()))
-            ->orderBy('id')
-            ->get();
+            ->whereDate('date_mission', $partnerToday)
+            ->first();
 
-        $nb = $missions->count();
+        if ($mission && in_array($mission->statut, ['en_attente', 'en_cours']) && $partenaire->deadlineSoirPassee()) {
+            $mission->forceFill(['statut' => 'echouee'])->save();
+        }
+
+        $accomplie = $mission && $mission->statut === 'accomplie' && is_null($mission->devine);
 
         if ($request->input('reponse') === 'oui') {
-            if ($nb > 0) {
-                foreach ($missions as $mission) {
-                    $mission->forceFill(['statut' => 'demasquee', 'devine' => 'mission'])->save();
-                }
-                Point::add($user, $couple, 10 * $nb, 'Mission secrète démasquée');
-                Point::add($partenaire, $couple, 10 * $nb, 'Mission accomplie mais démasquée');
-                $resultat = 'demasquee:'.$nb;
-                $message = 'Bien vu ! '.$nb.' mission(s) secrète(s) démasquée(s). +'.(10 * $nb).' pts chacun.';
+            if ($accomplie) {
+                $mission->forceFill(['statut' => 'demasquee', 'devine' => 'mission'])->save();
+                Point::add($user, $couple, 10, 'Mission secrète démasquée');
+                Point::add($partenaire, $couple, 10, 'Mission accomplie mais démasquée');
+                $resultat = 'demasquee:1';
+                $message = 'Bien vu ! Mission secrète démasquée. +10 pts chacun.';
             } else {
                 $resultat = 'fausse';
                 $message = 'Fausse alerte ! Aucune mission n\'était en jeu. Tout était spontané.';
             }
         } else {
-            if ($nb > 0) {
-                foreach ($missions as $mission) {
-                    $mission->forceFill(['devine' => 'spontane'])->save();
-                }
-                Point::add($partenaire, $couple, 25 * $nb, 'Mission accomplie sans être démasqué');
-                $resultat = 'ratee:'.$nb;
-                $message = 'Raté, c\'était '.$nb.' mission(s) ! '.$partenaire->name.' passe incognito (+'.(25 * $nb).' pts).';
+            if ($accomplie) {
+                $mission->forceFill(['devine' => 'spontane'])->save();
+                Point::add($partenaire, $couple, 25, 'Mission accomplie sans être démasqué');
+                $resultat = 'ratee:1';
+                $message = 'Raté, c\'était une mission ! '.$partenaire->name.' passe incognito (+25 pts).';
             } else {
                 $resultat = 'rien';
                 $message = 'Rien à signaler. Ton/ta partenaire n\'a rien fait de suspect.';
             }
         }
 
-        if ($nb > 0) {
+        if ($accomplie) {
             RecompenseService::check($couple);
         }
 
@@ -210,7 +246,7 @@ class MissionSecreteController extends Controller
             'devin_mission_jour' => now(),
             'devin_mission_reponse' => $data['reponse'],
             'devin_mission_resultat' => $resultat,
-            'devin_mission_compteur' => $compteur + 1,
+            'devin_mission_compteur' => 1,
         ])->save();
 
         return response()->json(['ok' => true, 'message' => $message]);
@@ -231,6 +267,98 @@ class MissionSecreteController extends Controller
         $mission->forceFill(['statut' => 'echouee'])->save();
 
         return response()->json(['ok' => true, 'message' => 'Mission abandonnée.']);
+    }
+
+    public function marquerVu(Request $request, MissionSecrete $mission): JsonResponse
+    {
+        $user = $request->user();
+        $couple = $user->coupleModel;
+        $partner = $couple->partnerOf($user);
+
+        if ($mission->couple_id !== $couple->id) {
+            return response()->json(['error' => 'Accès interdit.'], 403);
+        }
+
+        $data = $request->validate([
+            'role' => ['required', 'in:cible,partenaire'],
+        ]);
+
+        if ($data['role'] === 'cible' && $mission->joueur_cible_id !== $user->id) {
+            return response()->json(['error' => 'Accès interdit.'], 403);
+        }
+
+        if ($data['role'] === 'partenaire' && $mission->joueur_cible_id !== $partner?->id) {
+            return response()->json(['error' => 'Accès interdit.'], 403);
+        }
+
+        $column = $data['role'] === 'cible' ? 'vue_par_cible' : 'vue_par_partenaire';
+        $mission->forceFill([$column => true])->save();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function infos(): JsonResponse
+    {
+        $me = Auth::user();
+        $couple = $me->coupleModel;
+        $partner = $couple->partnerOf($me);
+
+        $today = $me->localToday()->toDateString();
+
+        self::genererPourUser($couple, $me);
+
+        $this->finaliserMissions($couple, $me);
+
+        $maMission = $couple->missionsSecrettes()
+            ->where('joueur_cible_id', $me->id)
+            ->whereDate('date_mission', $today)
+            ->first();
+
+        $modals = [];
+
+        if ($maMission && $maMission->statut === 'en_attente' && ! $maMission->vue_par_cible && ! $me->deadlineSoirPassee()) {
+            $modals[] = [
+                'type' => 'mission',
+                'mission_id' => $maMission->id,
+                'title' => '🕵️ Nouvelle mission disponible',
+                'message' => 'Une nouvelle mission est disponible. Va sur la page Mission secrète pour la découvrir.',
+            ];
+        }
+
+        if ($me->deadlineSoirPassee()) {
+            $partnerToday = $partner->localToday()->toDateString();
+            $saMission = $couple->missionsSecrettes()
+                ->where('joueur_cible_id', $partner->id)
+                ->whereDate('date_mission', $partnerToday)
+                ->first();
+
+            if ($saMission && ! $saMission->vue_par_partenaire) {
+                $modals[] = [
+                    'type' => 'question',
+                    'mission_id' => $saMission->id,
+                    'title' => '🌙 Question du soir',
+                    'message' => 'Il est 20h. Viens répondre à la question du soir sur la page Mission secrète.',
+                ];
+            }
+        }
+
+        return response()->json(['modals' => $modals]);
+    }
+
+    protected function finaliserMissions($couple, $user): void
+    {
+        if (! $user) {
+            return;
+        }
+
+        $today = $user->localToday()->toDateString();
+
+        $couple->missionsSecrettes()
+            ->where('joueur_cible_id', $user->id)
+            ->whereIn('statut', ['en_attente', 'en_cours'])
+            ->whereDate('date_mission', '<=', $today)
+            ->where('date_fin', '<', now())
+            ->update(['statut' => 'echouee']);
     }
 
     protected function authorize(MissionSecrete $mission): void

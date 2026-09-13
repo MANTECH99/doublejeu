@@ -7,90 +7,168 @@
         <div class="center">
             <div style="font-size:48px; margin-bottom:4px">🕵️</div>
             <h1 class="title">Mission Secrète</h1>
-            <p class="subtitle">Une mission rien que pour toi. L'autre ne saura jamais… sauf si la question du soir le/la trahit.</p>
+            <p class="subtitle">Chaque jour à 00h, une mission arrive pour toi. L'autre ne saura jamais… sauf si la question du soir le/la trahit.</p>
         </div>
 
-        {{-- Question du soir : ne fuite rien (posée tous les jours, mission ou pas). 2 réponses max. --}}
-        <section class="section-head"><h2>Question du soir</h2></section>
-        @if ($nombreReponses < 5)
-            <div class="card mb16" style="background:linear-gradient(135deg, rgba(245,158,11,.10), rgba(230,57,70,.05)), var(--card); border-color:rgba(245,158,11,.30)">
-                <strong>🌙 Ton/ta partenaire a-t-il/elle fait une mission secrète aujourd'hui ?</strong>
-                <p class="tiny muted mt8" style="line-height:1.5">
-                    Tu peux répondre jusqu'à {{ 5 - $nombreReponses }} fois de plus aujourd'hui.
-                    Peu importe ta réponse, tu ne sauras pas si une mission existait vraiment.
-                </p>
-                <div class="flex gap8 mt16">
-                    <button class="btn btn-sm btn-primary" onclick="repondreQuestion('oui')">🎯 Oui, je le/la soupçonne</button>
-                    <button class="btn btn-sm btn-ghost" onclick="repondreQuestion('non')">💗 Non, tout était spontané</button>
+        {{-- Ma mission du jour --}}
+        <section class="section-head"><h2>Ma mission du jour</h2></section>
+        <div class="card mb16" style="padding:16px 18px">
+            @if (! $maMission)
+                <div class="center">
+                    <div style="font-size:26px">🌙</div>
+                    <strong class="block">Rien pour l'instant</strong>
+                    <div class="tiny muted">Ta mission du jour est en préparation. Reviens quelques minutes après 00h !</div>
                 </div>
-            </div>
-        @else
-            <div class="card mb16" style="padding:12px 16px">
+            @elseif ($maMission->statut === 'en_attente')
+                <div class="flex between items-center gap12">
+                    <div>
+                        <strong>🔒 Une mission secrète t'attend</strong>
+                        <div class="tiny muted">Accepte-la pour la découvrir, ou refuse-la.</div>
+                    </div>
+                    <div class="flex gap8">
+                        <button class="btn btn-sm btn-ghost" onclick="refuserMission({{ $maMission->id }})">Refuser</button>
+                        <button class="btn btn-sm btn-primary" onclick="accepterMission({{ $maMission->id }})">Accepter</button>
+                    </div>
+                </div>
+            @else
+                <div style="font-size:14px">
+                    @if (in_array($maMission->statut, ['en_cours', 'accomplie']))
+                        <span class="badge {{ $maMission->statut === 'en_cours' ? 'succes' : 'neutre' }}">{{ $maMission->statut === 'en_cours' ? '🕐 En cours' : '🕵️ Accomplie' }}</span>
+                        <span class="block mt8">{{ $maMission->texte }}</span>
+                    @else
+                        <span class="badge neutre">
+                            @if ($maMission->statut === 'refusee')
+                                🚫 Refusée
+                            @elseif ($maMission->statut === 'demasquee')
+                                😏 Démasquée
+                            @else
+                                💤 Échouée
+                            @endif
+                        </span>
+                    @endif
+
+                    <div class="tiny muted mt8" style="line-height:1.6">
+                        @if ($maMission->statut === 'en_cours' && $maMission->date_fin)
+                            <span style="color:var(--warning)">⏳ À accomplir avant 20h ({{ $maMission->date_fin->diffForHumans(['parts' => 1]) }}).</span>
+                        @endif
+                        @if ($maMission->statut === 'accomplie' && ! $maMission->devine)
+                            <b>En attente de la question du soir de {{ $partner->name }}.</b>
+                        @endif
+                        @if ($maMission->statut === 'accomplie' && $maMission->devine === 'spontane')
+                            <b>Ton/ta partenaire a répondu « Non » : mission réussie en secret, +25 pts ✅</b>
+                        @endif
+                        @if ($maMission->statut === 'demasquee')
+                            <b>Ton/ta partenaire t'a démasqué·e : +10 pts chacun (−)</b>
+                        @endif
+                        @if ($maMission->statut === 'refusee')
+                            <span>Tu as décliné la mission du jour. Aucun point, mais tu peux refaire une mission demain !</span>
+                        @endif
+                        @if ($maMission->statut === 'echouee')
+                            <span>Mission non accomplie aujourd'hui. À demain pour une nouvelle occasion !</span>
+                        @endif
+                        @if ($maMission->vue_par_partenaire && in_array($maMission->statut, ['accomplie', 'demasquee']))
+                            <div class="mt8"><span style="color:var(--success)">✓ {{ $partner->name }} a vu la question du soir.</span></div>
+                        @endif
+                    </div>
+                </div>
+
+                @if ($maMission->statut === 'en_cours')
+                    <div class="flex gap8 mt16">
+                        <button class="btn btn-sm btn-ghost" onclick="abandonnerMission({{ $maMission->id }})">💤 Abandonner</button>
+                        <button class="btn btn-sm btn-primary" onclick="accomplirMission({{ $maMission->id }})">Accomplie ✅</button>
+                    </div>
+                @endif
+            @endif
+        </div>
+
+        {{-- Question du soir --}}
+        <section class="section-head"><h2>Question du soir</h2></section>
+        <div class="card mb16" style="padding:16px 18px">
+            @if (! $questionOuverte)
+                <div class="flex between items-center">
+                    <div>
+                        <strong>🌙 À 20h, les masques tombent</strong>
+                        <div class="tiny muted">La question « {{ $partner->name }} a-t-elle fait une mission secrète aujourd'hui ? » s'ouvre ce soir.</div>
+                    </div>
+                </div>
+            @elseif (! $reponduAujourdhui)
+                <div style="background:linear-gradient(135deg, rgba(245,158,11,.10), rgba(230,57,70,.05)), var(--card); border-color:rgba(245,158,11,.30)">
+                    <strong>🌙 {{ $partner->name }} a-t-elle fait une mission secrète aujourd'hui ?</strong>
+                    <p class="tiny muted mt8" style="line-height:1.5; margin-bottom:0">
+                        Tu ne peux répondre qu'une seule fois par jour.
+                        Peu importe ta réponse, tu ne sauras pas si une mission existait vraiment (sauf si tu démasques).
+                    </p>
+                    <div class="flex gap8 mt16">
+                        <button class="btn btn-sm btn-primary" onclick="repondreQuestion('oui')">🎯 Oui, je le/la soupçonne</button>
+                        <button class="btn btn-sm btn-ghost" onclick="repondreQuestion('non')">💗 Non, tout était spontané</button>
+                    </div>
+                </div>
+            @else
                 <strong class="block">🌙 Verdict du soir</strong>
                 <div class="tiny mt8" style="line-height:1.6">
                     @if (str_starts_with($resultatDevin ?? '', 'demasquee'))
-                        <b style="color:var(--success)">🎯 Oui ! {{ (int) explode(':', $resultatDevin)[1] }} mission(s) démasquée(s) : +{{ (int) explode(':', $resultatDevin)[1] * 10 }} pts chacun.</b>
+                        <b style="color:var(--success)">🎯 Oui ! Mission démasquée : +10 pts chacun.</b>
                     @elseif (($resultatDevin ?? '') === 'fausse')
                         <span class="muted">Fausse alerte : aucune mission n'était en jeu, aucun point.</span>
                     @elseif (str_starts_with($resultatDevin ?? '', 'ratee'))
-                        <span class="muted">Raté : {{ (int) explode(':', $resultatDevin)[1] }} mission(s) bien réelle(s), ton/ta partenaire gagne +{{ (int) explode(':', $resultatDevin)[1] * 25 }} pts.</span>
+                        <span class="muted">Raté : une mission était bien réelle, {{ $partner->name }} gagne +25 pts.</span>
                     @elseif (($resultatDevin ?? '') === 'rien')
                         <span class="muted">Rien à signaler : aucun point de part ni d'autre.</span>
                     @else
                         <span class="muted">Tu as répondu « {{ $derniereReponse === 'oui' ? 'Oui, je le/la soupçonne' : 'Non, tout était spontané' }} ». Résultat inconnu.</span>
                     @endif
-                    <div class="muted mt8">
-                        Réponses du jour : {{ $nombreReponses }}/5.
+                    <div class="muted mt8">Réponses du jour : 1/1.</div>
+                </div>
+
+                {{-- Révélation de la mission du/de la partenaire si elle est tranchée --}}
+                @if ($saMission && $saMission->statut === 'demasquee')
+                    <div class="block mt16" style="font-size:14px">
+                        <span class="badge rouge">Démasquée</span>
+                        Tu avais raison ! C'était la mission « {{ $saMission->texte }} » — +10 pts 🎯
+                    </div>
+                @elseif ($saMission && $saMission->statut === 'accomplie' && $saMission->devine === 'spontane')
+                    <div class="block mt16" style="font-size:14px">
+                        <span class="badge rouge">Raté</span>
+                        C'était la mission « {{ $saMission->texte }} » — tu as répondu « Non ». {{ $partner->name }} gagne +25 pts 💨
+                    </div>
+                @endif
+            @endif
+        </div>
+
+        {{-- La mission de mon/ma partenaire : rien tant que la question du soir n'a pas été répondue. --}}
+        @if ($saMission && $reponduAujourdhui)
+        <section class="section-head"><h2>La mission de {{ $partner->name }}</h2></section>
+        <div class="card pad-sm">
+            @if ($questionOuverte && in_array($saMission->statut, ['demasquee']) || ($questionOuverte && $saMission->statut === 'accomplie' && $saMission->devine === 'spontane'))
+                <div class="row">
+                    <div style="font-size:14px">
+                        <span class="badge {{ $saMission->statut === 'demasquee' ? 'rouge' : '' }}">{{ $saMission->statut === 'demasquee' ? 'Démasquée' : 'Raté' }}</span>
+                        <span class="block mt8">{{ $saMission->texte }}</span>
                     </div>
                 </div>
-            </div>
+            @else
+                <div class="row">
+                    <div>
+                        <div class="hidden-card" style="max-width:220px">Ssshh… {{ $partner->name }} a peut-être une mission secrète en cours 🕵️</div>
+                        <div class="tiny muted mt8">
+                            @if ($saMission->statut === 'refusee' || $saMission->statut === 'echouee')
+                                {{ $partner->name }} n'a pas de mission en cours aujourd'hui.
+                            @elseif ($saMission->statut === 'accomplie' && $saMission->devine)
+                                Mission déjà tranchée par la question du soir.
+                            @else
+                                Statut secret.
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            @endif
+        </div>
         @endif
-
-        <div class="card mb16">
-            <div class="flex between items-center">
-                <div>
-                    <strong>Tirer une mission secrète</strong>
-                    <div class="tiny muted">Une notification t'avertira. Le contenu reste caché jusqu'au clic.</div>
-                </div>
-            </div>
-            <form id="form-mission" class="mt16" onsubmit="event.preventDefault(); nouvelleMission();">
-                <label class="label">Fréquence des missions</label>
-                <div class="grid2 mb16">
-                    <select class="select" id="frequence">
-                        <option value="24">⏰ 1 par jour</option>
-                        <option value="48">💤 1 tous les 2 jours</option>
-                        <option value="168">📅 1 par semaine</option>
-                    </select>
-                    <button class="btn btn-primary" type="submit">🎲 Tirer une mission</button>
-                </div>
-            </form>
-        </div>
-
-        {{-- Mes missions --}}
-        <section class="section-head"><h2>Mes missions</h2></section>
-        <div class="card pad-sm">
-            @forelse ($mesMissions as $m)
-                @include('jeux.mission._item', ['m' => $m, 'mine' => true])
-            @empty
-                <div class="tiny muted center" style="padding:10px">Pas encore de mission. Tire-en une !</div>
-            @endforelse
-        </div>
-
-        {{-- Missions de mon/ma partenaire --}}
-        <section class="section-head"><h2>Missions de {{ $partner->name }}</h2></section>
-        <div class="card pad-sm">
-            @forelse ($sesMissions as $m)
-                @include('jeux.mission._item', ['m' => $m, 'mine' => false])
-            @empty
-                <div class="tiny muted center" style="padding:10px">{{ $partner->name }} n'a pas encore de mission secrète.</div>
-            @endforelse
-        </div>
 
         <div class="card mt16 center" style="background:rgba(14,116,144,.08); border-color:rgba(34,211,238,.25)">
             <strong>Comment ça marche ?</strong>
             <p class="tiny muted mt8" style="line-height:1.6; margin-bottom:0">
-                ① Tire une mission cachée → ② réalise-la dans le vrai monde, en secret (personne n'est prévenu) → ③ coche « Accomplie ».
-                Chaque soir, ton/ta partenaire répond à la question du soir.
+                ① Chaque jour à 00h, une mission arrive pour toi (accepte-la ou refuse-la) → ② réalise-la dans le vrai monde, en secret (personne n'est prévenu) → ③ à 20h, elle s'arrête et la question du soir s'ouvre.
                 <b>+25 pts</b> si tu passes inaperçu·e (il/elle répond « Non »),
                 <b>+10 pts chacun</b> s'il ou elle te démasque.
             </p>
@@ -100,21 +178,18 @@
 
 @push('scripts')
     <script>
-        async function nouvelleMission() {
-            const freq = document.getElementById('frequence').value;
-            const res = await api('/jeux/mission-secrete/nouvelle', { method: 'POST', body: { frequence: freq } });
-            if (res.ok) {
-                toast(res.data.message, 'success');
-                setTimeout(() => location.reload(), 800);
-            }
-        }
-
-        async function reveler(id) {
+        async function accepterMission(id) {
             const res = await api('/jeux/mission-secrete/' + id + '/reveler', { method: 'POST' });
             if (res.ok) location.reload();
         }
 
-        async function accomplir(id) {
+        async function refuserMission(id) {
+            if (!confirm('Refuser la mission du jour sans la découvrir ?')) return;
+            const res = await api('/jeux/mission-secrete/' + id + '/refuser', { method: 'POST' });
+            if (res.ok) location.reload();
+        }
+
+        async function accomplirMission(id) {
             if (!confirm('As-tu réellement accompli cette mission dans la vraie vie ?')) return;
             const res = await api('/jeux/mission-secrete/' + id + '/accomplir', { method: 'POST' });
             if (res.ok) {
@@ -123,7 +198,7 @@
             }
         }
 
-        async function echouer(id) {
+        async function abandonnerMission(id) {
             if (!confirm('Abandonner cette mission ?')) return;
             const res = await api('/jeux/mission-secrete/' + id + '/echouer', { method: 'POST' });
             if (res.ok) location.reload();

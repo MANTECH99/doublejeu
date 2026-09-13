@@ -12,7 +12,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 
-#[Fillable(['name', 'email', 'password', 'gender', 'avatar_url', 'couple_id', 'date_naissance', 'devin_mission_jour', 'devin_mission_reponse', 'devin_mission_resultat', 'devin_mission_compteur', 'typing_at', 'recording_at'])]
+#[Fillable(['name', 'email', 'password', 'gender', 'avatar_url', 'couple_id', 'date_naissance', 'devin_mission_jour', 'devin_mission_reponse', 'devin_mission_resultat', 'devin_mission_compteur', 'timezone', 'mission_question_notif_jour', 'typing_at', 'recording_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -24,6 +24,7 @@ class User extends Authenticatable
         return [
             'date_naissance' => 'date',
             'devin_mission_jour' => 'datetime',
+            'mission_question_notif_jour' => 'datetime',
             'email_verified_at' => 'datetime',
             'last_active_at' => 'datetime',
             'typing_at' => 'datetime',
@@ -80,6 +81,31 @@ class User extends Authenticatable
         }
 
         return asset('storage/'.$this->avatar_url);
+    }
+
+    public function localTimezone(): string
+    {
+        return $this->timezone ?: config('app.timezone', 'UTC');
+    }
+
+    public function localNow(): Carbon
+    {
+        return now()->timezone($this->localTimezone());
+    }
+
+    public function localToday(): Carbon
+    {
+        return $this->localNow()->copy()->startOfDay();
+    }
+
+    public function deadlineSoir(): Carbon
+    {
+        return $this->localToday()->setTime(20, 0);
+    }
+
+    public function deadlineSoirPassee(): bool
+    {
+        return now()->gte($this->deadlineSoir()->setTimezone(config('app.timezone', 'UTC')));
     }
 
     public function prochainAnniversaire(): ?Carbon

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -101,5 +102,23 @@ class ProfileController extends Controller
             'message' => 'Photo de profil supprimée.',
             'type' => 'info',
         ]);
+    }
+
+    /**
+     * Enregistre le fuseau horaire détecté par le navigateur.
+     */
+    public function timezone(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'timezone' => ['required', 'string', 'max:64'],
+        ]);
+
+        $user = $request->user();
+
+        if ($user->timezone !== $data['timezone']) {
+            $user->forceFill(['timezone' => $data['timezone']])->save();
+        }
+
+        return response()->json(['ok' => true]);
     }
 }

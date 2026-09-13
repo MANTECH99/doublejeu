@@ -9,3 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('question:dujour')->dailyAt('08:00');
+Schedule::command('missions:routine')->everyFiveMinutes();

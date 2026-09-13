@@ -11,8 +11,16 @@
             et de faire gagner des points à votre amour.
         </p>
         <div class="row gap8" style="justify-content:center; margin-top:22px">
-            <a href="{{ route('register') }}" class="btn btn-primary">Créer un compte</a>
-            <a href="{{ route('login') }}" class="btn btn-ghost">Se connecter</a>
+            @auth
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="btn btn-ghost">Se déconnecter</button>
+                </form>
+                <a href="{{ route('dashboard') }}" class="btn btn-primary">Tableau de bord</a>
+            @else
+                <a href="{{ route('register') }}" class="btn btn-primary">Créer un compte</a>
+                <a href="{{ route('login') }}" class="btn btn-ghost">Se connecter</a>
+            @endauth
         </div>
     </section>
 
@@ -47,6 +55,10 @@
             <div><span class="step-n">3</span><p>Jouez à distance, gagnez des points</p></div>
             <div><span class="step-n">4</span><p>Débloquez des récompenses 🎁</p></div>
         </div>
-        <a href="{{ route('register') }}" class="btn btn-primary btn-block" style="margin-top:18px">Commencer maintenant</a>
+        @auth
+            <a href="{{ route('dashboard') }}" class="btn btn-primary btn-block" style="margin-top:18px">Accéder à mon tableau de bord</a>
+        @else
+            <a href="{{ route('register') }}" class="btn btn-primary btn-block" style="margin-top:18px">Commencer maintenant</a>
+        @endauth
     </section>
 @endsection

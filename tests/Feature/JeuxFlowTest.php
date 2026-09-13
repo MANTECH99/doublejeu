@@ -295,58 +295,98 @@ class JeuxFlowTest extends TestCase
             ])->assertStatus(422);
     }
 
-    public function test_mission_secrete_flow(): void
+    public function test_mission_secrete_quotidienne_acceptee_et_demasquee(): void
     {
-        $this->actingAs($this->alice);
+        $this->travelTo('2026-01-10 00:30:00');
 
-        $res = $this->postJson(route('mission.nouvelle'), ['frequence' => 24])->assertOk();
-        $mission = MissionSecrete::find($res->json('id'));
+        // Dès qu'on ouvre l'app, la mission du jour naît (sans commande manuelle).
+        $this->actingAs($this->alice)
+            ->get(route('mission.index'))
+            ->assertOk()
+            ->assertSee('Une mission secrète t\'attend', false);
 
-        $this->postJson(route('mission.reveler', $mission))->assertOk();
-        $this->postJson(route('mission.accomplir', $mission))->assertOk();
+        $this->artisan('missions:routine')->assertSuccessful();
 
-        // Silence total : aucun point, aucune « devin » par mission, elle reste accomplie.
-        $this->assertDatabaseMissing('points', ['couple_id' => $this->couple->id, 'joueur_id' => $this->bob->id]);
-        $this->assertEquals('accomplie', $mission->fresh()->statut);
-        $this->assertNull($mission->fresh()->devine);
+        $missionAlice = MissionSecrete::where('joueur_cible_id', $this->alice->id)->first();
+        $missionBob = MissionSecrete::where('joueur_cible_id', $this->bob->id)->first();
+        $this->assertNotNull($missionAlice);
+        $this->assertNotNull($missionBob);
+        $this->assertEquals('en_attente', $missionAlice->statut);
+        $this->assertEquals('2026-01-10', $missionAlice->date_mission->toDateString());
 
-        // Bob soupçonne (« oui ») → mission démasquée, +10 pts chacun.
+        // Une seule mission par partenaire et par jour (idempotent).
+        $this->artisan('missions:routine');
+        $this->assertSame(1, MissionSecrete::where('joueur_cible_id', $this->alice->id)->count());
+
+        // Modal « nouvelle mission » puis accusé de lecture du matin.
+        $infos = $this->getJson(route('mission.infos'))->assertOk()->json('modals');
+        $this->assertEquals('mission', $infos[0]['type']);
+        $this->postJson(route('mission.vu', $missionAlice), ['role' => 'cible'])->assertOk();
+        $this->assertSame([], $this->getJson(route('mission.infos'))->assertOk()->json('modals'));
+
+        // Acceptée → révélée, puis accomplie en silence total.
+        $this->postJson(route('mission.reveler', $missionAlice))->assertOk();
+        $this->assertEquals('en_cours', $missionAlice->fresh()->statut);
+        $this->postJson(route('mission.accomplir', $missionAlice))->assertOk();
+        $this->assertEquals('accomplie', $missionAlice->fresh()->statut);
+        $this->assertDatabaseMissing('points', ['couple_id' => $this->couple->id]);
+
+        // Question du soir fermée avant 20h.
         $this->actingAs($this->bob);
+        $this->postJson(route('mission.question'), ['reponse' => 'oui'])->assertStatus(422);
+
+        // 20h30 : modal « question du soir » puis réponse Oui → démasquée, +10 chacun.
+        $this->travelTo('2026-01-10 20:30:00');
+
+        $infos = $this->getJson(route('mission.infos'))->assertOk()->json('modals');
+        $this->assertEquals('question', $infos[0]['type']);
+        $this->postJson(route('mission.vu', $missionAlice), ['role' => 'partenaire'])->assertOk();
+        $this->assertSame([], $this->getJson(route('mission.infos'))->assertOk()->json('modals'));
+
         $this->postJson(route('mission.question'), ['reponse' => 'oui'])->assertOk();
-        $this->assertEquals('demasquee', $mission->fresh()->statut);
-        $this->assertEquals('mission', $mission->fresh()->devine);
+        $this->assertEquals('demasquee', $missionAlice->fresh()->statut);
+        $this->assertEquals('mission', $missionAlice->fresh()->devine);
         $this->assertDatabaseHas('points', ['couple_id' => $this->couple->id, 'joueur_id' => $this->bob->id, 'montant' => 10]);
         $this->assertDatabaseHas('points', ['couple_id' => $this->couple->id, 'joueur_id' => $this->alice->id, 'montant' => 10]);
 
-        // 5 réponses max par jour : les 5 premières sont acceptées, la 6e est refusée.
-        $this->actingAs($this->bob);
-        foreach (['non', 'oui', 'non', 'oui'] as $r) {
-            $this->postJson(route('mission.question'), ['reponse' => $r])->assertOk();
-        }
-        $this->postJson(route('mission.question'), ['reponse' => 'oui'])->assertStatus(422);
+        // Une seule réponse par jour.
         $this->postJson(route('mission.question'), ['reponse' => 'non'])->assertStatus(422);
+        $this->assertSame(1, $this->bob->fresh()->devin_mission_compteur);
 
-        // Alice en tire une 2e, l'accomplit en silence → Bob répond « non » : +25 pour Alice seule.
-        $this->travel(6)->minutes();
+        // La cible voit que le/la partenaire a bien vu la question du soir (même jour).
+        $this->actingAs($this->alice)
+            ->get(route('mission.index'))
+            ->assertOk()
+            ->assertSee('a vu la question du soir', false)
+            ->assertSee('Démasquée', false);
+
+        // Le lendemain à 00h, une nouvelle mission apparaît pour chacun.
+        $this->travelTo('2026-01-11 01:00:00');
+        $this->artisan('missions:routine');
+        $this->assertSame(2, MissionSecrete::where('joueur_cible_id', $this->alice->id)->count());
+        $this->assertSame(2, MissionSecrete::where('joueur_cible_id', $this->bob->id)->count());
+    }
+
+    public function test_mission_secrete_ignoree_rapporte_25_points(): void
+    {
+        $this->travelTo('2026-01-10 00:30:00');
+        $this->artisan('missions:routine');
+
+        $missionAlice = MissionSecrete::where('joueur_cible_id', $this->alice->id)->first();
+
         $this->actingAs($this->alice);
-        $res2 = $this->postJson(route('mission.nouvelle'), ['frequence' => 24])->assertOk();
-        $mission2 = MissionSecrete::find($res2->json('id'));
-        $this->postJson(route('mission.reveler', $mission2))->assertOk();
-        $this->postJson(route('mission.accomplir', $mission2))->assertOk();
+        $this->postJson(route('mission.reveler', $missionAlice))->assertOk();
+        $this->postJson(route('mission.accomplir', $missionAlice))->assertOk();
 
-        $this->travel(1)->day();
-        $this->actingAs($this->bob);
-        $nbPoints = Point::count();
-        $this->postJson(route('mission.question'), ['reponse' => 'non'])->assertOk();
-        $this->assertEquals('accomplie', $mission2->fresh()->statut);
-        $this->assertEquals('spontane', $mission2->fresh()->devine);
+        // Bob répond « Non » après 20h → Alice passe incognito (+25).
+        $this->travelTo('2026-01-10 20:30:00');
+        $this->actingAs($this->bob)
+            ->postJson(route('mission.question'), ['reponse' => 'non'])
+            ->assertOk();
+
+        $this->assertEquals('spontane', $missionAlice->fresh()->devine);
         $this->assertDatabaseHas('points', ['couple_id' => $this->couple->id, 'joueur_id' => $this->alice->id, 'montant' => 25]);
-        $this->assertSame($nbPoints + 1, Point::count());
-
-        // Fausse accusation le lendemain (aucune mission en jeu) → aucun point ajouté.
-        $this->travel(1)->day();
-        $this->postJson(route('mission.question'), ['reponse' => 'oui'])->assertOk();
-        $this->assertSame($nbPoints + 1, Point::count());
+        $this->assertDatabaseMissing('points', ['couple_id' => $this->couple->id, 'joueur_id' => $this->bob->id]);
 
         // Vue propriétaire : mission réussie en secret ; vue partenaire : « Raté ».
         $this->actingAs($this->alice)
@@ -357,7 +397,120 @@ class JeuxFlowTest extends TestCase
         $this->actingAs($this->bob)
             ->get(route('mission.index'))
             ->assertOk()
-            ->assertSee('Raté');
+            ->assertSee('Raté', false);
+    }
+
+    public function test_mission_refusee_ne_fuite_rien_et_n_augmente_aucun_point(): void
+    {
+        $this->travelTo('2026-01-10 00:30:00');
+        $this->artisan('missions:routine');
+
+        $missionAlice = MissionSecrete::where('joueur_cible_id', $this->alice->id)->first();
+
+        // Alice refuse sa mission : reste secrète pour Bob.
+        $this->actingAs($this->alice);
+        $this->postJson(route('mission.refuser', $missionAlice))->assertOk();
+        $this->assertEquals('refusee', $missionAlice->fresh()->statut);
+
+        // Bob ne voit rien de compromettant tant qu'il n'a pas répondu.
+        $this->actingAs($this->bob)
+            ->get(route('mission.index'))
+            ->assertOk()
+            ->assertDontSee('Ssshh', false)
+            ->assertDontSee($missionAlice->texte, false);
+
+        // 20h30 : Alice répond « Non » au sujet de Bob (qui n'a rien fait) → aucun point.
+        $this->travelTo('2026-01-10 20:30:00');
+        $this->actingAs($this->alice)
+            ->postJson(route('mission.question'), ['reponse' => 'non'])
+            ->assertOk();
+
+        $this->assertEquals('rien', $this->alice->fresh()->devin_mission_resultat);
+        $this->assertSame(0, Point::count());
+
+        // Fausse accusation → rien non plus.
+        $this->travelTo('2026-01-10 21:00:00');
+        $this->actingAs($this->bob)
+            ->postJson(route('mission.question'), ['reponse' => 'oui'])
+            ->assertOk();
+        $this->assertEquals('fausse', $this->bob->fresh()->devin_mission_resultat);
+        $this->assertSame(0, Point::count());
+    }
+
+    public function test_mission_non_realisee_expire_a_20h(): void
+    {
+        $this->travelTo('2026-01-10 00:30:00');
+        $this->artisan('missions:routine');
+
+        $missionAlice = MissionSecrete::where('joueur_cible_id', $this->alice->id)->first();
+
+        // Alice accepte mais n'accomplit jamais.
+        $this->actingAs($this->alice);
+        $this->postJson(route('mission.reveler', $missionAlice))->assertOk();
+
+        // À 21h, la mission est automatiquement échouée.
+        $this->travelTo('2026-01-10 21:00:00');
+        $this->actingAs($this->alice)
+            ->get(route('mission.index'))
+            ->assertOk()
+            ->assertSee('Échouée', false);
+        $this->assertEquals('echouee', $missionAlice->fresh()->statut);
+
+        // Bob soupçonne → fausse alerte, aucun point.
+        $this->actingAs($this->bob)
+            ->postJson(route('mission.question'), ['reponse' => 'oui'])
+            ->assertOk();
+        $this->assertSame(0, Point::count());
+    }
+
+    public function test_mission_suit_le_fuseau_horaire_de_chaque_partenaire(): void
+    {
+        $this->alice->forceFill(['timezone' => 'Europe/Paris'])->save();
+        $this->bob->forceFill(['timezone' => 'UTC'])->save();
+
+        // 22h30 UTC = 00h30 du lendemain à Paris : seule la mission d'Alice naît ce soir-là.
+        $this->travelTo('2026-07-10 22:30:00');
+        $this->artisan('missions:routine');
+
+        $missionAlice = MissionSecrete::where('joueur_cible_id', $this->alice->id)->first();
+        $this->assertNotNull($missionAlice);
+        $this->assertEquals('2026-07-11', $missionAlice->date_mission->toDateString());
+        $this->assertNull(MissionSecrete::where('joueur_cible_id', $this->bob->id)->first());
+
+        // 20h arrive à des heures UTC différentes pour chaque partenaire.
+        $this->travelTo('2026-07-10 17:30:00'); // 19h30 Paris
+        $this->assertFalse($this->alice->fresh()->deadlineSoirPassee());
+
+        $this->travelTo('2026-07-10 18:00:00'); // 20h00 Paris pile
+        $this->assertTrue($this->alice->fresh()->deadlineSoirPassee());
+        $this->assertFalse($this->bob->fresh()->deadlineSoirPassee()); // 18h00 UTC, il est 18h chez Bob
+    }
+
+    public function test_mission_arrive_dans_l_app_sans_commande(): void
+    {
+        // Après 20h, ouvrir l'app ne crée plus de mission pour la journée.
+        $this->travelTo('2026-01-10 21:00:00');
+        $this->actingAs($this->alice)->getJson(route('mission.infos'))->assertOk();
+        $this->assertNull(MissionSecrete::where('joueur_cible_id', $this->alice->id)->first());
+
+        // À 00h, ouvrir l'app (vue infos, appelée sur toutes les pages) fait naître la mission du jour.
+        $this->travelTo('2026-01-11 00:30:00');
+        $this->actingAs($this->alice)->getJson(route('mission.infos'))->assertOk();
+
+        $missionAlice = MissionSecrete::where('joueur_cible_id', $this->alice->id)->first();
+        $this->assertNotNull($missionAlice);
+        $this->assertEquals('en_attente', $missionAlice->statut);
+        $this->assertEquals('2026-01-11', $missionAlice->date_mission->toDateString());
+
+        // La page mission crée aussi la mission à la demande.
+        $this->actingAs($this->bob)->get(route('mission.index'))->assertOk();
+        $this->assertNotNull(MissionSecrete::where('joueur_cible_id', $this->bob->id)->first());
+
+        // Idempotent : ni doublon, ni réinitialisation.
+        $this->actingAs($this->alice)->getJson(route('mission.infos'))->assertOk();
+        $this->assertSame(1, MissionSecrete::where('joueur_cible_id', $this->alice->id)->count());
+        $this->actingAs($this->bob)->getJson(route('mission.infos'))->assertOk();
+        $this->assertSame(1, MissionSecrete::where('joueur_cible_id', $this->bob->id)->count());
     }
 
     public function test_recompense_and_custom_cards(): void
@@ -1062,7 +1215,7 @@ class JeuxFlowTest extends TestCase
             route('vo.index') => 'function setNiveau',
             route('discussion.index') => 'disc-messages',
             route('ouinon.index') => 'async function realiserMission',
-            route('mission.index') => 'async function nouvelleMission',
+            route('mission.index') => 'async function accepterMission',
             route('enveloppe.index') => 'startPolling(stateUrl, renderEnvs',
             route('quiz.index') => 'async function lancerQuiz',
             route('qdn2.index') => 'Mes questions',

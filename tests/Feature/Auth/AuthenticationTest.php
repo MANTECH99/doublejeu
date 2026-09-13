@@ -51,4 +51,24 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
         $response->assertRedirect('/');
     }
+
+    public function test_home_page_shows_guest_actions_for_guests(): void
+    {
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Créer un compte')
+            ->assertSee('Se connecter');
+    }
+
+    public function test_home_page_shows_dashboard_and_logout_for_authenticated_users(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/')
+            ->assertOk()
+            ->assertSee('Tableau de bord')
+            ->assertSee('Se déconnecter')
+            ->assertDontSee('Créer un compte');
+    }
 }

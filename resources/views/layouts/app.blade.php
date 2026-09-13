@@ -101,7 +101,7 @@
         window.VAPID_PUBLIC_KEY = @json(config('services.webpush.public_key', ''));
     </script>
 </head>
-<body data-auth="1">
+<body data-auth="1" data-tz="{{ Auth::user()?->timezone ?? '' }}" data-linked="{{ optional(Auth::user())->couple_id ? '1' : '0' }}">
     <div class="app-wrap">
 
         <header class="topbar">
@@ -189,6 +189,99 @@
             document.addEventListener('visibilitychange', function () {
                 if (document.visibilityState === 'visible') poll();
             });
+        })();
+    </script>
+
+    <script>
+        // Fuseau horaire : auto-détection envoyée au profil (met le 00h/20h des missions au fuseau du partenaire).
+        (function () {
+            if (document.body.getAttribute('data-auth') !== '1') return;
+            try {
+                var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                if (tz && tz !== document.body.getAttribute('data-tz') && tz !== localStorage.getItem('dj_tz_sent')) {
+                    fetch('/profile/timezone', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'), 'X-Requested-With': 'XMLHttpRequest' },
+                        body: JSON.stringify({ timezone: tz })
+                    }).catch(function () {});
+                    try { localStorage.setItem('dj_tz_sent', tz); } catch (e) {}
+                }
+            } catch (e) {}
+        })();
+
+        // Infos missions : popup persistante « nouvelle mission » / « question du soir » (D'accord = vu).
+        (function () {
+            var queued = [];
+            var showing = false;
+            var csrf = function () {
+                var m = document.querySelector('meta[name="csrf-token"]');
+                return m ? m.getAttribute('content') : '';
+            };
+
+            function showNext() {
+                if (showing || queued.length === 0) return;
+                showing = true;
+                var info = queued.shift();
+                var ov = document.createElement('div');
+                ov.className = 'modal-ov';
+                ov.style.display = 'flex';
+                var card = document.createElement('div');
+                card.className = 'modal';
+                card.style.textAlign = 'center';
+                var emoji = document.createElement('div');
+                emoji.style.fontSize = '40px';
+                emoji.textContent = info.type === 'mission' ? '🕵️' : '🌙';
+                var h3 = document.createElement('h3');
+                h3.style.margin = '10px 0 8px';
+                h3.style.fontSize = '18px';
+                h3.textContent = info.title;
+                var p = document.createElement('p');
+                p.className = 'tiny muted';
+                p.style.lineHeight = '1.5';
+                p.textContent = info.message;
+                var btn = document.createElement('button');
+                btn.className = 'btn btn-primary btn-block mt16';
+                btn.textContent = 'D\'accord';
+                btn.addEventListener('click', function () {
+                    btn.disabled = true;
+                    btn.textContent = '…';
+                    fetch('/jeux/mission-secrete/' + info.mission_id + '/vu', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                        body: JSON.stringify({ role: info.type === 'mission' ? 'cible' : 'partenaire' })
+                    }).catch(function () {}).finally(function () {
+                        ov.remove();
+                        showing = false;
+                        if (queued.length) showNext();
+                    });
+                });
+                card.appendChild(emoji);
+                card.appendChild(h3);
+                card.appendChild(p);
+                card.appendChild(btn);
+                ov.appendChild(card);
+                document.body.appendChild(ov);
+            }
+
+            function kick() {
+                if (!queued.length) return;
+                setTimeout(showNext, 600);
+            }
+
+            if (document.body.getAttribute('data-auth') === '1' && document.body.getAttribute('data-linked') === '1') {
+                fetch('/jeux/mission-secrete/infos', {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    cache: 'no-store'
+                }).then(function (res) {
+                    if (!res.ok) return null;
+                    return res.json();
+                }).then(function (data) {
+                    if (data && Array.isArray(data.modals) && data.modals.length) {
+                        queued = data.modals;
+                        kick();
+                    }
+                }).catch(function () {});
+            }
         })();
     </script>
 

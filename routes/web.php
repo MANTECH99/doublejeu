@@ -52,6 +52,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::post('/profile/photo', [ProfileController::class, 'uploadPhoto'])->name('profile.photo');
     Route::delete('/profile/photo', [ProfileController::class, 'deletePhoto'])->name('profile.photo.delete');
+    Route::post('/profile/timezone', [ProfileController::class, 'timezone'])->name('profile.timezone');
 });
 
 Route::middleware(['auth', 'couple.linked'])->group(function () {
@@ -94,11 +95,13 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
 
     // ---- Mission Secrète ----
     Route::get('/jeux/mission-secrete', [MissionSecreteController::class, 'index'])->name('mission.index');
-    Route::post('/jeux/mission-secrete/nouvelle', [MissionSecreteController::class, 'nouvelle'])->name('mission.nouvelle');
+    Route::get('/jeux/mission-secrete/infos', [MissionSecreteController::class, 'infos'])->name('mission.infos');
     Route::post('/jeux/mission-secrete/{mission}/reveler', [MissionSecreteController::class, 'reveler'])->name('mission.reveler');
+    Route::post('/jeux/mission-secrete/{mission}/refuser', [MissionSecreteController::class, 'refuser'])->name('mission.refuser');
     Route::post('/jeux/mission-secrete/{mission}/accomplir', [MissionSecreteController::class, 'accomplir'])->name('mission.accomplir');
-    Route::post('/jeux/mission-secrete/question-du-soir', [MissionSecreteController::class, 'questionDuSoir'])->name('mission.question');
     Route::post('/jeux/mission-secrete/{mission}/echouer', [MissionSecreteController::class, 'echouer'])->name('mission.echouer');
+    Route::post('/jeux/mission-secrete/{mission}/vu', [MissionSecreteController::class, 'marquerVu'])->name('mission.vu');
+    Route::post('/jeux/mission-secrete/question-du-soir', [MissionSecreteController::class, 'questionDuSoir'])->name('mission.question');
 
     // ---- Enveloppes ----
     Route::get('/jeux/enveloppes', [EnveloppeController::class, 'index'])->name('enveloppe.index');

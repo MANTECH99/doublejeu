@@ -229,7 +229,7 @@
                 <div class="flex between items-center">
                     <div>
                         <strong>Aucune mission en cours</strong>
-                        <div class="tiny muted">Tire une mission secrète pour surprendre</div>
+                        <div class="tiny muted">Une nouvelle mission t'attend chaque jour à 00h</div>
                     </div>
                     <a href="{{ route('mission.index') }}" class="btn btn-sm btn-soft">🕵️</a>
                 </div>
