@@ -5,43 +5,51 @@
 @section('content')
     <div class="fadeIn">
         {{-- Couple header --}}
-        <div class="card" style="background:linear-gradient(150deg, rgba(93,173,226,.16), rgba(52,152,219,.06)), var(--card)">
-            <div class="flex between items-center">
-                <div class="flex items-center gap12">
-                    <x-avatar :user="$me" class="lg" />
-                    <div>
-                        <div style="font-weight:700; font-size:17px">{{ $me->name }}</div>
-                        <div class="tiny muted">💞 avec {{ $partner->name }}</div>
+        <div class="hero-card">
+            <div class="hero-orb hero-orb-rose"></div>
+            <div class="hero-orb hero-orb-blue"></div>
+            <div class="hero-inner">
+                <div class="hero-pair">
+                    <div class="hero-avatars">
+                        <x-avatar :user="$me" class="lg hero-avatar-me" />
+                        <span class="hero-heart">💞</span>
+                        <x-avatar :user="$partner" class="lg hero-avatar-them" />
                     </div>
+                    <div class="hero-names">{{ $me->name }} <span class="hero-amp">&</span> {{ $partner->name }}</div>
+                    <div class="hero-sub tiny muted">Votre duo · votre histoire</div>
                 </div>
-                <x-avatar :user="$partner" class="lg" style="; border:2px solid rgba(255,255,255,.2)" />
             </div>
 
-            <div class="divider"></div>
-
-            @foreach (array_filter([$annivMoi, $annivPartenaire]) as $anniv)
-                <div class="flex between items-center" style="padding:6px 2px">
-                    <div class="grow">
-                        <div style="font-size:13px;font-weight:600">🎂 Anniversaire de {{ $anniv['name'] }}</div>
-                        <div class="tiny muted">
-                            @if ($anniv['date'])
-                                {{ $anniv['date']->translatedFormat('l j F Y') }}
-                            @else
-                                Date de naissance à renseigner sur le profil
-                            @endif
+            @php $anivs = array_values(array_filter([$annivMoi, $annivPartenaire])); @endphp
+            @if ($anivs)
+                <div class="divider"></div>
+                <div class="aniv-list">
+                    @foreach ($anivs as $anniv)
+                        <div class="aniv-row">
+                            <div class="aniv-icon">🎂</div>
+                            <div class="aniv-body grow">
+                                <div class="aniv-name">Anniversaire de {{ $anniv['name'] }}</div>
+                                <div class="tiny muted">
+                                    @if ($anniv['date'])
+                                        {{ $anniv['date']->translatedFormat('l j F Y') }}
+                                    @else
+                                        Date de naissance à renseigner sur le profil
+                                    @endif
+                                </div>
+                            </div>
+                            <div class="aniv-pill">
+                                @if ($anniv['jours'] === null)
+                                    <span class="tiny muted">—</span>
+                                @elseif ($anniv['jours'] > 0)
+                                    j-{{ $anniv['jours'] }} jours
+                                @else
+                                    🎉 C'est aujourd'hui !
+                                @endif
+                            </div>
                         </div>
-                    </div>
-                    <div style="font-weight:700;font-size:14px">
-                        @if ($anniv['jours'] === null)
-                            <span class="tiny muted">—</span>
-                        @elseif ($anniv['jours'] > 0)
-                            j-{{ $anniv['jours'] }} jours
-                        @else
-                            🎉 C'est aujourd'hui !
-                        @endif
-                    </div>
+                    @endforeach
                 </div>
-            @endforeach
+            @endif
         </div>
 
         {{-- Météo du couple --}}
@@ -49,12 +57,17 @@
             <h2>Météo du couple</h2>
             <a href="{{ route('meteo.index') }}" class="tiny">partager la mienne →</a>
         </section>
-        <div class="card" style="background:linear-gradient(150deg, rgba(93,173,226,.16), rgba(52,152,219,.06)), var(--card)">
-            <div class="grid2">
-                <div class="center" style="padding:14px 8px">
-                    <div class="tiny muted">{{ $me->name }}</div>
-                    <div style="font-size:40px;line-height:1.1">{{ $meteoMoi['emoji'] ?? '❓' }}</div>
-                    <div class="tiny">
+        <div class="meteo-card">
+            <div class="meteo-orb meteo-orb-1"></div>
+            <div class="meteo-orb meteo-orb-2"></div>
+            <div class="meteo-grid">
+                <div class="meteo-cell{{ $meteoMoi ? '' : ' meteo-cell-empty' }}">
+                    <div class="meteo-cell-top">
+                        <x-avatar :user="$me" class="sm" />
+                        <span class="meteo-cell-name">{{ $me->name }}</span>
+                    </div>
+                    <div class="meteo-cell-emoji">{{ $meteoMoi['emoji'] ?? '❓' }}</div>
+                    <div class="meteo-cell-label tiny">
                         @if ($meteoMoi)
                             {{ $meteoMoi['label'] }}
                         @else
@@ -62,10 +75,13 @@
                         @endif
                     </div>
                 </div>
-                <div class="center" style="padding:14px 8px">
-                    <div class="tiny muted">{{ $partner->name }}</div>
-                    <div style="font-size:40px;line-height:1.1">{{ $meteoPartenaire['emoji'] ?? '❓' }}</div>
-                    <div class="tiny">
+                <div class="meteo-cell{{ $meteoPartenaire ? '' : ' meteo-cell-empty' }}">
+                    <div class="meteo-cell-top">
+                        <x-avatar :user="$partner" class="sm" />
+                        <span class="meteo-cell-name">{{ $partner->name }}</span>
+                    </div>
+                    <div class="meteo-cell-emoji">{{ $meteoPartenaire['emoji'] ?? '❓' }}</div>
+                    <div class="meteo-cell-label tiny">
                         @if ($meteoPartenaire)
                             {{ $meteoPartenaire['label'] }}
                         @else
@@ -74,14 +90,13 @@
                     </div>
                 </div>
             </div>
-            <div class="divider"></div>
-            <a href="{{ route('meteo.index') }}" class="flex between items-center" style="padding:6px 2px">
-                <span style="font-size:22px">{{ $meteoSynthese['emoji'] ?? '🌥️' }}</span>
-                <span class="grow" style="font-weight:600;padding:0 10px">
+            <a href="{{ route('meteo.index') }}" class="meteo-cta">
+                <span class="meteo-cta-emoji">{{ $meteoSynthese['emoji'] ?? '🌥️' }}</span>
+                <span class="meteo-cta-text grow">
                     {{ $meteoSynthese['label']
                         ?? ($meteoMoi || $meteoPartenaire ? "En attente de la météo de l'autre" : 'Partagez votre météo du jour') }}
                 </span>
-                <span class="tiny muted">→</span>
+                <span class="meteo-cta-arrow">→</span>
             </a>
         </div>
 
