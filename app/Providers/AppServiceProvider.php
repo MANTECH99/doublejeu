@@ -52,7 +52,10 @@ class AppServiceProvider extends ServiceProvider
             $factory->add((string) ES256K::identifier(), new ES256K);
             $factory->add((string) ES384::identifier(), new ES384);
             $factory->add((string) ES512::identifier(), new ES512);
-            $factory->add((string) EdDSA::identifier(), new EdDSA);
+
+            if (extension_loaded('sodium')) {
+                $factory->add((string) EdDSA::identifier(), new EdDSA);
+            }
 
             return $factory;
         });
