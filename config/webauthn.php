@@ -234,7 +234,6 @@ return [
         Algorithms::COSE_ALGORITHM_ES256, // ECDSA with SHA-256
         Algorithms::COSE_ALGORITHM_ES512, // ECDSA with SHA-512
         Algorithms::COSE_ALGORITHM_RS256, // RSASSA-PKCS1-v1_5 with SHA-256
-        Algorithms::COSE_ALGORITHM_EDDSA, // EDDSA
         Algorithms::COSE_ALGORITHM_ES384, // ECDSA with SHA-384
     ],
 
