@@ -205,6 +205,18 @@
         .pion-rouge { background:radial-gradient(circle at 50% 38%, #ff8f8f 0%, #e63946 55%, #8f1420 100%); }
         .pion-bleue { background:radial-gradient(circle at 50% 38%, #8fd0f8 0%, #2c80c4 55%, #123f66 100%); }
         .pion.legal { cursor:pointer; animation:pionPulse .8s ease-in-out infinite; }
+        .pion .pion-anneau {
+            position:absolute; left:50%; top:50%;
+            width:150%; height:150%;
+            transform:translate(-50%, -50%);
+            border-radius:50%;
+            border:1.5px dashed rgba(25,20,16,.85);
+            pointer-events:none;
+            opacity:0;
+        }
+        .pion.legal .pion-anneau { opacity:1; animation:pionAnneau 4s linear infinite; }
+        .pion[data-mode='coeur'] .pion-anneau { inset:-8%; left:auto; top:auto; width:116%; height:116%; transform:none; border-width:1.5px; }
+        @keyframes pionAnneau { to { transform:translate(-50%,-50%) rotate(360deg); } }
         .pion.pion-done { background:rgba(255,255,255,.55); box-shadow: inset 0 0 0 2px currentColor, 0 2px 4px rgba(0,0,0,.3); }
         .pion.pion-done.pion-rouge { color:#e63946; }
         .pion.pion-done.pion-bleue { color:#3498db; }
@@ -405,6 +417,9 @@
                     el.dataset.id = p.id;
                     el.title = 'Pion ' + (p.numero + 1);
                     el.onclick = () => bouger(p.id);
+                    const anneau = document.createElement('span');
+                    anneau.className = 'pion-anneau';
+                    el.appendChild(anneau);
                     tokens[p.id] = el;
                 }
                 const avant = positionsConnues[p.id];
