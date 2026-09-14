@@ -536,6 +536,25 @@ class JeuxFlowTest extends TestCase
         $this->assertDatabaseCount('points', 0);
     }
 
+    public function test_quiz_lancement_ajax_renvoie_une_redirection_json(): void
+    {
+        for ($i = 0; $i < 8; $i++) {
+            QuestionQuiz::create([
+                'texte_soi' => "Question sur moi $i",
+                'texte_partenaire' => "Question sur mon/ma partenaire $i",
+            ]);
+        }
+
+        $this->actingAs($this->alice);
+
+        $response = $this->postJson(route('quiz.start'));
+
+        $response->assertOk()
+            ->assertJsonStructure(['redirect']);
+
+        $this->assertNotNull(QuizSession::where('joueur1_id', $this->alice->id)->first());
+    }
+
     public function test_quiz_tu_me_connais_flow(): void
     {
         for ($i = 0; $i < 8; $i++) {

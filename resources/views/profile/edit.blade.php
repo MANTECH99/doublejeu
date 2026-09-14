@@ -60,6 +60,31 @@
             </div>
         </section>
 
+        {{-- Connexion biométrique (Face ID / empreinte) --}}
+        <section class="card pad-lg">
+            <h2 class="section-title">🫣 Connexion avec Face ID</h2>
+            <p class="muted" style="font-size:13px">Une fois enregistré, tu peux te connecter d'un seul scan, sans email ni mot de passe.</p>
+            <div class="row gap8 mt8">
+                <button id="btn-biometric-add" class="btn btn-sm btn-primary">🗝️ Enregistrer cet appareil</button>
+            </div>
+            @if ($user->webauthnKeys->isNotEmpty())
+                <div class="divider"></div>
+                @foreach ($user->webauthnKeys as $key)
+                    <div class="row">
+                        <div class="grow">
+                            <strong style="font-size:14px">🗝️ {{ $key->name }}</strong>
+                            <div class="tiny muted">{{ $key->created_at->diffForHumans() }}</div>
+                        </div>
+                        <form method="POST" action="{{ route('webauthn.destroy', $key) }}" onsubmit="return confirm('Retirer cet appareil ?')">
+                            @csrf
+                            @method('DELETE')
+                            <button class="btn btn-sm btn-ghost">Retirer</button>
+                        </form>
+                    </div>
+                @endforeach
+            @endif
+        </section>
+
         {{-- Informations du profil --}}
         <section class="card pad-lg">
             <h2 class="section-title">✏️ Mes informations</h2>
@@ -176,6 +201,72 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        const biometricBtn = document.getElementById('btn-biometric-add');
+
+        if (biometricBtn && !window.PublicKeyCredential) {
+            biometricBtn.closest('section')?.remove();
+        }
+
+        if (biometricBtn) {
+            const b64urlToBuf = (b) => {
+                let s = String(b).replace(/-/g, '+').replace(/_/g, '/');
+                while (s.length % 4) s += '=';
+                const bin = atob(s);
+                const arr = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                return arr;
+            };
+            const bufToB64 = (a) => btoa(String.fromCharCode.apply(null, new Uint8Array(a)));
+
+            biometricBtn.addEventListener('click', async () => {
+                biometricBtn.disabled = true;
+                biometricBtn.textContent = 'Scan en cours…';
+                const csrf = document.querySelector('meta[name="csrf-token"]').content;
+                try {
+                    const res = await fetch('{{ route('webauthn.store.options') }}', {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    if (!res.ok) throw new Error('Impossible de préparer l\'enregistrement.');
+                    const data = await res.json();
+                    const options = data.publicKey;
+                    options.challenge = b64urlToBuf(options.challenge);
+                    options.user.id = b64urlToBuf(options.user.id);
+                    if (options.excludeCredentials) {
+                        options.excludeCredentials = options.excludeCredentials.map((c) => ({
+                            id: b64urlToBuf(c.id), type: c.type, transports: c.transports,
+                        }));
+                    }
+                    const cred = await navigator.credentials.create({ publicKey: options });
+                    const payload = {
+                        id: cred.id,
+                        type: cred.type,
+                        rawId: bufToB64(cred.rawId),
+                        name: navigator.platform || 'Mon appareil',
+                        response: {
+                            clientDataJSON: bufToB64(cred.response.clientDataJSON).replace(/=+$/, ''),
+                            attestationObject: bufToB64(cred.response.attestationObject),
+                        },
+                    };
+                    const store = await fetch('{{ route('webauthn.store') }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!store.ok) throw new Error('L\'appareil n\'a pas été accepté.');
+                    toast('Appareil biométrique enregistré !', 'success');
+                    setTimeout(() => location.reload(), 700);
+                } catch (e) {
+                    const message = /NotAllowedError|not allowed|cancelled/i.test(String(e))
+                        ? 'Enregistrement annulé.'
+                        : (e && e.message ? e.message : 'Échec de l\'enregistrement.');
+                    toast(message, 'error');
+                    biometricBtn.disabled = false;
+                    biometricBtn.textContent = '🗝️ Enregistrer cet appareil';
+                }
+            });
+        }
+
         const photoInput = document.getElementById('photo-input');
         if (photoInput) {
             photoInput.addEventListener('change', async () => {

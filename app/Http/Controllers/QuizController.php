@@ -45,7 +45,7 @@ class QuizController extends Controller
         ]);
     }
 
-    public function start(Request $request): RedirectResponse
+    public function start(Request $request): RedirectResponse|JsonResponse
     {
         $couple = $request->user()->coupleModel;
 

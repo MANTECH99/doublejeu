@@ -261,6 +261,7 @@
             <div class="disc-sel-count" id="disc-sel-count">1</div>
             <div class="grow"></div>
             <button class="disc-sel-action" id="disc-sel-reply" aria-label="Répondre" title="Répondre">↩️</button>
+            <button class="disc-sel-action" id="disc-sel-edit" aria-label="Modifier" title="Modifier" style="display:none">✏️</button>
             <button class="disc-sel-action" id="disc-sel-star" aria-label="Etoile" title="Favori" style="display:none">⭐</button>
             <button class="disc-sel-action disc-sel-delete" id="disc-sel-delete" aria-label="Supprimer" title="Supprimer">🗑️</button>
         </div>
@@ -422,6 +423,17 @@
             <a class="disc-photo-viewer-download" id="disc-photo-viewer-download" download>⬇ Télécharger</a>
         </div>
     </div>
+{{-- Modal d'édition d'un message (façon WhatsApp) : on corrige le texte,
+         le message est ensuite marqué « modifié » pour les deux partenaires. --}}
+    <div class="disc-edit-backdrop" id="disc-edit-backdrop" style="display:none"></div>
+    <div class="disc-edit-modal" id="disc-edit-modal" style="display:none" role="dialog" aria-modal="true" aria-label="Modifier le message">
+        <div class="disc-edit-title">Modifier le message</div>
+        <textarea id="disc-edit-input" class="disc-edit-input" rows="3" maxlength="2000" placeholder="Corriger le message écrit…"></textarea>
+        <div class="disc-edit-actions">
+            <button type="button" class="disc-edit-btn disc-edit-cancel" id="disc-edit-cancel">Annuler</button>
+            <button type="button" class="disc-edit-btn disc-edit-save" id="disc-edit-save">Enregistrer</button>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -471,6 +483,7 @@
     const SEL_BACK = document.getElementById('disc-sel-back');
     const SEL_COUNT = document.getElementById('disc-sel-count');
     const SEL_REPLY = document.getElementById('disc-sel-reply');
+    const SEL_EDIT = document.getElementById('disc-sel-edit');
     const SEL_STAR = document.getElementById('disc-sel-star');
     const SEL_DELETE = document.getElementById('disc-sel-delete');
     const DISC_HEADER = document.querySelector('.disc-header');
@@ -480,6 +493,11 @@
     const SHEET_TITLE = document.getElementById('disc-sheet-title');
     const SHEET_DELETE_ME = document.getElementById('disc-sheet-delete-me');
     const SHEET_DELETE_ALL = document.getElementById('disc-sheet-delete-all');
+    const EDIT_BACKDROP = document.getElementById('disc-edit-backdrop');
+    const EDIT_MODAL = document.getElementById('disc-edit-modal');
+    const EDIT_INPUT = document.getElementById('disc-edit-input');
+    const EDIT_SAVE = document.getElementById('disc-edit-save');
+    const EDIT_CANCEL = document.getElementById('disc-edit-cancel');
     const SHEET_CANCEL = document.getElementById('disc-sheet-cancel');
     const STATE_URL = '{{ route("discussion.fetch") }}';
     const SEND_URL = '{{ route("discussion.send") }}';
@@ -493,6 +511,7 @@
     const FAVORITES_URL = '{{ route("discussion.favorites") }}';
     const FAVORITES_TOGGLE_URL = '{{ route("discussion.favorites.toggle") }}';
     const DELETE_URL = '/discussion/message/';
+    const EDIT_URL = '{{ route("discussion.update", ':id') }}';
     const MY_ID = {{ $me->id }};
     const MY_NAME = @json($me->name);
     const MY_AVATAR_URL = @json($me->avatar_url ? '/storage/'.$me->avatar_url : null);
@@ -747,6 +766,9 @@
         SEL_COUNT.textContent = String(n);
         // Répondre : uniquement si un seul message est sélectionné.
         SEL_REPLY.style.display = n === 1 ? '' : 'none';
+        // Modifier : un seul message, le mien, purement textuel (pas de média).
+        const single = n === 1 ? selectedMsgs.values().next().value : null;
+        SEL_EDIT.style.display = single && isEditable(single.msg) ? '' : 'none';
         // Supprimer pour tous : seulement si TOUS les messages sélectionnés sont à moi.
         const allMine = [...selectedMsgs.values()].every(item => String(item.msg.sender_id) === String(MY_ID));
         SEL_DELETE.dataset.canAll = allMine ? '1' : '0';
@@ -768,6 +790,114 @@
             ? 'Supprimer ' + selectedMsgs.size + ' messages'
             : 'Supprimer ce message';
         openSheet();
+    });
+
+    // ---- Édition d'un message (façon WhatsApp) ----
+    // Seuls mes messages purement textuels (pas gif/photo/vidéo/vocal, pas
+    // supprimés pour tous) peuvent être modifiés.
+    function isEditable(msg) {
+        return !!msg
+            && String(msg.sender_id) === String(MY_ID)
+            && !msg.deleted_for_all
+            && !msg.is_gif && !msg.is_photo && !msg.is_video && !msg.is_audio
+            && typeof msg.body === 'string' && msg.body.length > 0;
+    }
+
+    let editingMsg = null;
+
+    function openEditModal() {
+        EDIT_MODAL.style.display = 'flex';
+        EDIT_BACKDROP.style.display = 'block';
+        EDIT_INPUT.value = editingMsg.body;
+        autosizeEdit();
+        // Focus déporté après la mise en place du modal (iOS sinon clavier trop tôt).
+        setTimeout(() => {
+            EDIT_INPUT.focus();
+            const len = EDIT_INPUT.value.length;
+            EDIT_INPUT.setSelectionRange(len, len);
+        }, 60);
+    }
+    function closeEditModal() {
+        EDIT_MODAL.style.display = 'none';
+        EDIT_BACKDROP.style.display = 'none';
+        editingMsg = null;
+    }
+    function autosizeEdit() {
+        EDIT_INPUT.style.height = 'auto';
+        EDIT_INPUT.style.height = Math.min(EDIT_INPUT.scrollHeight, 180) + 'px';
+    }
+    EDIT_INPUT.addEventListener('input', autosizeEdit);
+    EDIT_BACKDROP.addEventListener('click', closeEditModal);
+    EDIT_CANCEL.addEventListener('click', closeEditModal);
+
+    // Marque la bulle « modifié » (petit libellé à côté de l'heure), créé à la
+    // volée sur une bulle déjà affichée (édition locale ou sync du poll).
+    function markEdited(wrap) {
+        if (!wrap || wrap.querySelector('.disc-edited')) return;
+        const meta = wrap.querySelector('.disc-meta');
+        const time = wrap.querySelector('.disc-time');
+        if (!meta || !time) return;
+        const edited = document.createElement('span');
+        edited.className = 'disc-edited';
+        edited.textContent = 'modifié';
+        meta.insertBefore(edited, time);
+    }
+
+    SEL_EDIT.addEventListener('click', () => {
+        if (selectedMsgs.size !== 1) return;
+        const { msg } = selectedMsgs.values().next().value;
+        if (!isEditable(msg)) return;
+        editingMsg = msg;
+        openEditModal();
+    });
+
+    async function sendEdit() {
+        if (!editingMsg) return;
+        const body = EDIT_INPUT.value.trim();
+        if (!body) return;
+        const id = resolveServerId(editingMsg.id);
+        if (id == null) {
+            toast('Message pas encore synchronisé, réessaie dans un instant.', 'error');
+            return;
+        }
+        EDIT_SAVE.disabled = true;
+        try {
+            const res = await fetch(EDIT_URL.replace(':id', id), {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ body }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                editingMsg.body = data.body;
+                editingMsg.edited = data.edited;
+                // Met à jour la bulle en place, sans la reconstruire.
+                const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + id + '"]');
+                if (wrap) {
+                    const text = wrap.querySelector('.disc-bubble-text');
+                    if (text) text.textContent = data.body;
+                    if (data.edited) markEdited(wrap);
+                }
+                exitSelection();
+                closeEditModal();
+                toast('Message modifié.', 'success');
+            } else {
+                toast('Erreur lors de la modification.', 'error');
+            }
+        } catch (e) {
+            toast('Connexion perdue.', 'error');
+        } finally {
+            EDIT_SAVE.disabled = false;
+        }
+    }
+    EDIT_SAVE.addEventListener('click', sendEdit);
+    EDIT_INPUT.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendEdit();
     });
 
     // ---- Bottom-sheet suppression ----
@@ -1209,6 +1339,14 @@
         const meta = document.createElement('div');
         meta.className = 'disc-meta ' + (isMe ? 'me' : 'them');
 
+        // Message modifié (façon WhatsApp) : petit libellé avant l'heure.
+        if (msg.edited) {
+            const edited = document.createElement('span');
+            edited.className = 'disc-edited';
+            edited.textContent = 'modifié';
+            meta.appendChild(edited);
+        }
+
         const time = document.createElement('span');
         time.className = 'disc-time';
         time.textContent = msg.created_at;
@@ -1244,6 +1382,21 @@
             check.textContent = isLu ? '✓✓' : '✓';
             check.classList.toggle('lu', isLu);
         }
+    }
+
+    // Met à jour en place une bulle déjà rendue dont le contenu a changé côté
+    // serveur (édition du texte, façon WhatsApp) : le poll renvoie tout
+    // l'historique, on rafraîchit le texte et le libellé « modifié » sans
+    // reconstruire la bulle (aucun saut de scroll).
+    function syncMessage(msg) {
+        const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + msg.id + '"]');
+        if (!wrap) return;
+        if (msg.deleted_for_all) return;
+        const text = wrap.querySelector('.disc-bubble-text');
+        if (text && typeof msg.body === 'string') text.textContent = msg.body;
+        const edited = wrap.querySelector('.disc-edited');
+        if (msg.edited && !edited) markEdited(wrap);
+        else if (!msg.edited && edited) edited.remove();
     }
 
     // Date du message rendu juste avant un point d'insertion (ou dernière bulle
@@ -1301,7 +1454,13 @@
                     syncReadState(data.messages);
                 } else {
                     for (const msg of data.messages) {
-                        buildBubble(msg);
+                        // Message déjà rendu : on synchronise son contenu (édition
+                        // côté serveur) au lieu de le reconstruire.
+                        if (renderedIds.has(msg.id)) {
+                            syncMessage(msg);
+                        } else {
+                            buildBubble(msg);
+                        }
                     }
                     syncReadState(data.messages);
                     // Au tout premier chargement on colle directement tout en bas

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['couple_id', 'sender_id', 'body', 'reply_to_id', 'gif_url', 'gif_alt', 'photo_path', 'photo_w', 'photo_h', 'video_path', 'video_w', 'video_h', 'video_poster_path', 'audio_path', 'audio_duration', 'audio_bars', 'read_at', 'deleted_at', 'deleted_by'])]
+#[Fillable(['couple_id', 'sender_id', 'body', 'edited_at', 'reply_to_id', 'gif_url', 'gif_alt', 'photo_path', 'photo_w', 'photo_h', 'video_path', 'video_w', 'video_h', 'video_poster_path', 'audio_path', 'audio_duration', 'audio_bars', 'read_at', 'deleted_at', 'deleted_by'])]
 class Message extends Model
 {
     use HasFactory;
@@ -17,6 +17,7 @@ class Message extends Model
     {
         return [
             'read_at' => 'datetime',
+            'edited_at' => 'datetime',
             'deleted_at' => 'datetime',
         ];
     }
@@ -49,6 +50,11 @@ class Message extends Model
     public function isRead(): bool
     {
         return $this->read_at !== null;
+    }
+
+    public function isEdited(): bool
+    {
+        return $this->edited_at !== null;
     }
 
     public function isGif(): bool

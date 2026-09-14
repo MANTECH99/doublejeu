@@ -11,13 +11,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use LaravelWebauthn\WebauthnAuthenticatable;
 
 #[Fillable(['name', 'email', 'password', 'gender', 'avatar_url', 'couple_id', 'date_naissance', 'devin_mission_jour', 'devin_mission_reponse', 'devin_mission_resultat', 'devin_mission_compteur', 'timezone', 'mission_question_notif_jour', 'typing_at', 'recording_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, WebauthnAuthenticatable;
 
     protected function casts(): array
     {

@@ -110,6 +110,7 @@ class DiscussionController extends Controller
                 'is_audio' => $deletedForAll ? false : $m->isAudio(),
                 'sender_photo_url' => $m->sender?->avatar_url ? '/storage/'.$m->sender->avatar_url : null,
                 'lu' => $m->isRead(),
+                'edited' => $deletedForAll ? false : $m->isEdited(),
                 'deleted_for_all' => $deletedForAll,
                 'deleted_by_me' => $deletedForAll && $m->deleted_by === $userId,
                 'created_at' => $m->created_at->utc()->toIso8601String(),
@@ -506,6 +507,53 @@ class DiscussionController extends Controller
             'ok' => true,
             'path' => $path,
             'url' => $this->audioUrl($path),
+        ]);
+    }
+
+    /**
+     * Modifie le texte d'un message déjà envoyé (façon WhatsApp). Seul
+     * l'expéditeur peut éditer, uniquement les messages purement textuels qui ne
+     * sont pas supprimés pour tous. La modification est marquée (edited_at) et
+     * visible par les deux partenaires lors du prochain poll.
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $couple = $request->user()->coupleModel;
+        $message = Message::where('id', $id)->where('couple_id', $couple->id)->first();
+
+        if (! $message) {
+            return response()->json(['error' => 'Message introuvable.'], 404);
+        }
+
+        if ($message->sender_id !== $request->user()->id) {
+            return response()->json(['error' => 'Seul l\'expéditeur peut modifier ce message.'], 403);
+        }
+
+        if ($message->isDeletedForAll() || blank($message->body) || $message->isGif() || $message->isPhoto() || $message->isVideo() || $message->isAudio()) {
+            return response()->json(['error' => 'Ce message ne peut pas être modifié.'], 422);
+        }
+
+        $data = $request->validate([
+            'body' => ['required', 'string', 'max:2000'],
+        ]);
+
+        // Aucun changement de contenu : on ne marque pas le message comme modifié.
+        if ($message->body === $data['body']) {
+            return response()->json(['ok' => true, 'id' => $message->id, 'edited' => $message->isEdited()]);
+        }
+
+        $message->forceFill([
+            'body' => $data['body'],
+            'edited_at' => now(),
+        ])->save();
+
+        ActivityService::touch($request->user());
+
+        return response()->json([
+            'ok' => true,
+            'id' => $message->id,
+            'body' => $message->body,
+            'edited' => true,
         ]);
     }
 

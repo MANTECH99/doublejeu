@@ -1021,6 +1021,110 @@ class DiscussionFlowTest extends TestCase
         $this->assertFalse($fetch['messages'][0]['is_video']);
     }
 
+    // -----------------------------------------------------------------------
+    // Édition d'un message (façon WhatsApp)
+    // -----------------------------------------------------------------------
+
+    public function test_sender_can_edit_own_text_message(): void
+    {
+        $msg = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Message original']);
+
+        $this->actingAs($this->alice)
+            ->putJson(route('discussion.update', $msg->id), ['body' => 'Message corrigé'])
+            ->assertOk()
+            ->assertJson(['ok' => true, 'body' => 'Message corrigé', 'edited' => true]);
+
+        $this->assertDatabaseHas('messages', ['id' => $msg->id, 'body' => 'Message corrigé']);
+        $this->assertNotNull($msg->fresh()->edited_at);
+
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('Message corrigé', $fetch['messages'][0]['body']);
+        $this->assertTrue($fetch['messages'][0]['edited']);
+    }
+
+    public function test_unedited_message_flag_is_false(): void
+    {
+        $msg = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Normal']);
+
+        $fetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $this->assertFalse($fetch['messages'][0]['edited']);
+        $this->assertNull($msg->fresh()->edited_at);
+    }
+
+    public function test_partner_cannot_edit_message(): void
+    {
+        $msg = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Le mien']);
+
+        $this->actingAs($this->bob)
+            ->putJson(route('discussion.update', $msg->id), ['body' => 'Tentative'])
+            ->assertStatus(403);
+
+        $this->assertSame('Le mien', $msg->fresh()->body);
+        $this->assertNull($msg->fresh()->edited_at);
+    }
+
+    public function test_cannot_edit_media_messages(): void
+    {
+        $cases = [
+            'gif' => ['body' => '', 'gif_url' => 'https://media.giphy.com/media/test/giphy.gif', 'gif_alt' => ''],
+            'photo' => ['body' => '', 'photo_path' => 'discussion-photos/test.jpg'],
+            'video' => ['body' => '', 'video_path' => 'discussion-videos/test.mp4'],
+            'audio' => ['body' => '', 'audio_path' => 'discussion-audio/test.webm'],
+        ];
+
+        foreach ($cases as $type => $data) {
+            $msg = Message::create(array_merge([
+                'couple_id' => $this->couple->id,
+                'sender_id' => $this->alice->id,
+            ], $data));
+
+            $this->actingAs($this->alice)
+                ->putJson(route('discussion.update', $msg->id), ['body' => 'Corriger'])
+                ->assertStatus(422);
+
+            $this->assertNull($msg->fresh()->edited_at);
+        }
+    }
+
+    public function test_cannot_edit_deleted_for_all_message(): void
+    {
+        $msg = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Caché']);
+        $msg->forceFill(['deleted_at' => now(), 'deleted_by' => $this->alice->id])->save();
+
+        $this->actingAs($this->alice)
+            ->putJson(route('discussion.update', $msg->id), ['body' => 'Tentative'])
+            ->assertStatus(422);
+
+        $this->assertNull($msg->fresh()->edited_at);
+    }
+
+    public function test_same_content_does_not_set_edited_flag(): void
+    {
+        $msg = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Identique']);
+
+        $this->actingAs($this->alice)
+            ->putJson(route('discussion.update', $msg->id), ['body' => 'Identique'])
+            ->assertOk()
+            ->assertJson(['edited' => false]);
+
+        $this->assertNull($msg->fresh()->edited_at);
+    }
+
+    public function test_nonexistent_message_returns_404(): void
+    {
+        $this->actingAs($this->alice)
+            ->putJson(route('discussion.update', 999999), ['body' => 'X'])
+            ->assertStatus(404);
+    }
+
     /**
      * Construit un vrai fichier MP4 minimal (boîte ftyp valide) pour passer la
      * validation mimes:mp4. Les fichiers "fake" de Laravel ne contiennent que des

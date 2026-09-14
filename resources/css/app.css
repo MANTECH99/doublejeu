@@ -1079,6 +1079,13 @@ summary.btn::-webkit-details-marker { display: none; }
     color: var(--info);
 }
 
+/* Label « modifié » à côté de l'heure (façon WhatsApp). */
+.disc-edited {
+    font-size: 10px;
+    font-style: italic;
+    color: var(--text-3);
+}
+
 /* ---------- Réponses (type WhatsApp) ---------- */
 .disc-quoted {
     background: rgba(255, 255, 255, 0.14);
@@ -2336,6 +2343,90 @@ summary.btn::-webkit-details-marker { display: none; }
 .disc-sheet-cancel {
     margin-top: 6px;
     color: var(--text-2);
+}
+
+/* ---------- Modal d'édition d'un message (façon WhatsApp) ---------- */
+.disc-edit-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.15s ease both;
+}
+.disc-edit-modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 91;
+    width: min(420px, 92vw);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: scaleIn 0.18s cubic-bezier(0.2, 0.8, 0.3, 1.1) both;
+}
+.disc-edit-title {
+    text-align: center;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text);
+}
+.disc-edit-input {
+    width: 100%;
+    min-height: 80px;
+    max-height: 240px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card-2);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.4;
+    resize: none;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+.disc-edit-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+.disc-edit-actions {
+    display: flex;
+    gap: 10px;
+}
+.disc-edit-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+}
+.disc-edit-cancel {
+    background: var(--card-2);
+    color: var(--text);
+}
+.disc-edit-cancel:hover {
+    filter: brightness(1.1);
+}
+.disc-edit-save {
+    background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    color: #fff;
+}
+.disc-edit-save:hover {
+    filter: brightness(1.1);
+}
+.disc-edit-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 @keyframes scaleIn {
     from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
