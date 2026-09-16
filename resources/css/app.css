@@ -389,6 +389,7 @@ body {
 .tile-bucket-list { background: linear-gradient(135deg, #b45309, #f59e0b); }
 .tile-calendrier { background: linear-gradient(135deg, #334155, #64748b); }
 .tile-ludo { background: linear-gradient(135deg, #b91c1c, #f87171); }
+.tile-quoridor { background: linear-gradient(135deg, #3f3f46, #a1a1aa); }
 
 /* ---------- Hero couple dashboard ---------- */
 .hero-card {

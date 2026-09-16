@@ -18,6 +18,7 @@ use App\Http\Controllers\PwaController;
 use App\Http\Controllers\QuestionJourController;
 use App\Http\Controllers\QuiDeNousDeuxController;
 use App\Http\Controllers\QuizController;
+use App\Http\Controllers\QuoridorController;
 use App\Http\Controllers\RecompenseController;
 use App\Http\Controllers\VeriteActionController;
 use Illuminate\Support\Facades\Route;
@@ -169,6 +170,14 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::post('/jeux/ludo/{partie}/lancer', [LudoController::class, 'lancer'])->name('ludo.lancer');
     Route::post('/jeux/ludo/{partie}/bouger', [LudoController::class, 'bouger'])->name('ludo.bouger');
     Route::post('/jeux/ludo/{partie}/abandonner', [LudoController::class, 'abandonner'])->name('ludo.abandonner');
+
+    // ---- Quoridor ----
+    Route::get('/jeux/quoridor', [QuoridorController::class, 'index'])->name('quoridor.index');
+    Route::post('/jeux/quoridor', [QuoridorController::class, 'start'])->name('quoridor.start');
+    Route::get('/jeux/quoridor/{partie}', [QuoridorController::class, 'play'])->name('quoridor.jouer');
+    Route::get('/jeux/quoridor/{partie}/etat', [QuoridorController::class, 'state'])->name('quoridor.state');
+    Route::post('/jeux/quoridor/{partie}/jouer', [QuoridorController::class, 'action'])->name('quoridor.action');
+    Route::post('/jeux/quoridor/{partie}/abandonner', [QuoridorController::class, 'abandonner'])->name('quoridor.abandonner');
 
     // ---- Calendrier quotidien ----
     Route::get('/jeux/calendrier', [CalendrierController::class, 'index'])->name('calendrier.index');

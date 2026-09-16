@@ -168,6 +168,11 @@
                 <div class="t-name">Ludo à deux</div>
                 <div class="t-desc">La course des pions</div>
             </a>
+            <a href="{{ route('quoridor.index') }}" class="game-tile tile-quoridor fadeIn" style="animation-delay:.46s">
+                <div class="t-ico">🧱</div>
+                <div class="t-name">Quoridor</div>
+                <div class="t-desc">Barre la route, gagne</div>
+            </a>
         </div>
 
         {{-- Activité du couple --}}
