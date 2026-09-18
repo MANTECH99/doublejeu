@@ -145,6 +145,7 @@ class QuiDeNousDeuxController extends Controller
             'nbQuestions' => $items->count(),
             'mesReponses' => $mesReponses,
             'sesReponses' => $sesReponses,
+            'poolEpuise' => $this->bank->poolQuiDeNousEpuise($partie->couple),
             'mesPoints' => $mult,
             'sesPoints' => $mult,
             'questions' => $items,

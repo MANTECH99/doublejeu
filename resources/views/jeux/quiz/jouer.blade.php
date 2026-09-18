@@ -8,6 +8,7 @@
             <span class="badge neutre" style="font-size:15px; padding:8px 16px" id="quiz-status">Partie en cours</span>
             <div class="tiny muted mt8" id="quiz-compteur"></div>
             <div id="quiz-sommaire" class="mt8"></div>
+            <p id="pool-alerte" class="tiny muted" style="display:none; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,.04)"></p>
         </div>
 
         <div id="quiz-list" class="mt16">
@@ -26,6 +27,12 @@
             const statusEl = document.getElementById('quiz-status');
             const compteur = document.getElementById('quiz-compteur');
             const sommaire = document.getElementById('quiz-sommaire');
+            const alerte = document.getElementById('pool-alerte');
+
+            alerte.style.display = stateData.poolEpuise ? 'block' : 'none';
+            if (stateData.poolEpuise) {
+                alerte.textContent = '💡 Vous avez déjà vu toutes les questions du quiz — elles sont reprises au hasard, certaines peuvent se répéter.';
+            }
 
             const drafts = [...list.querySelectorAll('input')].map(inp => ({ id: inp.id, value: inp.value }));
             const invVisible = [...list.querySelectorAll('[id^="inv-"]')].filter(el => el.style.display !== 'none').map(el => el.id);

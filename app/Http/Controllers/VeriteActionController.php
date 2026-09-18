@@ -138,6 +138,10 @@ class VeriteActionController extends Controller
                 'name' => $partie->joueurActif?->name,
             ],
             'mapartenaire' => $partner?->name,
+            'pool' => [
+                'verite' => $this->bank->poolEpuise($partie, 'verite'),
+                'action' => $this->bank->poolEpuise($partie, 'action'),
+            ],
             'scores' => $this->scores($partie),
             'carte' => $carte,
             'dernierTour' => $dernierValide ? [

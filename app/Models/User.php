@@ -13,7 +13,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use LaravelWebauthn\WebauthnAuthenticatable;
 
-#[Fillable(['name', 'email', 'password', 'gender', 'avatar_url', 'couple_id', 'date_naissance', 'devin_mission_jour', 'devin_mission_reponse', 'devin_mission_resultat', 'devin_mission_compteur', 'timezone', 'mission_question_notif_jour', 'typing_at', 'recording_at'])]
+#[Fillable(['name', 'email', 'password', 'gender', 'avatar_url', 'couple_id', 'date_naissance', 'devin_mission_jour', 'devin_mission_reponse', 'devin_mission_resultat', 'devin_mission_compteur', 'timezone', 'mission_question_notif_jour', 'devin_verdict_vu_jour', 'typing_at', 'recording_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -26,6 +26,7 @@ class User extends Authenticatable
             'date_naissance' => 'date',
             'devin_mission_jour' => 'datetime',
             'mission_question_notif_jour' => 'datetime',
+            'devin_verdict_vu_jour' => 'datetime',
             'email_verified_at' => 'datetime',
             'last_active_at' => 'datetime',
             'typing_at' => 'datetime',

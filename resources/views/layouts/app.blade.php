@@ -230,7 +230,7 @@
                 card.style.textAlign = 'center';
                 var emoji = document.createElement('div');
                 emoji.style.fontSize = '40px';
-                emoji.textContent = info.type === 'mission' ? '🕵️' : '🌙';
+                emoji.textContent = info.type === 'mission' ? '🕵️' : (info.type === 'verdict' ? '🏆' : '🌙');
                 var h3 = document.createElement('h3');
                 h3.style.margin = '10px 0 8px';
                 h3.style.fontSize = '18px';
@@ -245,10 +245,16 @@
                 btn.addEventListener('click', function () {
                     btn.disabled = true;
                     btn.textContent = '…';
-                    fetch('/jeux/mission-secrete/' + info.mission_id + '/vu', {
+                    var url = info.type === 'verdict'
+                        ? '/jeux/mission-secrete/verdict-vu'
+                        : '/jeux/mission-secrete/' + info.mission_id + '/vu';
+                    var body = info.type === 'verdict'
+                        ? {}
+                        : { role: info.type === 'mission' ? 'cible' : 'partenaire' };
+                    fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), 'X-Requested-With': 'XMLHttpRequest' },
-                        body: JSON.stringify({ role: info.type === 'mission' ? 'cible' : 'partenaire' })
+                        body: JSON.stringify(body)
                     }).catch(function () {}).finally(function () {
                         ov.remove();
                         showing = false;

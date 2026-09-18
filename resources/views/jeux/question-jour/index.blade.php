@@ -10,6 +10,14 @@
             <p class="subtitle">Une question par jour pour le couple. Les réponses restent secrètes jusqu'à ce que vous ayez répondu tous les deux.</p>
         </div>
 
+        @if ($poolEpuise)
+            <div class="center">
+                <p class="tiny muted" style="display:inline-block; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,.04)">
+                    💡 Vous avez déjà vu toutes les questions du jour — elles sont reprises au hasard, certaines peuvent se répéter.
+                </p>
+            </div>
+        @endif
+
         <div class="card mt16" style="border-color:rgba(249,115,22,.45)">
             <div class="flex between items-center mb8">
                 <span class="tiny muted" id="question-date">…</span>

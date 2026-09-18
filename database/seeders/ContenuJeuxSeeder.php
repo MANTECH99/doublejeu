@@ -747,7 +747,10 @@ class ContenuJeuxSeeder extends Seeder
         ];
 
         foreach ($defis as $defi) {
-            DefiEnveloppe::create(['texte' => $defi['texte'], 'couleur' => $defi['couleur'], 'created_by' => null]);
+            DefiEnveloppe::firstOrCreate(
+                ['texte' => $defi['texte'], 'couleur' => $defi['couleur']],
+                ['created_by' => null]
+            );
         }
     }
 

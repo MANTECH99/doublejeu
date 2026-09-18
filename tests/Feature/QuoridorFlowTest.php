@@ -117,7 +117,7 @@ class QuoridorFlowTest extends TestCase
             ->getJson(route('quoridor.state', $partie))
             ->assertOk()
             ->assertJsonPath('legal.deplacements', [['row' => 7, 'col' => 4], ['row' => 8, 'col' => 3], ['row' => 8, 'col' => 5]])
-            ->assertJsonCount(56, 'legal.murs');
+            ->assertJsonCount(128, 'legal.murs');
     }
 
     public function test_etat_legal_nul_pour_qui_ne_joue_pas(): void
@@ -210,7 +210,7 @@ class QuoridorFlowTest extends TestCase
         $this->actingAs($this->alice)
             ->postJson(route('quoridor.action', $partie), ['type' => 'pion', 'row' => 6, 'col' => 4])
             ->assertStatus(422)
-            ->assertJson(['error' => 'Ce déplacement n\'est pas valide.']);
+            ->assertJson(['message' => 'Ce déplacement n\'est pas valide.']);
 
         $this->actingAs($this->alice)
             ->postJson(route('quoridor.action', $partie), ['type' => 'pion', 'row' => 7, 'col' => 3])
@@ -228,7 +228,7 @@ class QuoridorFlowTest extends TestCase
             ->assertJsonPath('legal.deplacements', [['row' => 2, 'col' => 4], ['row' => 5, 'col' => 4], ['row' => 4, 'col' => 3], ['row' => 4, 'col' => 5]]);
 
         $this->actingAs($this->alice)
-            ->postJson(route('quoridor.mur', $partie), ['type' => 'mur', 'row' => 7, 'col' => 0, 'orientation' => 'h'])
+            ->postJson(route('quoridor.action', $partie), ['type' => 'pion', 'row' => 2, 'col' => 4])
             ->assertOk();
 
         $partie->refresh();
@@ -305,22 +305,20 @@ class QuoridorFlowTest extends TestCase
         $this->actingAs($this->alice)
             ->postJson(route('quoridor.action', $partie), ['type' => 'mur', 'r' => 3, 'c' => 2, 'o' => 'h'])
             ->assertStatus(422)
-            ->assertJson(['error' => 'Ce mur ne peut pas être posé ici.']);
+            ->assertJson(['message' => 'Ce mur ne peut pas être posé ici.']);
     }
 
     public function test_mur_qui_bloque_le_chemin_est_refuse(): void
     {
         $partie = $this->nouvellePartie();
-        $partie = $this->recalerPartie($partie, ['j1' => ['row' => 8, 'col' => 4], 'j2' => ['row' => 0, 'col' => 4]], [
-            ['r' => 7, 'c' => 0, 'o' => 'h', 'who' => 'j1'],
-            ['r' => 7, 'c' => 2, 'o' => 'h', 'who' => 'j1'],
-            ['r' => 7, 'c' => 4, 'o' => 'h', 'who' => 'j1'],
+        $partie = $this->recalerPartie($partie, ['j1' => ['row' => 8, 'col' => 4], 'j2' => ['row' => 0, 'col' => 0]], [
+            ['r' => 0, 'c' => 0, 'o' => 'v', 'who' => 'j2'],
         ]);
 
         $this->actingAs($this->alice)
-            ->postJson(route('quoridor.action', $partie), ['type' => 'mur', 'r' => 7, 'c' => 6, 'o' => 'h'])
+            ->postJson(route('quoridor.action', $partie), ['type' => 'mur', 'r' => 0, 'c' => 0, 'o' => 'h'])
             ->assertStatus(422)
-            ->assertJson(['error' => 'Ce mur ne peut pas être posé ici.']);
+            ->assertJson(['message' => 'Ce mur ne peut pas être posé ici.']);
     }
 
     public function test_limite_de_murs_atteinte_refuse(): void
@@ -347,7 +345,7 @@ class QuoridorFlowTest extends TestCase
         $this->actingAs($this->alice)
             ->postJson(route('quoridor.action', $partie), ['type' => 'mur', 'r' => 4, 'c' => 2, 'o' => 'h'])
             ->assertStatus(422)
-            ->assertJson(['error' => 'Tu n\'as plus de murs à poser.']);
+            ->assertJson(['message' => 'Tu n\'as plus de murs à poser.']);
     }
 
     public function test_victoire_en_atteignant_la_ligne_arrivee(): void

@@ -13,10 +13,12 @@ use App\Models\MissionOuiNon;
 use App\Models\MissionSecrete;
 use App\Models\MotCroiseContenu;
 use App\Models\PartieOuiNon;
+use App\Models\PartieQuestionQuiDeNous;
 use App\Models\PartieQuiDeNous;
 use App\Models\PartieVO;
 use App\Models\Point;
 use App\Models\QuestionDuJour;
+use App\Models\QuestionJournaliere;
 use App\Models\QuestionOuiNon;
 use App\Models\QuestionQuiDeNous;
 use App\Models\QuestionQuiz;
@@ -24,6 +26,7 @@ use App\Models\QuizSession;
 use App\Models\QuizSessionQuestion;
 use App\Models\Recompense;
 use App\Models\ReponseOuiNon;
+use App\Models\TourVO;
 use App\Models\User;
 use App\Services\QuestionBankService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -137,6 +140,140 @@ class JeuxFlowTest extends TestCase
         $this->assertNotEquals($partie->joueur_actif_id, $actif);
         $this->assertDatabaseHas('points', ['couple_id' => $this->couple->id, 'montant' => -5]);
         $this->assertDatabaseHas('points', ['couple_id' => $this->couple->id, 'montant' => 5]);
+    }
+
+    public function test_vo_etat_signale_le_pool_epuise_d_un_niveau(): void
+    {
+        $this->actingAs($this->alice);
+        $this->post(route('vo.start'), ['niveau' => 'doux'])->assertRedirect();
+        $partie = PartieVO::first();
+        $actif = User::find($partie->joueur_actif_id);
+
+        $this->actingAs($actif)
+            ->getJson(route('vo.state', $partie))
+            ->assertOk()
+            ->assertJson(['pool' => ['verite' => false, 'action' => false]]);
+
+        foreach (CarteVerite::where('niveau', 'doux')->get() as $carte) {
+            TourVO::create([
+                'partie_id' => $partie->id,
+                'joueur_id' => $partie->joueur_actif_id,
+                'type' => 'verite',
+                'carte_id' => $carte->id,
+                'statut' => 'valide',
+                'accepte' => true,
+                'points_gagnes' => 10,
+            ]);
+        }
+
+        $this->actingAs($actif)
+            ->getJson(route('vo.state', $partie))
+            ->assertOk()
+            ->assertJson(['pool' => ['verite' => true, 'action' => false]]);
+    }
+
+    public function test_ouinon_etat_signale_le_pool_epuise(): void
+    {
+        $partie = PartieOuiNon::create([
+            'couple_id' => $this->couple->id,
+            'joueur1_id' => $this->alice->id,
+            'joueur2_id' => $this->bob->id,
+            'status' => 'en_cours',
+        ]);
+
+        $this->actingAs($this->alice)
+            ->getJson(route('ouinon.state', $partie))
+            ->assertOk()
+            ->assertJson(['poolEpuise' => false]);
+
+        foreach (QuestionOuiNon::all() as $question) {
+            ReponseOuiNon::create(['partie_id' => $partie->id, 'question_id' => $question->id, 'joueur_id' => $this->alice->id]);
+        }
+
+        $this->actingAs($this->alice)
+            ->getJson(route('ouinon.state', $partie))
+            ->assertOk()
+            ->assertJson(['poolEpuise' => true]);
+    }
+
+    public function test_quiz_etat_signale_le_pool_epuise(): void
+    {
+        QuestionQuiz::create(['texte_soi' => 'Ma couleur préférée', 'texte_partenaire' => 'Ta couleur préférée', 'categorie' => 'goûts']);
+        QuestionQuiz::create(['texte_soi' => 'Mon plat préféré', 'texte_partenaire' => 'Ton plat préféré', 'categorie' => 'goûts']);
+
+        $session = QuizSession::create([
+            'couple_id' => $this->couple->id,
+            'joueur1_id' => $this->alice->id,
+            'joueur2_id' => $this->bob->id,
+            'statut' => 'en_cours',
+        ]);
+
+        $this->actingAs($this->alice)
+            ->getJson(route('quiz.state', $session))
+            ->assertOk()
+            ->assertJson(['poolEpuise' => false]);
+
+        foreach (QuestionQuiz::all() as $question) {
+            QuizSessionQuestion::create(['session_id' => $session->id, 'question_id' => $question->id, 'cible_id' => $this->alice->id, 'ordre' => 0]);
+        }
+
+        $this->actingAs($this->alice)
+            ->getJson(route('quiz.state', $session))
+            ->assertOk()
+            ->assertJson(['poolEpuise' => true]);
+    }
+
+    public function test_qdn_etat_signale_le_pool_epuise(): void
+    {
+        QuestionQuiDeNous::create(['texte' => 'Qui est le plus bavard ?', 'categorie' => 'personnalite']);
+        QuestionQuiDeNous::create(['texte' => 'Qui est le plus têtu ?', 'categorie' => 'personnalite']);
+
+        $partie = PartieQuiDeNous::create([
+            'couple_id' => $this->couple->id,
+            'joueur1_id' => $this->alice->id,
+            'joueur2_id' => $this->bob->id,
+            'statut' => 'en_cours',
+        ]);
+
+        $this->actingAs($this->alice)
+            ->getJson(route('qdn2.state', $partie))
+            ->assertOk()
+            ->assertJson(['poolEpuise' => false]);
+
+        foreach (QuestionQuiDeNous::all() as $question) {
+            PartieQuestionQuiDeNous::create(['partie_id' => $partie->id, 'question_id' => $question->id, 'ordre' => 0]);
+        }
+
+        $this->actingAs($this->alice)
+            ->getJson(route('qdn2.state', $partie))
+            ->assertOk()
+            ->assertJson(['poolEpuise' => true]);
+    }
+
+    public function test_question_du_jour_signale_le_pool_epuise(): void
+    {
+        QuestionDuJour::create(['texte' => 'Quel est ton avenir idéal ?', 'categorie' => 'profonde']);
+        QuestionDuJour::create(['texte' => 'Quelle est ta blague préférée ?', 'categorie' => 'drole']);
+
+        $this->actingAs($this->alice)
+            ->get(route('question.index'))
+            ->assertOk()
+            ->assertViewHas('poolEpuise', false);
+
+        $dejaUtilisee = QuestionJournaliere::where('couple_id', $this->couple->id)->value('question_id');
+        $autre = QuestionDuJour::where('id', '!=', $dejaUtilisee)->first();
+
+        QuestionJournaliere::create(['couple_id' => $this->couple->id, 'question_id' => $autre->id, 'jour' => today()->subDay()]);
+
+        $this->actingAs($this->alice)
+            ->get(route('question.index'))
+            ->assertOk()
+            ->assertViewHas('poolEpuise', true);
+
+        $this->actingAs($this->alice)
+            ->getJson(route('question.state'))
+            ->assertOk()
+            ->assertJson(['poolEpuise' => true]);
     }
 
     public function test_vo_partenaire_peut_invalider_verite(): void
@@ -353,12 +490,21 @@ class JeuxFlowTest extends TestCase
         $this->postJson(route('mission.question'), ['reponse' => 'non'])->assertStatus(422);
         $this->assertSame(1, $this->bob->fresh()->devin_mission_compteur);
 
-        // La cible voit que le/la partenaire a bien vu la question du soir (même jour).
+        // La cible voit que le/la partenaire a répondu à la question du soir et l'a démasquée.
         $this->actingAs($this->alice)
             ->get(route('mission.index'))
             ->assertOk()
-            ->assertSee('a vu la question du soir', false)
+            ->assertSee('a répondu à la question du soir', false)
             ->assertSee('Démasquée', false);
+
+        // Modale « Verdict du soir » : la cible est prévenue que le/la partenaire a répondu.
+        $infos = $this->getJson(route('mission.infos'))->assertOk()->json('modals');
+        $this->assertContains('verdict', collect($infos)->pluck('type')->all());
+        $this->assertStringContainsString('Bob a répondu', collect($infos)->firstWhere('type', 'verdict')['message']);
+
+        $this->postJson(route('mission.verdict-vu'))->assertOk();
+        $infos = $this->getJson(route('mission.infos'))->assertOk()->json('modals');
+        $this->assertNotContains('verdict', collect($infos)->pluck('type')->all());
 
         // Le lendemain à 00h, une nouvelle mission apparaît pour chacun.
         $this->travelTo('2026-01-11 01:00:00');
@@ -428,6 +574,12 @@ class JeuxFlowTest extends TestCase
         $this->assertEquals('rien', $this->alice->fresh()->devin_mission_resultat);
         $this->assertSame(0, Point::count());
 
+        // La devineuse est aussi prévenue du verdict qu'elle vient de donner.
+        $infos = $this->getJson(route('mission.infos'))->assertOk()->json('modals');
+        $this->assertContains('verdict', collect($infos)->pluck('type')->all());
+        $this->assertStringContainsString('Tu as répondu', collect($infos)->firstWhere('type', 'verdict')['message']);
+        $this->postJson(route('mission.verdict-vu'))->assertOk();
+
         // Fausse accusation → rien non plus.
         $this->travelTo('2026-01-10 21:00:00');
         $this->actingAs($this->bob)
@@ -435,6 +587,18 @@ class JeuxFlowTest extends TestCase
             ->assertOk();
         $this->assertEquals('fausse', $this->bob->fresh()->devin_mission_resultat);
         $this->assertSame(0, Point::count());
+
+        // Symétrique : chacun voit la réponse du/de la partenaire, même sans mission réussie.
+        $this->actingAs($this->bob)
+            ->get(route('mission.index'))
+            ->assertOk()
+            ->assertSee('Alice a répondu à la question du soir', false);
+
+        $this->actingAs($this->alice)
+            ->get(route('mission.index'))
+            ->assertOk()
+            ->assertSee('Bob a répondu à la question du soir', false)
+            ->assertSee('Fausse alerte', false);
     }
 
     public function test_mission_non_realisee_expire_a_20h(): void

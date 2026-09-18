@@ -104,6 +104,7 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::post('/jeux/mission-secrete/{mission}/echouer', [MissionSecreteController::class, 'echouer'])->name('mission.echouer');
     Route::post('/jeux/mission-secrete/{mission}/vu', [MissionSecreteController::class, 'marquerVu'])->name('mission.vu');
     Route::post('/jeux/mission-secrete/question-du-soir', [MissionSecreteController::class, 'questionDuSoir'])->name('mission.question');
+    Route::post('/jeux/mission-secrete/verdict-vu', [MissionSecreteController::class, 'marquerVerdictVu'])->name('mission.verdict-vu');
 
     // ---- Enveloppes ----
     Route::get('/jeux/enveloppes', [EnveloppeController::class, 'index'])->name('enveloppe.index');

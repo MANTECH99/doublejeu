@@ -42,6 +42,7 @@
                     <button class="btn btn-soft btn-lg" onclick="choisir('verite')">💬 Vérité</button>
                     <button class="btn btn-primary btn-lg" onclick="choisir('action')">🎬 Action</button>
                 </div>
+                <p id="pool-alerte" class="tiny muted" style="display:none; margin-top:14px; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,.04)"></p>
             </div>
 
             <div id="stage-carte" style="display:none; width:100%">
@@ -112,6 +113,18 @@
             if (stage === 'choix') {
                 document.getElementById('stage-choix').style.display = 'block';
                 document.getElementById('stage-title-choix').textContent = state.estActif ? 'À toi de jouer !' : 'En attente…';
+
+                const alerte = document.getElementById('pool-alerte');
+                const pool = state.pool || {};
+                const epuises = [];
+                if (pool.verite) epuises.push('Vérité');
+                if (pool.action) epuises.push('Action');
+                if (epuises.length) {
+                    alerte.textContent = '💡 Toutes les cartes (' + epuises.join(' / ') + ') de ce niveau ont déjà été vues — elles sont reprises au hasard, certaines peuvent se répéter.';
+                    alerte.style.display = 'block';
+                } else {
+                    alerte.style.display = 'none';
+                }
             } else if (stage === 'carte') {
                 document.getElementById('stage-carte').style.display = 'block';
             } else if (stage === 'validation') {

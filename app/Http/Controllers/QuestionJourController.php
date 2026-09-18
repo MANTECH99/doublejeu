@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Couple;
+use App\Models\QuestionDuJour;
 use App\Models\QuestionJournaliere;
 use App\Models\ReponseQuestionJournaliere;
 use App\Services\ActivityService;
@@ -37,6 +39,7 @@ class QuestionJourController extends Controller
             'couple' => $couple,
             'aujourdhui' => $aujourdhui,
             'historique' => $historique,
+            'poolEpuise' => $this->poolEpuise($couple),
         ]);
     }
 
@@ -69,6 +72,7 @@ class QuestionJourController extends Controller
             'maReponse' => $maReponse,
             'saReponse' => $revelee ? $saReponse : null,
             'partenaire' => $partner->name,
+            'poolEpuise' => $this->poolEpuise($couple),
         ]);
     }
 
@@ -110,6 +114,14 @@ class QuestionJourController extends Controller
         ]);
 
         return response()->json(['ok' => true]);
+    }
+
+    private function poolEpuise(Couple $couple): bool
+    {
+        $vues = QuestionJournaliere::where('couple_id', $couple->id)->pluck('question_id');
+
+        return QuestionDuJour::exists()
+            && QuestionDuJour::whereNotIn('id', $vues)->doesntExist();
     }
 
     private function notifierNouvelleQuestion($couple): void

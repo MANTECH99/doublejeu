@@ -97,6 +97,64 @@ final class QuestionBankService
     }
 
     /**
+     * Indique si le couple a déjà rencontré toutes les cartes (textes distincts)
+     * du niveau courant pour un type donné (verite|action). Dans ce cas le tirage
+     * recycle l'ensemble du pool : les cartes peuvent se répéter.
+     */
+    public function poolEpuise(PartieVO $partie, string $type): bool
+    {
+        return $this->poolEstEpuise(
+            $type === 'verite' ? CarteVerite::where('niveau', $partie->niveau) : CarteAction::where('niveau', $partie->niveau),
+            $type === 'verite' ? $this->veritesVues($partie->couple) : $this->actionsVues($partie->couple)
+        );
+    }
+
+    public function poolOuiNonEpuise(Couple $couple): bool
+    {
+        return $this->poolEstEpuise(QuestionOuiNon::query(), $this->questionsOuiNonVues($couple));
+    }
+
+    public function poolQuizEpuise(Couple $couple): bool
+    {
+        return $this->poolEstEpuise(QuestionQuiz::query(), $this->questionsQuizVues($couple), 'texte_soi');
+    }
+
+    public function poolQuiDeNousEpuise(Couple $couple): bool
+    {
+        $deux = [$couple->user1_id, $couple->user2_id];
+
+        return $this->poolEstEpuise(
+            $this->questionsQuiDeNousDisponibles($deux),
+            $this->questionsQuiDeNousVues($couple)
+        );
+    }
+
+    /**
+     * Indique si tous les textes distincts d'un pool sont déjà vus par le couple.
+     *
+     * @param  Builder<Model>  $query
+     * @param  string[]  $textesVus
+     */
+    private function poolEstEpuise(Builder $query, array $textesVus, string $colonne = 'texte'): bool
+    {
+        if ($textesVus === [] || ! $query->exists()) {
+            return false;
+        }
+
+        return $query->whereNotIn($colonne, $textesVus)->doesntExist();
+    }
+
+    /**
+     * Questions de base (sans auteur) et celles créées par le couple.
+     *
+     * @param  int[]  $membres
+     */
+    private function questionsQuiDeNousDisponibles(array $membres): Builder
+    {
+        return QuestionQuiDeNous::where(fn (Builder $query) => $query->whereNull('created_by')->orWhereIn('created_by', $membres));
+    }
+
+    /**
      * @return Collection<int, QuestionOuiNon>
      */
     public function questionsOuiNonPour(Couple $couple, int $nombre): Collection
@@ -109,10 +167,8 @@ final class QuestionBankService
      */
     public function questionsQuiDeNousPour(Couple $couple, int $nombre): Collection
     {
-        $deux = [$couple->user1_id, $couple->user2_id];
-
         return $this->questionsAleatoires(
-            QuestionQuiDeNous::whereNull('created_by')->orWhereIn('created_by', $deux),
+            $this->questionsQuiDeNousDisponibles([$couple->user1_id, $couple->user2_id]),
             $this->questionsQuiDeNousVues($couple),
             $nombre
         );

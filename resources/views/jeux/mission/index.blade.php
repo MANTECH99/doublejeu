@@ -18,6 +18,18 @@
                     <div style="font-size:26px">🌙</div>
                     <strong class="block">Rien pour l'instant</strong>
                     <div class="tiny muted">Ta mission du jour est en préparation. Reviens quelques minutes après 00h !</div>
+                    @if ($partenaireARepondu)
+                        <div class="tiny muted mt8">
+                            {{ $partner->name }} a répondu à la question du soir : « {{ $partenaireReponse === 'oui' ? 'Oui, je te soupçonne' : 'Non, tout était spontané' }} ».
+                            @if ($partenaireResultat === 'fausse')
+                                <span class="block mt4">Fausse alerte : aucune mission n'était en jeu.</span>
+                            @elseif ($partenaireResultat === 'rien')
+                                <span class="block mt4">Rien à signaler : aucun point.</span>
+                            @endif
+                        </div>
+                    @elseif ($questionOuverte)
+                        <div class="tiny muted mt8">{{ $partner->name }} n'a pas encore répondu à la question du soir.</div>
+                    @endif
                 </div>
             @elseif ($maMission->statut === 'en_attente')
                 <div class="flex between items-center gap12">
@@ -66,8 +78,15 @@
                         @if ($maMission->statut === 'echouee')
                             <span>Mission non accomplie aujourd'hui. À demain pour une nouvelle occasion !</span>
                         @endif
-                        @if ($maMission->vue_par_partenaire && in_array($maMission->statut, ['accomplie', 'demasquee']))
-                            <div class="mt8"><span style="color:var(--success)">✓ {{ $partner->name }} a vu la question du soir.</span></div>
+                        @if ($partenaireARepondu)
+                            <div class="mt8"><span style="color:var(--success)">✓ {{ $partner->name }} a répondu à la question du soir : « {{ $partenaireReponse === 'oui' ? 'Oui, je te soupçonne' : 'Non, tout était spontané' }} ».</span></div>
+                            @if (in_array($maMission->statut, ['refusee', 'echouee']) && $partenaireResultat === 'fausse')
+                                <span class="block mt4">Fausse alerte : aucune mission n'était en jeu, aucun point.</span>
+                            @elseif (in_array($maMission->statut, ['refusee', 'echouee']) && $partenaireResultat === 'rien')
+                                <span class="block mt4">Rien à signaler : aucun point de part ni d'autre.</span>
+                            @endif
+                        @else
+                            <div class="mt8"><span style="color:{{ $maMission->vue_par_partenaire ? 'var(--success)' : 'var(--muted)' }}">{{ $partner->name }} {{ $maMission->vue_par_partenaire ? 'a vu la question du soir' : "n'a pas encore vu la question du soir" }} et n'a pas encore répondu.</span></div>
                         @endif
                     </div>
                 </div>

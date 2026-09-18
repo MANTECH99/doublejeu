@@ -140,6 +140,7 @@ class QuizController extends Controller
             'aRepondre' => $aRepondre,
             'mesReponses' => $mesReponses,
             'sesReponses' => $sesReponses,
+            'poolEpuise' => $this->bank->poolQuizEpuise($couple),
             'questions' => $items,
             'partner' => ['id' => $partner->id, 'name' => $partner->name],
         ]);

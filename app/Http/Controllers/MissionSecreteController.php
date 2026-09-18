@@ -79,7 +79,7 @@ class MissionSecreteController extends Controller
 
         $couple = Auth::user()->coupleModel;
         $me = Auth::user();
-        $partner = $couple->partnerOf($me);
+        $partner = $couple->partnerOf($me)->fresh();
 
         $this->finaliserMissions($couple, $me);
         $this->finaliserMissions($couple, $partner);
@@ -112,6 +112,9 @@ class MissionSecreteController extends Controller
             'nombreReponses' => $me->devin_mission_jour?->toDateString() === $today ? 1 : 0,
             'derniereReponse' => $me->devin_mission_reponse,
             'resultatDevin' => $me->devin_mission_resultat,
+            'partenaireARepondu' => $partner->devin_mission_jour?->toDateString() === $partnerToday,
+            'partenaireReponse' => $partner->devin_mission_reponse,
+            'partenaireResultat' => $partner->devin_mission_resultat,
         ]);
     }
 
@@ -301,9 +304,10 @@ class MissionSecreteController extends Controller
     {
         $me = Auth::user();
         $couple = $me->coupleModel;
-        $partner = $couple->partnerOf($me);
+        $partner = $couple->partnerOf($me)->fresh();
 
         $today = $me->localToday()->toDateString();
+        $partnerToday = $partner->localToday()->toDateString();
 
         self::genererPourUser($couple, $me);
 
@@ -326,7 +330,6 @@ class MissionSecreteController extends Controller
         }
 
         if ($me->deadlineSoirPassee()) {
-            $partnerToday = $partner->localToday()->toDateString();
             $saMission = $couple->missionsSecrettes()
                 ->where('joueur_cible_id', $partner->id)
                 ->whereDate('date_mission', $partnerToday)
@@ -340,9 +343,55 @@ class MissionSecreteController extends Controller
                     'message' => 'Il est 20h. Viens répondre à la question du soir sur la page Mission secrète.',
                 ];
             }
+
+            $reponseDonnee = $me->devin_mission_jour?->toDateString() === $today
+                || $partner->devin_mission_jour?->toDateString() === $partnerToday;
+
+            if ($reponseDonnee && $me->devin_verdict_vu_jour?->toDateString() !== $today) {
+                $modals[] = $this->modalVerdict($me, $partner, $maMission);
+            }
         }
 
         return response()->json(['modals' => $modals]);
+    }
+
+    public function marquerVerdictVu(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $user->forceFill(['devin_verdict_vu_jour' => $user->localNow()])->save();
+
+        return response()->json(['ok' => true]);
+    }
+
+    protected function modalVerdict(User $me, User $partner, ?MissionSecrete $maMission): array
+    {
+        $reponse = $partner->devin_mission_reponse === 'oui' ? 'Oui, je le/la soupçonne' : 'Non, tout était spontané';
+        $nom = $partner->name;
+
+        if ($me->devin_mission_jour?->toDateString() === $me->localToday()->toDateString()) {
+            $res = $me->devin_mission_resultat;
+
+            $message = match (true) {
+                str_starts_with((string) $res, 'demasquee') => "Tu as répondu « {$reponse} » : mission démasquée, +10 pts chacun.",
+                $res === 'fausse' => "Tu as répondu « {$reponse} » : fausse alerte, aucun point.",
+                str_starts_with((string) $res, 'ratee') => "Tu as répondu « {$reponse} » : raté, {$nom} gagne +25 pts incognito.",
+                $res === 'rien' => "Tu as répondu « {$reponse} » : rien à signaler, aucun point.",
+                default => "Tu as répondu « {$reponse} ».",
+            };
+        } else {
+            $message = match (true) {
+                $maMission && $maMission->statut === 'demasquee' => "{$nom} a répondu « {$reponse} » : elle/il t'a démasqué·e, +10 pts chacun.",
+                $maMission && $maMission->statut === 'accomplie' && $maMission->devine === 'spontane' => "{$nom} a répondu « {$reponse} » : tu passes incognito, +25 pts.",
+                $partner->devin_mission_reponse === 'oui' => "{$nom} a répondu « {$reponse} » : fausse alerte, aucun point.",
+                default => "{$nom} a répondu « {$reponse} » : rien à signaler, aucun point.",
+            };
+        }
+
+        return [
+            'type' => 'verdict',
+            'title' => '🏆 Verdict du soir',
+            'message' => $message,
+        ];
     }
 
     protected function finaliserMissions($couple, $user): void

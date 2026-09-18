@@ -136,6 +136,7 @@ class OuiNonController extends Controller
             'nbQuestions' => count($items),
             'mesReponses' => $mesReponses,
             'sesReponses' => $sesReponses,
+            'poolEpuise' => $this->bank->poolOuiNonEpuise($couple),
             'questions' => $items,
             'couple' => [
                 'p1' => ['id' => $couple->user1_id, 'name' => $couple->user1?->name],
