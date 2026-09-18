@@ -497,10 +497,11 @@ class JeuxFlowTest extends TestCase
             ->assertSee('a répondu à la question du soir', false)
             ->assertSee('Démasquée', false);
 
-        // Modale « Verdict du soir » : la cible est prévenue que le/la partenaire a répondu.
+        // Modale « Verdict du soir » : info sur l'autre = a-t-elle vu + sa réponse.
         $infos = $this->getJson(route('mission.infos'))->assertOk()->json('modals');
         $this->assertContains('verdict', collect($infos)->pluck('type')->all());
-        $this->assertStringContainsString('Bob a répondu', collect($infos)->firstWhere('type', 'verdict')['message']);
+        $this->assertStringContainsString('a vu la question du soir et a répondu', collect($infos)->firstWhere('type', 'verdict')['message']);
+        $this->assertStringContainsString('Bob a vu la question du soir', collect($infos)->firstWhere('type', 'verdict')['message']);
 
         $this->postJson(route('mission.verdict-vu'))->assertOk();
         $infos = $this->getJson(route('mission.infos'))->assertOk()->json('modals');
@@ -574,12 +575,6 @@ class JeuxFlowTest extends TestCase
         $this->assertEquals('rien', $this->alice->fresh()->devin_mission_resultat);
         $this->assertSame(0, Point::count());
 
-        // La devineuse est aussi prévenue du verdict qu'elle vient de donner.
-        $infos = $this->getJson(route('mission.infos'))->assertOk()->json('modals');
-        $this->assertContains('verdict', collect($infos)->pluck('type')->all());
-        $this->assertStringContainsString('Tu as répondu', collect($infos)->firstWhere('type', 'verdict')['message']);
-        $this->postJson(route('mission.verdict-vu'))->assertOk();
-
         // Fausse accusation → rien non plus.
         $this->travelTo('2026-01-10 21:00:00');
         $this->actingAs($this->bob)
@@ -587,6 +582,13 @@ class JeuxFlowTest extends TestCase
             ->assertOk();
         $this->assertEquals('fausse', $this->bob->fresh()->devin_mission_resultat);
         $this->assertSame(0, Point::count());
+
+        // Modale « Verdict du soir » : la cible est prévenue (fausse alerte).
+        $this->actingAs($this->alice);
+        $infos = $this->getJson(route('mission.infos'))->assertOk()->json('modals');
+        $this->assertContains('verdict', collect($infos)->pluck('type')->all());
+        $this->assertStringContainsString('Bob a répondu', collect($infos)->firstWhere('type', 'verdict')['message']);
+        $this->postJson(route('mission.verdict-vu'))->assertOk();
 
         // Symétrique : chacun voit la réponse du/de la partenaire, même sans mission réussie.
         $this->actingAs($this->bob)

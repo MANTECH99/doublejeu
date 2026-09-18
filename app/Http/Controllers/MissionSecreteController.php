@@ -344,11 +344,10 @@ class MissionSecreteController extends Controller
                 ];
             }
 
-            $reponseDonnee = $me->devin_mission_jour?->toDateString() === $today
-                || $partner->devin_mission_jour?->toDateString() === $partnerToday;
+            $partenaireARepondu = $partner->devin_mission_jour?->toDateString() === $partnerToday;
 
-            if ($reponseDonnee && $me->devin_verdict_vu_jour?->toDateString() !== $today) {
-                $modals[] = $this->modalVerdict($me, $partner, $maMission);
+            if ($partenaireARepondu && $me->devin_verdict_vu_jour?->toDateString() !== $today) {
+                $modals[] = $this->modalVerdict($partner, $maMission);
             }
         }
 
@@ -363,29 +362,20 @@ class MissionSecreteController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    protected function modalVerdict(User $me, User $partner, ?MissionSecrete $maMission): array
+    protected function modalVerdict(User $partner, ?MissionSecrete $maMission): array
     {
-        $reponse = $partner->devin_mission_reponse === 'oui' ? 'Oui, je le/la soupçonne' : 'Non, tout était spontané';
         $nom = $partner->name;
+        $reponse = $partner->devin_mission_reponse === 'oui' ? 'Oui, je le/la soupçonne' : 'Non, tout était spontané';
+        $actions = $maMission?->vue_par_partenaire
+            ? 'a vu la question du soir et a répondu'
+            : 'a répondu';
 
-        if ($me->devin_mission_jour?->toDateString() === $me->localToday()->toDateString()) {
-            $res = $me->devin_mission_resultat;
-
-            $message = match (true) {
-                str_starts_with((string) $res, 'demasquee') => "Tu as répondu « {$reponse} » : mission démasquée, +10 pts chacun.",
-                $res === 'fausse' => "Tu as répondu « {$reponse} » : fausse alerte, aucun point.",
-                str_starts_with((string) $res, 'ratee') => "Tu as répondu « {$reponse} » : raté, {$nom} gagne +25 pts incognito.",
-                $res === 'rien' => "Tu as répondu « {$reponse} » : rien à signaler, aucun point.",
-                default => "Tu as répondu « {$reponse} ».",
-            };
-        } else {
-            $message = match (true) {
-                $maMission && $maMission->statut === 'demasquee' => "{$nom} a répondu « {$reponse} » : elle/il t'a démasqué·e, +10 pts chacun.",
-                $maMission && $maMission->statut === 'accomplie' && $maMission->devine === 'spontane' => "{$nom} a répondu « {$reponse} » : tu passes incognito, +25 pts.",
-                $partner->devin_mission_reponse === 'oui' => "{$nom} a répondu « {$reponse} » : fausse alerte, aucun point.",
-                default => "{$nom} a répondu « {$reponse} » : rien à signaler, aucun point.",
-            };
-        }
+        $message = match (true) {
+            $maMission && $maMission->statut === 'demasquee' => "{$nom} {$actions} : « {$reponse} » — elle/il t'a démasqué·e, +10 pts chacun.",
+            $maMission && $maMission->statut === 'accomplie' && $maMission->devine === 'spontane' => "{$nom} {$actions} : « {$reponse} » — tu passes incognito, +25 pts.",
+            $partner->devin_mission_reponse === 'oui' => "{$nom} {$actions} : « {$reponse} » — fausse alerte, aucun point.",
+            default => "{$nom} {$actions} : « {$reponse} » — rien à signaler, aucun point.",
+        };
 
         return [
             'type' => 'verdict',
