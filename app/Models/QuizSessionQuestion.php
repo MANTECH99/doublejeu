@@ -8,12 +8,19 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['session_id', 'question_id', 'cible_id', 'ordre', 'resultat', 'bonne_reponse'])]
+#[Fillable(['session_id', 'question_id', 'cible_id', 'ordre', 'resultat', 'bonne_reponse', 'revelee_par_id', 'revelee_le', 'revelee_ordre'])]
 class QuizSessionQuestion extends Model
 {
     use HasFactory;
 
     protected $table = 'quiz_session_questions';
+
+    protected function casts(): array
+    {
+        return [
+            'revelee_le' => 'datetime',
+        ];
+    }
 
     public function session(): BelongsTo
     {

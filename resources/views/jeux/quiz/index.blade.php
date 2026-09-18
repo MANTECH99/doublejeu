@@ -7,7 +7,7 @@
         <div class="center">
             <div style="font-size:48px; margin-bottom:4px">❓</div>
             <h1 class="title">Tu me connais ?</h1>
-            <p class="subtitle">8 questions sur vous deux. Réponds à ma place… et gagne un point quand tu me connais vraiment.</p>
+            <p class="subtitle">8 questions sur vous deux, révélées une par une. À tour de rôle, faites tourner la roulette… et répondez à ma place !</p>
         </div>
 
         @if ($session)
@@ -21,7 +21,7 @@
         @else
             <div class="card mt16">
                 <h2>Lancer une partie</h2>
-                <p class="muted mb16">Chacun répond sur l'autre, la réponse est comparée en temps réel. Réponse identique = +10 points.</p>
+                <p class="muted mb16">Chaque question s'affiche une par une : on tourne la roulette, on répond à ma place, l'autre juge. Bonne réponse = +10 points.</p>
                 <button class="btn btn-primary btn-block" onclick="lancerQuiz()">Tirer {{ \App\Http\Controllers\QuizController::NB_QUESTIONS }} questions</button>
             </div>
         @endif

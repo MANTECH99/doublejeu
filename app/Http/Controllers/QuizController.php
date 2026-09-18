@@ -6,6 +6,7 @@ use App\Models\Point;
 use App\Models\QuizReponse;
 use App\Models\QuizSession;
 use App\Models\QuizSessionQuestion;
+use App\Models\User;
 use App\Services\ActivityService;
 use App\Services\PushService;
 use App\Services\QuestionBankService;
@@ -65,18 +66,18 @@ class QuizController extends Controller
             'statut' => 'en_cours',
         ]);
 
-        $parCible = intdiv(self::NB_QUESTIONS, 2);
+        $cibles = [$couple->user1_id, $couple->user2_id];
         $ordre = 0;
 
-        foreach ([$couple->user1_id, $couple->user2_id] as $cibleId) {
-            foreach ($questions->splice(0, $parCible) as $question) {
-                QuizSessionQuestion::create([
-                    'session_id' => $session->id,
-                    'question_id' => $question->id,
-                    'cible_id' => $cibleId,
-                    'ordre' => $ordre++,
-                ]);
-            }
+        // Les 4 questions sur chaque cible sont entrelacées : les tours
+        // au spinner et à la réponse alternent naturellement d'un joueur à l'autre.
+        foreach ($questions->values() as $index => $question) {
+            QuizSessionQuestion::create([
+                'session_id' => $session->id,
+                'question_id' => $question->id,
+                'cible_id' => $cibles[$index % 2],
+                'ordre' => $ordre++,
+            ]);
         }
 
         ActivityService::touch($request->user());
@@ -107,43 +108,94 @@ class QuizController extends Controller
         $this->authorizeCouple($session);
 
         $user = Auth::user();
-        $couple = $session->couple;
-        $partner = $couple->partnerOf($user);
+        $partner = $user->id === $session->joueur1_id ? $session->joueur2 : $session->joueur1;
 
-        $items = $session->sessionQuestions()
-            ->with('question', 'cible', 'reponses')
-            ->get()
-            ->map(fn (QuizSessionQuestion $sq) => [
-                'id' => $sq->id,
-                'texte' => $sq->cible_id === $user->id ? $sq->question->texte_soi : $sq->question->texte_partenaire,
-                'cible' => $sq->cible?->name,
-                'jeSuisCible' => $sq->cible_id === $user->id,
-                'maReponse' => $sq->reponses->firstWhere('joueur_id', $user->id)?->reponse,
-                'saReponse' => $sq->reponses->firstWhere('joueur_id', '!=', $user->id)?->reponse,
-                'resultat' => $sq->resultat,
-                'bonneReponse' => $sq->bonne_reponse,
-                'point' => $sq->resultat === 'match' && $sq->cible_id !== $user->id,
-            ])
-            ->values();
+        $total = $session->sessionQuestions()->count();
 
-        $mesReponses = $session->sessionQuestions()
-            ->whereHas('reponses', fn ($q) => $q->where('joueur_id', $user->id)->whereNotNull('reponse'))
-            ->count();
-        $sesReponses = $session->sessionQuestions()
-            ->whereHas('reponses', fn ($q) => $q->where('joueur_id', '!=', $user->id)->whereNotNull('reponse'))
-            ->count();
-        $aRepondre = $session->sessionQuestions()->where('cible_id', '!=', $user->id)->count();
+        // Question révélée et en attente de réponse/jugement : c'est elle qu'on joue.
+        $enJeu = $session->sessionQuestions()
+            ->whereNull('resultat')
+            ->whereNotNull('revelee_par_id')
+            ->with(['reponses', 'question', 'cible'])
+            ->first();
+
+        // Prochaine à révéler : détermine de qui c'est le tour de tourner la roulette.
+        $prochaine = $this->prochaineQuestion($session);
+
+        // Dernière jugée : affichée pendant la transition vers le tour suivant.
+        $derniere = $session->sessionQuestions()
+            ->whereNotNull('resultat')
+            ->with(['reponses', 'question', 'cible'])
+            ->reorder('revelee_ordre', 'desc')
+            ->first();
+
+        $tourDe = null;
+        if ($session->statut === 'en_cours' && $enJeu === null && $prochaine !== null) {
+            $devinantId = $this->devinantIdDe($session, $prochaine);
+            $tourDe = $devinantId === $session->joueur1_id ? $session->joueur1 : $session->joueur2;
+        }
+
+        $map = fn (QuizSessionQuestion $sq): array => $this->questionData($session, $sq, $user);
+
+        $conclus = $session->statut === 'terminee'
+            ? $session->sessionQuestions()->whereNotNull('resultat')->with(['reponses', 'question', 'cible'])->get()->map($map)->values()
+            : collect();
 
         return response()->json([
             'status' => $session->statut,
-            'nbQuestions' => $items->count(),
-            'aRepondre' => $aRepondre,
-            'mesReponses' => $mesReponses,
-            'sesReponses' => $sesReponses,
-            'poolEpuise' => $this->bank->poolQuizEpuise($couple),
-            'questions' => $items,
+            'sessionId' => $session->id,
+            'total' => $total,
+            'revelees' => $session->sessionQuestions()->whereNotNull('revelee_par_id')->count(),
+            'jugees' => $session->sessionQuestions()->whereNotNull('resultat')->count(),
+            'tourDe' => $tourDe !== null ? ['id' => $tourDe->id, 'name' => $tourDe->name] : null,
+            'question' => $enJeu !== null ? $map($enJeu) : null,
+            'dernier' => $derniere !== null ? $map($derniere) : null,
+            'poolEpuise' => $this->bank->poolQuizEpuise($session->couple),
             'partner' => ['id' => $partner->id, 'name' => $partner->name],
+            'moi' => ['id' => $user->id, 'name' => $user->name],
+            'conclus' => $conclus,
         ]);
+    }
+
+    public function reveler(Request $request, QuizSession $session): JsonResponse
+    {
+        $this->authorizeCouple($session);
+
+        if ($session->statut !== 'en_cours') {
+            return response()->json(['error' => 'La partie est terminée.'], 422);
+        }
+
+        $enJeu = $session->sessionQuestions()
+            ->whereNull('resultat')
+            ->whereNotNull('revelee_par_id')
+            ->first();
+
+        if ($enJeu !== null) {
+            return response()->json(['error' => 'Une question est déjà en cours.'], 422);
+        }
+
+        $suivante = $this->prochaineQuestion($session);
+
+        if ($suivante === null) {
+            return response()->json(['error' => 'Toutes les questions sont terminées.'], 422);
+        }
+
+        // Seul le devinant (celui que la question ne cible pas) tourne la roulette.
+        $devinantId = $this->devinantIdDe($session, $suivante);
+
+        if ($devinantId !== $request->user()->id) {
+            $devinant = $devinantId === $session->joueur1_id ? $session->joueur1 : $session->joueur2;
+
+            return response()->json(['error' => "C'est au tour de {$devinant->name} de faire tourner la roulette."], 403);
+        }
+
+        $suivante->forceFill([
+            'revelee_par_id' => $request->user()->id,
+            'revelee_le' => now(),
+            'revelee_ordre' => $this->reveleeOrdreSuivant($session),
+        ])->save();
+
+        return response()->json(['ok' => true]);
     }
 
     public function repondre(Request $request, QuizSession $session): JsonResponse
@@ -167,6 +219,10 @@ class QuizController extends Controller
 
         if (! $sq) {
             return response()->json(['error' => 'Question introuvable.'], 422);
+        }
+
+        if ($sq->revelee_par_id === null) {
+            return response()->json(['error' => "Cette question n'a pas encore été révélée."], 422);
         }
 
         // Seul le devinant (celui qui n'est pas la cible) répond.
@@ -262,6 +318,73 @@ class QuizController extends Controller
         $this->terminerSiFini($session);
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Le devinant est celui qui répond à une question : il n'est pas la cible.
+     */
+    protected function devinantIdDe(QuizSession $session, QuizSessionQuestion $sq): int
+    {
+        return $sq->cible_id === $session->joueur1_id ? $session->joueur2_id : $session->joueur1_id;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function questionData(QuizSession $session, QuizSessionQuestion $sq, User $user): array
+    {
+        $devinantId = $this->devinantIdDe($session, $sq);
+        $devinant = $devinantId === $session->joueur1_id ? $session->joueur1 : $session->joueur2;
+
+        return [
+            'id' => $sq->id,
+            'ordre' => $sq->ordre,
+            'texte' => $sq->cible_id === $user->id ? $sq->question->texte_soi : $sq->question->texte_partenaire,
+            'categorie' => $sq->question->categorie,
+            'cible' => $sq->cible?->name,
+            'jeSuisCible' => $sq->cible_id === $user->id,
+            'maReponse' => $sq->reponses->firstWhere('joueur_id', $user->id)?->reponse,
+            'saReponse' => $sq->reponses->firstWhere('joueur_id', '!=', $user->id)?->reponse,
+            'resultat' => $sq->resultat,
+            'bonneReponse' => $sq->bonne_reponse,
+            'gagneur' => $sq->resultat === 'match' ? ['id' => $devinantId, 'name' => $devinant->name] : null,
+        ];
+    }
+
+    /**
+     * Prochaine question à révéler, en forçant l'alternance des cibles : on
+     * cible l'autre joueur que la question précédemment révélée. Même si une
+     * session a été créée « regroupée » (les 4 questions d'un joueur d'abord),
+     * les tours alternent donc une question par joueur.
+     */
+    protected function prochaineQuestion(QuizSession $session): ?QuizSessionQuestion
+    {
+        $restantes = $session->sessionQuestions()
+            ->whereNull('resultat')
+            ->whereNull('revelee_par_id');
+
+        $dernierRevelee = $session->sessionQuestions()
+            ->whereNotNull('revelee_par_id')
+            ->reorder('revelee_ordre', 'desc')
+            ->first();
+
+        if ($dernierRevelee !== null) {
+            $cibleAttendue = $dernierRevelee->cible_id === $session->joueur1_id ? $session->joueur2_id : $session->joueur1_id;
+            $envisagée = (clone $restantes)->where('cible_id', $cibleAttendue)->orderBy('ordre')->first();
+
+            if ($envisagée !== null) {
+                return $envisagée;
+            }
+        }
+
+        return $restantes->orderBy('ordre')->first();
+    }
+
+    protected function reveleeOrdreSuivant(QuizSession $session): int
+    {
+        $max = $session->sessionQuestions()->max('revelee_ordre') ?? 0;
+
+        return (int) $max + 1;
     }
 
     protected function terminerSiFini(QuizSession $session): void

@@ -119,6 +119,7 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::post('/jeux/tu-me-connais', [QuizController::class, 'start'])->name('quiz.start');
     Route::get('/jeux/tu-me-connais/{session}', [QuizController::class, 'play'])->name('quiz.jouer');
     Route::get('/jeux/tu-me-connais/{session}/etat', [QuizController::class, 'state'])->name('quiz.state');
+    Route::post('/jeux/tu-me-connais/{session}/reveler', [QuizController::class, 'reveler'])->name('quiz.reveler');
     Route::post('/jeux/tu-me-connais/{session}/repondre', [QuizController::class, 'repondre'])->name('quiz.repondre');
     Route::post('/jeux/tu-me-connais/{session}/juger', [QuizController::class, 'juger'])->name('quiz.juger');
 

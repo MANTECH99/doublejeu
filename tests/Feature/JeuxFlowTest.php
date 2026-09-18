@@ -737,45 +737,82 @@ class JeuxFlowTest extends TestCase
         $this->assertNotNull($session);
         $this->assertEquals(8, QuizSessionQuestion::where('session_id', $session->id)->count());
 
-        $sqs = QuizSessionQuestion::where('session_id', $session->id)->get();
+        $sqs = QuizSessionQuestion::where('session_id', $session->id)->orderBy('ordre')->get();
 
-        // 4 questions sur Alice : Bob (devinant) répond, Alice (cible) juge (1 raté volontaire).
-        $surAlice = $sqs->where('cible_id', $this->alice->id);
-        $this->assertCount(4, $surAlice);
+        // 4 questions sur chaque cible, entrelacées pour alterner les tours.
+        $this->assertEquals(4, $sqs->where('cible_id', $this->alice->id)->count());
+        $this->assertEquals(4, $sqs->where('cible_id', $this->bob->id)->count());
+        $this->assertEquals($this->alice->id, $sqs[0]->cible_id);
+        $this->assertEquals($this->bob->id, $sqs[1]->cible_id);
 
-        foreach ($surAlice as $i => $sq) {
-            $this->actingAs($this->bob)
-                ->postJson(route('quiz.repondre', $session), ['question_id' => $sq->id, 'reponse' => $i === 0 ? 'Quiche' : 'Pizza'])
-                ->assertOk();
-            // La cible ne répond pas : elle ne fait que juger.
-            $this->actingAs($this->alice)
+        foreach ($sqs as $index => $sq) {
+            $devinant = $sq->cible_id === $this->alice->id ? $this->bob : $this->alice;
+            $cible = $sq->cible_id === $this->alice->id ? $this->alice : $this->bob;
+
+            // Aucune question visible tant que la roulette n'a pas tourné, et c'est au tour du devinant.
+            $this->actingAs($devinant)
+                ->getJson(route('quiz.state', $session))
+                ->assertOk()
+                ->assertJson([
+                    'status' => 'en_cours',
+                    'question' => null,
+                    'tourDe' => ['id' => $devinant->id],
+                ]);
+
+            // Répondre avant la révélation est refusé : la question doit d'abord être tirée.
+            $this->actingAs($devinant)
                 ->postJson(route('quiz.repondre', $session), ['question_id' => $sq->id, 'reponse' => 'Pizza'])
-                ->assertStatus(422);
-            $this->actingAs($this->alice)
-                ->postJson(route('quiz.juger', $session), [
-                    'question_id' => $sq->id,
-                    'correct' => $i !== 0,
-                    'bonne_reponse' => $i === 0 ? 'Pizza' : null,
-                ])->assertOk();
-        }
+                ->assertUnprocessable()
+                ->assertJsonFragment(['error' => "Cette question n'a pas encore été révélée."]);
 
-        // 4 questions sur Bob : Alice (devinant) répond parfaitement, Bob (cible) juge.
-        $surBob = $sqs->where('cible_id', $this->bob->id);
-        $this->assertCount(4, $surBob);
+            // La cible ne peut pas tourner la roulette : seul le devinant joue son tour.
+            $this->actingAs($cible)
+                ->postJson(route('quiz.reveler', $session))
+                ->assertForbidden()
+                ->assertJsonFragment(['error' => "C'est au tour de {$devinant->name} de faire tourner la roulette."]);
 
-        foreach ($surBob as $sq) {
-            $this->actingAs($this->alice)
-                ->postJson(route('quiz.repondre', $session), ['question_id' => $sq->id, 'reponse' => 'Dessin'])
-                ->assertOk();
-            $this->actingAs($this->bob)
-                ->postJson(route('quiz.juger', $session), [
-                    'question_id' => $sq->id,
-                    'correct' => true,
-                ])->assertOk();
+            $this->actingAs($devinant)->postJson(route('quiz.reveler', $session))->assertOk();
+
+            // La question révélée est visible pour le devinant.
+            $this->actingAs($devinant)
+                ->getJson(route('quiz.state', $session))
+                ->assertOk()
+                ->assertJson(['question' => ['id' => $sq->id]]);
+
+            if ($sq->cible_id === $this->alice->id) {
+                // La cible ne répond pas : elle ne fait que juger.
+                if ($index === 0) {
+                    $this->actingAs($this->alice)
+                        ->postJson(route('quiz.repondre', $session), ['question_id' => $sq->id, 'reponse' => 'Pizza'])
+                        ->assertUnprocessable()
+                        ->assertJsonFragment(['error' => "Tu juges cette question, tu n'y réponds pas."]);
+                }
+                // Bob (devinant) répond ; Alice (cible) juge (le 1er tiré est raté volontairement).
+                $this->actingAs($this->bob)
+                    ->postJson(route('quiz.repondre', $session), ['question_id' => $sq->id, 'reponse' => $index === 0 ? 'Quiche' : 'Pizza'])
+                    ->assertOk();
+                $this->actingAs($this->alice)
+                    ->postJson(route('quiz.juger', $session), [
+                        'question_id' => $sq->id,
+                        'correct' => $index !== 0,
+                        'bonne_reponse' => $index === 0 ? 'Pizza' : null,
+                    ])->assertOk();
+            } else {
+                // Alice (devinant) répond parfaitement ; Bob (cible) juge vrai.
+                $this->actingAs($this->alice)
+                    ->postJson(route('quiz.repondre', $session), ['question_id' => $sq->id, 'reponse' => 'Dessin'])
+                    ->assertOk();
+                $this->actingAs($this->bob)
+                    ->postJson(route('quiz.juger', $session), [
+                        'question_id' => $sq->id,
+                        'correct' => true,
+                    ])->assertOk();
+            }
         }
 
         $this->assertEquals('terminee', $session->fresh()->statut);
 
+        // Bob connaît Alice sur 3 questions sur 4, Alice connaît Bob sur 4 sur 4.
         $this->assertEquals(30, Point::where('joueur_id', $this->bob->id)->where('source', 'quiz')->sum('montant'));
         $this->assertEquals(40, Point::where('joueur_id', $this->alice->id)->where('source', 'quiz')->sum('montant'));
 
@@ -792,6 +829,90 @@ class JeuxFlowTest extends TestCase
             'resultat' => 'manque',
             'bonne_reponse' => 'Pizza',
         ]);
+
+        $final = $this->actingAs($this->alice)->getJson(route('quiz.state', $session))->assertOk()->json();
+        $this->assertSame('terminee', $final['status']);
+        $this->assertCount(8, $final['conclus']);
+    }
+
+    public function test_quiz_roulette_refuse_une_seconde_revelation_avant_jugement(): void
+    {
+        for ($i = 0; $i < 8; $i++) {
+            QuestionQuiz::create([
+                'texte_soi' => "Sur moi $i",
+                'texte_partenaire' => "Sur l'autre $i",
+            ]);
+        }
+
+        $this->actingAs($this->alice);
+        $this->post(route('quiz.start'))->assertRedirect();
+
+        $session = QuizSession::first();
+        $sq = QuizSessionQuestion::where('session_id', $session->id)->orderBy('ordre')->first();
+        $devinant = $sq->cible_id === $this->alice->id ? $this->bob : $this->alice;
+
+        $this->actingAs($devinant)->postJson(route('quiz.reveler', $session))->assertOk();
+
+        // Tant que la question n'est ni répondue ni jugée, on ne peut pas en révéler une autre.
+        $this->actingAs($devinant)
+            ->postJson(route('quiz.reveler', $session))
+            ->assertUnprocessable()
+            ->assertJsonFragment(['error' => 'Une question est déjà en cours.']);
+    }
+
+    public function test_quiz_roulette_alterne_les_cibles_dun_tour_a_lautre(): void
+    {
+        for ($i = 0; $i < 8; $i++) {
+            QuestionQuiz::create([
+                'texte_soi' => "Sur moi $i",
+                'texte_partenaire' => "Sur l'autre $i",
+            ]);
+        }
+
+        $this->actingAs($this->alice);
+        $this->post(route('quiz.start'))->assertRedirect();
+
+        $session = QuizSession::first();
+
+        // Session « ancienne forme » : les 4 questions sur Alice d'abord, puis 4 sur Bob.
+        QuizSessionQuestion::where('session_id', $session->id)->delete();
+        foreach (array_merge(array_fill(0, 4, $this->alice->id), array_fill(0, 4, $this->bob->id)) as $i => $cibleId) {
+            QuizSessionQuestion::create([
+                'session_id' => $session->id,
+                'question_id' => QuestionQuiz::skip($i)->first()->id,
+                'cible_id' => $cibleId,
+                'ordre' => $i,
+            ]);
+        }
+
+        $ciblesRevelees = [];
+
+        for ($i = 0; $i < 8; $i++) {
+            $state = $this->actingAs($this->alice)->getJson(route('quiz.state', $session))->assertOk()->json();
+            $devinant = User::find($state['tourDe']['id']);
+
+            $this->actingAs($devinant)->postJson(route('quiz.reveler', $session))->assertOk();
+
+            $state = $this->actingAs($devinant)->getJson(route('quiz.state', $session))->assertOk()->json();
+            $sq = QuizSessionQuestion::find($state['question']['id']);
+            $ciblesRevelees[] = $sq->cible_id;
+
+            $cible = $sq->cible_id === $this->alice->id ? $this->alice : $this->bob;
+            $this->actingAs($devinant)
+                ->postJson(route('quiz.repondre', $session), ['question_id' => $sq->id, 'reponse' => 'X'])
+                ->assertOk();
+            $this->actingAs($cible)
+                ->postJson(route('quiz.juger', $session), ['question_id' => $sq->id, 'correct' => true])
+                ->assertOk();
+        }
+
+        // Malgré le regroupement, la révélation alterne strictement d'une cible à l'autre.
+        $this->assertCount(4, array_filter($ciblesRevelees, fn ($id) => $id === $this->alice->id));
+        $this->assertCount(4, array_filter($ciblesRevelees, fn ($id) => $id === $this->bob->id));
+
+        for ($i = 1; $i < 8; $i++) {
+            $this->assertNotSame($ciblesRevelees[$i - 1], $ciblesRevelees[$i]);
+        }
     }
 
     public function test_qui_de_nous_deux_flow(): void
