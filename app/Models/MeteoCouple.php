@@ -22,14 +22,14 @@ class MeteoCouple extends Model
     protected $table = 'meteo_couples';
 
     public const METEOS = [
-        'heureux' => ['label' => 'Heureux', 'emoji' => '😊', 'niveau' => 'bon'],
-        'amoureux' => ['label' => 'Amoureux', 'emoji' => '🥰', 'niveau' => 'bon'],
-        'calme' => ['label' => 'Calme', 'emoji' => '😌', 'niveau' => 'mitige'],
-        'fatigue' => ['label' => 'Fatigué', 'emoji' => '😴', 'niveau' => 'mitige'],
-        'stress' => ['label' => 'Stressé', 'emoji' => '😰', 'niveau' => 'mauvais'],
-        'triste' => ['label' => 'Triste', 'emoji' => '😢', 'niveau' => 'mauvais'],
-        'ennui' => ['label' => 'Ennuyé', 'emoji' => '😑', 'niveau' => 'mauvais'],
-        'colere' => ['label' => 'En colère', 'emoji' => '😠', 'niveau' => 'mauvais'],
+        'heureux' => ['label' => 'Heureux', 'emoji' => '😊', 'niveau' => 'bon', 'lottie' => '/lottie/mood/heureux.json'],
+        'amoureux' => ['label' => 'Amoureux', 'emoji' => '🥰', 'niveau' => 'bon', 'lottie' => '/lottie/mood/amoureux.json'],
+        'calme' => ['label' => 'Calme', 'emoji' => '😌', 'niveau' => 'mitige', 'lottie' => '/lottie/mood/calme.json'],
+        'fatigue' => ['label' => 'Fatigué', 'emoji' => '😴', 'niveau' => 'mitige', 'lottie' => '/lottie/mood/fatigue.json'],
+        'stress' => ['label' => 'Stressé', 'emoji' => '😰', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/stress.json'],
+        'triste' => ['label' => 'Triste', 'emoji' => '😢', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/triste.json'],
+        'ennui' => ['label' => 'Ennuyé', 'emoji' => '😑', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/ennui.json'],
+        'colere' => ['label' => 'En colère', 'emoji' => '😠', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/colere.json'],
     ];
 
     protected function casts(): array

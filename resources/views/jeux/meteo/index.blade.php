@@ -41,6 +41,7 @@
 
         function moodEmoji(key, metas) { return metas[key]?.emoji ?? ''; }
         function moodLabel(key, metas) { return metas[key]?.label ?? ''; }
+        function moodLottieSrc(key, metas) { return metas[key]?.lottie ?? ''; }
         function esc(s) {
             const d = document.createElement('div');
             d.textContent = s == null ? '' : String(s);
@@ -60,6 +61,8 @@
 
             dateEl.textContent = '📅 ' + d.jour;
 
+            window.moodLottie?.destroy(zone);
+
             if (!d.jaiRepondu) {
                 zone.innerHTML = `
                     <div class="tiny muted mb8">Comment te sens-tu aujourd'hui (1er partage) ?</div>
@@ -67,21 +70,21 @@
                         ${Object.entries(d.meteos).map(([k, m]) => `
                             <label class="mood-btn">
                                 <input type="radio" name="humeur" class="mood-${k}" value="${k}" ${k === selectedMood ? 'checked' : ''}>
-                                <span><span>${m.emoji}</span><b>${m.label}</b></span>
+                                <span><span class="mood-anim" data-lottie="${m.lottie}">${m.emoji}</span><b>${m.label}</b></span>
                             </label>`).join('')}
                     </div>
                     <input class="input mt12" id="meteo-commentaire" maxlength="255" placeholder="Un petit mot, en option…">
                     <button class="btn btn-primary btn-block mt8" onclick="enregistrerMeteo()">😊 Envoyer mon humeur</button>`;
             } else if (d.mesPartages.length < d.maxPartages) {
                 zone.innerHTML = `
-                    <div class="chip">Ton humeur : <b style="margin-left:4px">${moodEmoji(d.maHumeur, d.meteos)} ${moodLabel(d.maHumeur, d.meteos)}</b></div>
+                    <div class="chip">Ton humeur : <span class="mood-anim sm" data-lottie="${moodLottieSrc(d.maHumeur, d.meteos)}">${moodEmoji(d.maHumeur, d.meteos)}</span> <b style="margin-left:2px">${moodLabel(d.maHumeur, d.meteos)}</b></div>
                     <div class="divider"></div>
                     <div class="tiny muted mb8">Partage encore une fois ton humeur (message du soir) :</div>
                     <div class="mood-grid">
                         ${Object.entries(d.meteos).map(([k, m]) => `
                             <label class="mood-btn">
                                 <input type="radio" name="humeur" class="mood-${k}" value="${k}" ${k === selectedMood ? 'checked' : ''}>
-                                <span><span>${m.emoji}</span><b>${m.label}</b></span>
+                                <span><span class="mood-anim" data-lottie="${m.lottie}">${m.emoji}</span><b>${m.label}</b></span>
                             </label>`).join('')}
                     </div>
                     <input class="input mt12" id="meteo-commentaire" maxlength="255" placeholder="Un petit mot, en option…">
@@ -108,17 +111,19 @@
                     ${alertHtml}
                     <div class="card" style="background:linear-gradient(150deg, rgba(53,208,127,.12), rgba(77,171,247,.08)), var(--card)">
                         <div class="center">
-                            <div style="font-size:42px">${syn.emoji}</div>
+                            <div class="syn-emoji">${syn.emoji}</div>
                             <div style="font-weight:700">${syn.label}</div>
                         </div>
                     </div>
                     <div class="mt8" style="display:flex; gap:8px; flex-wrap:wrap">
-                        <span class="chip">Toi : <b style="margin-left:4px">${moodEmoji(d.maHumeur, d.meteos)} ${moodLabel(d.maHumeur, d.meteos)}</b></span>
-                        <span class="chip">${d.partenaire} : <b style="margin-left:4px">${moodEmoji(d.saHumeur, d.meteos)} ${moodLabel(d.saHumeur, d.meteos)}</b></span>
+                        <span class="chip">Toi : <span class="mood-anim sm" data-lottie="${moodLottieSrc(d.maHumeur, d.meteos)}">${moodEmoji(d.maHumeur, d.meteos)}</span> <b style="margin-left:2px">${moodLabel(d.maHumeur, d.meteos)}</b></span>
+                        <span class="chip">${d.partenaire} : <span class="mood-anim sm" data-lottie="${moodLottieSrc(d.saHumeur, d.meteos)}">${moodEmoji(d.saHumeur, d.meteos)}</span> <b style="margin-left:2px">${moodLabel(d.saHumeur, d.meteos)}</b></span>
                     </div>
                     ${mesComm}${saComm}
                     ${renderSuggestion(d)}`;
             }
+
+            window.moodLottie?.mount(zone);
 
             const commEl = document.getElementById('meteo-commentaire');
             if (commEl && draftCom) commEl.value = draftCom;
@@ -161,10 +166,12 @@
                 <div class="meteo-chart">
                     ${d.historique.map(day => `
                         <div class="mcell">
-                            <span class="m-emo ${day.moi[0] ? d.meteos[day.moi[0].humeur].niveau : 'vide'}">${day.moi[0] ? moodEmoji(day.moi[0].humeur, d.meteos) : '·'}</span>
-                            <span class="m-emo ${day.moi[1] ? d.meteos[day.moi[1].humeur].niveau : 'vide'}">${day.moi[1] ? moodEmoji(day.moi[1].humeur, d.meteos) : '·'}</span>
-                            <span class="m-emo ${day.lui[0] ? d.meteos[day.lui[0].humeur].niveau : 'vide'}">${day.lui[0] ? moodEmoji(day.lui[0].humeur, d.meteos) : '·'}</span>
-                            <span class="m-emo ${day.lui[1] ? d.meteos[day.lui[1].humeur].niveau : 'vide'}">${day.lui[1] ? moodEmoji(day.lui[1].humeur, d.meteos) : '·'}</span>
+                            ${[day.moi[0], day.moi[1]].map(p => p
+                                ? `<span class="m-emo ${d.meteos[p.humeur].niveau}" title="${moodLabel(p.humeur, d.meteos)}"></span>`
+                                : `<span class="m-emo vide"></span>`).join('')}
+                            ${[day.lui[0], day.lui[1]].map(p => p
+                                ? `<span class="m-emo ${d.meteos[p.humeur].niveau}" title="${moodLabel(p.humeur, d.meteos)}"></span>`
+                                : `<span class="m-emo vide"></span>`).join('')}
                             <span class="m-date">${day.jour}</span>
                         </div>`).join('')}
                 </div>`;

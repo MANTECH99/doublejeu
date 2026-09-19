@@ -3,6 +3,8 @@ import Alpine from 'alpinejs';
 window.Alpine = Alpine;
 Alpine.start();
 
+import './moodLottie.js';
+
 /* ============ Thème clair / sombre ============ */
 (function () {
     const root = document.documentElement;

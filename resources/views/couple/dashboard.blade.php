@@ -66,7 +66,13 @@
                         <x-avatar :user="$me" class="sm" />
                         <span class="meteo-cell-name">{{ $me->name }}</span>
                     </div>
-                    <div class="meteo-cell-emoji">{{ $meteoMoi['emoji'] ?? '❓' }}</div>
+                    <div class="meteo-cell-emoji">
+                        @if ($meteoMoi)
+                            <span class="mood-anim" data-lottie="{{ $meteoMoi['lottie'] }}">{{ $meteoMoi['emoji'] }}</span>
+                        @else
+                            ❓
+                        @endif
+                    </div>
                     <div class="meteo-cell-label tiny">
                         @if ($meteoMoi)
                             {{ $meteoMoi['label'] }}
@@ -80,7 +86,13 @@
                         <x-avatar :user="$partner" class="sm" />
                         <span class="meteo-cell-name">{{ $partner->name }}</span>
                     </div>
-                    <div class="meteo-cell-emoji">{{ $meteoPartenaire['emoji'] ?? '❓' }}</div>
+                    <div class="meteo-cell-emoji">
+                        @if ($meteoPartenaire)
+                            <span class="mood-anim" data-lottie="{{ $meteoPartenaire['lottie'] }}">{{ $meteoPartenaire['emoji'] }}</span>
+                        @else
+                            ❓
+                        @endif
+                    </div>
                     <div class="meteo-cell-label tiny">
                         @if ($meteoPartenaire)
                             {{ $meteoPartenaire['label'] }}
@@ -293,6 +305,8 @@
                 setLigne(document.getElementById('ligne-moi'), data.moi, true);
                 setLigne(document.getElementById('ligne-partenaire'), data.partenaire, false);
             }, { interval: 15000 });
+
+            window.moodLottie?.mount(document);
         });
     </script>
 @endpush

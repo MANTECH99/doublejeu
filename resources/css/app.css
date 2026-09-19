@@ -533,6 +533,11 @@ html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
     background: var(--card-2);
     border: 1px solid var(--border);
 }
+.meteo-cell-emoji .mood-anim {
+    width: 52px;
+    height: 52px;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.18));
+}
 .meteo-cell-label { font-weight: 600; min-height: 16px; }
 .meteo-cta {
     position: relative;
@@ -636,6 +641,30 @@ html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
 }
 
 /* ---------- Météo du couple ---------- */
+.mood-anim {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.mood-anim svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+.mood-anim.sm { width: 34px; height: 34px; }
+.mood-anim.md { width: 54px; height: 54px; }
+
+.syn-emoji {
+    font-size: 56px;
+    line-height: 1;
+    filter: drop-shadow(0 10px 22px rgba(77, 171, 247, 0.25));
+    animation: synFloat 3.4s ease-in-out infinite;
+}
+@keyframes synFloat {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-6px) rotate(4deg); }
+}
+
 .mood-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .mood-btn { position: relative; }
 .mood-btn input { display: none; }
@@ -643,14 +672,18 @@ html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    padding: 10px 4px;
+    gap: 4px;
+    padding: 12px 4px 8px;
     border-radius: 14px;
     background: var(--card-2);
     border: 1px solid var(--border);
     cursor: pointer;
-    font-size: 24px;
     transition: 0.15s;
+}
+.mood-btn .mood-anim {
+    width: 58px;
+    height: 58px;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.18));
 }
 .mood-btn span b { font-size: 11px; font-weight: 600; color: var(--text-3); }
 .mood-btn input:checked + span { border-color: transparent; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28); }

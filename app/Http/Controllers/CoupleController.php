@@ -36,6 +36,7 @@ class CoupleController extends Controller
                 'valeur' => $humeur,
                 'label' => MeteoCouple::METEOS[$humeur]['label'],
                 'emoji' => MeteoCouple::METEOS[$humeur]['emoji'],
+                'lottie' => MeteoCouple::METEOS[$humeur]['lottie'],
             ];
         };
 
