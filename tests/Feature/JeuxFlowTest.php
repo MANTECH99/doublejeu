@@ -9,6 +9,7 @@ use App\Models\Couple;
 use App\Models\DefiEnveloppe;
 use App\Models\Gage;
 use App\Models\GrilleMotsCroises;
+use App\Models\MeteoCouple;
 use App\Models\MissionOuiNon;
 use App\Models\MissionSecrete;
 use App\Models\MotCroiseContenu;
@@ -1202,6 +1203,27 @@ class JeuxFlowTest extends TestCase
         $this->assertSame('heureux', $s3['historique'][0]['moi'][0]['humeur']);
         $this->assertSame('calme', $s3['historique'][0]['moi'][1]['humeur']);
         $this->assertSame('stress', $s3['historique'][0]['lui'][0]['humeur']);
+    }
+
+    public function test_meteo_accepte_les_nouvelles_humeurs(): void
+    {
+        $this->actingAs($this->alice);
+
+        $meteos = MeteoCouple::METEOS;
+
+        $nouvelles = ['rire', 'excite', 'emu', 'reconnaissant', 'nerveux', 'perplexe', 'songeur', 'surpris', 'epuise', 'malade', 'effraye'];
+        foreach ($nouvelles as $cle) {
+            $this->assertArrayHasKey($cle, $meteos);
+            $this->assertContains($meteos[$cle]['niveau'], ['bon', 'mitige', 'mauvais']);
+            $this->assertNotEmpty($meteos[$cle]['lottie']);
+        }
+
+        // L'API accepte un check-in avec une nouvelle humeur.
+        $this->postJson(route('meteo.checkin'), ['humeur' => 'reconnaissant', 'commentaire' => 'Merci pour tout'])->assertOk();
+
+        $s = $this->getJson(route('meteo.state'))->assertOk()->json();
+        $this->assertSame('reconnaissant', $s['maHumeur']);
+        $this->assertGreaterThanOrEqual(19, count($s['meteos']));
     }
 
     public function test_dashboard_affiche_la_meteo_du_couple(): void

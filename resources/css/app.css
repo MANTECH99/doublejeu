@@ -665,7 +665,7 @@ html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
     50% { transform: translateY(-6px) rotate(4deg); }
 }
 
-.mood-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mood-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
 .mood-btn { position: relative; }
 .mood-btn input { display: none; }
 .mood-btn span {

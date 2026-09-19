@@ -167,10 +167,10 @@
                     ${d.historique.map(day => `
                         <div class="mcell">
                             ${[day.moi[0], day.moi[1]].map(p => p
-                                ? `<span class="m-emo ${d.meteos[p.humeur].niveau}" title="${moodLabel(p.humeur, d.meteos)}"></span>`
+                                ? `<span class="m-emo ${d.meteos[p.humeur].niveau}" title="${moodLabel(p.humeur, d.meteos)}">${d.meteos[p.humeur].emoji}</span>`
                                 : `<span class="m-emo vide"></span>`).join('')}
                             ${[day.lui[0], day.lui[1]].map(p => p
-                                ? `<span class="m-emo ${d.meteos[p.humeur].niveau}" title="${moodLabel(p.humeur, d.meteos)}"></span>`
+                                ? `<span class="m-emo ${d.meteos[p.humeur].niveau}" title="${moodLabel(p.humeur, d.meteos)}">${d.meteos[p.humeur].emoji}</span>`
                                 : `<span class="m-emo vide"></span>`).join('')}
                             <span class="m-date">${day.jour}</span>
                         </div>`).join('')}

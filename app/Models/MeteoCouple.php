@@ -24,12 +24,23 @@ class MeteoCouple extends Model
     public const METEOS = [
         'heureux' => ['label' => 'Heureux', 'emoji' => '😊', 'niveau' => 'bon', 'lottie' => '/lottie/mood/heureux.json'],
         'amoureux' => ['label' => 'Amoureux', 'emoji' => '🥰', 'niveau' => 'bon', 'lottie' => '/lottie/mood/amoureux.json'],
+        'rire' => ['label' => 'Rire', 'emoji' => '😂', 'niveau' => 'bon', 'lottie' => '/lottie/mood/rire.json'],
+        'excite' => ['label' => 'Excité', 'emoji' => '🤩', 'niveau' => 'bon', 'lottie' => '/lottie/mood/excite.json'],
+        'emu' => ['label' => 'Ému', 'emoji' => '🥹', 'niveau' => 'bon', 'lottie' => '/lottie/mood/emu.json'],
+        'reconnaissant' => ['label' => 'Reconnaissant', 'emoji' => '🙏', 'niveau' => 'bon', 'lottie' => '/lottie/mood/reconnaissant.json'],
         'calme' => ['label' => 'Calme', 'emoji' => '😌', 'niveau' => 'mitige', 'lottie' => '/lottie/mood/calme.json'],
         'fatigue' => ['label' => 'Fatigué', 'emoji' => '😴', 'niveau' => 'mitige', 'lottie' => '/lottie/mood/fatigue.json'],
+        'nerveux' => ['label' => 'Nerveux', 'emoji' => '😬', 'niveau' => 'mitige', 'lottie' => '/lottie/mood/nerveux.json'],
+        'perplexe' => ['label' => 'Perplexe', 'emoji' => '😕', 'niveau' => 'mitige', 'lottie' => '/lottie/mood/perplexe.json'],
+        'songeur' => ['label' => 'Songeur', 'emoji' => '🤔', 'niveau' => 'mitige', 'lottie' => '/lottie/mood/songeur.json'],
+        'surpris' => ['label' => 'Surpris', 'emoji' => '😲', 'niveau' => 'mitige', 'lottie' => '/lottie/mood/surpris.json'],
         'stress' => ['label' => 'Stressé', 'emoji' => '😰', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/stress.json'],
         'triste' => ['label' => 'Triste', 'emoji' => '😢', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/triste.json'],
         'ennui' => ['label' => 'Ennuyé', 'emoji' => '😑', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/ennui.json'],
         'colere' => ['label' => 'En colère', 'emoji' => '😠', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/colere.json'],
+        'epuise' => ['label' => 'Épuisé', 'emoji' => '😩', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/epuise.json'],
+        'malade' => ['label' => 'Malade', 'emoji' => '🤒', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/malade.json'],
+        'effraye' => ['label' => 'Effrayé', 'emoji' => '😨', 'niveau' => 'mauvais', 'lottie' => '/lottie/mood/effraye.json'],
     ];
 
     protected function casts(): array
