@@ -48,9 +48,15 @@
             position: absolute;
             left: 50%;
             top: 50%;
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             font-size: 20px;
+            margin: -12px 0 0 -12px;
             z-index: 2;
-            transform: rotate(calc(var(--i) * 45deg + 22.5deg)) translateY(-78px) rotate(calc(var(--i) * -45deg - 22.5deg));
+            transform: rotate(calc(var(--i) * 45deg + 22.5deg)) translateY(-96px) rotate(calc(var(--i) * -45deg - 22.5deg));
         }
         .roulette-hub {
             position: absolute;
@@ -193,7 +199,7 @@
 
             return `${dernier}
                 <div class="card center pulse-glow" style="border-color:rgba(234,88,12,.45)">
-                    <div class="mb8" style="font-size:15px">${msg}</div>
+                    <div class="mb16" style="font-size:15px">${msg}</div>
                     <div class="roulette-wrap">
                         <div class="roulette-pointer"></div>
                         <div class="roulette" id="roulette"><div class="roulette-hub">🎯</div></div>
