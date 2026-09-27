@@ -15,6 +15,8 @@ use Illuminate\View\View;
 
 class QuestionJourController extends Controller
 {
+    public const HISTORIQUE_PAR_PAGE = 20;
+
     public function index(): View
     {
         ActivityService::touch(Auth::user());
@@ -30,10 +32,8 @@ class QuestionJourController extends Controller
             ->whereDate('jour', '<', today())
             ->with('question', 'reponses.joueur')
             ->orderByDesc('jour')
-            ->take(7)
-            ->get()
-            ->filter(fn (QuestionJournaliere $qj) => $qj->reponses->count() === 2)
-            ->values();
+            ->paginate(self::HISTORIQUE_PAR_PAGE)
+            ->withQueryString();
 
         return view('jeux.question-jour.index', [
             'couple' => $couple,

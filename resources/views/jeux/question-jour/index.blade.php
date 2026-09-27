@@ -28,25 +28,49 @@
             <div id="question-zone" class="mt16"></div>
         </div>
 
-        @if ($historique->count())
-            <section class="section-head"><h2>Réponses passées</h2></section>
+        @if ($historique->total())
+            <section class="section-head">
+                <h2>Réponses passées</h2>
+                <span class="tiny muted">{{ $historique->total() }} jour(s)</span>
+            </section>
             @foreach ($historique as $qj)
+                @php
+                    $reponses = $qj->reponses->filter(fn ($r) => filled($r->reponse))->values();
+                    $revele = $reponses->count() === 2;
+                @endphp
                 <div class="card pad-sm">
                     <div class="flex between items-center mb8">
                         <span class="tiny muted">{{ $qj->jour->format('d/m/Y') }}</span>
                         <span class="badge neutre">{{ $qj->question->categorie === 'profonde' ? '🌙 Profonde' : '😂 Drôle' }}</span>
                     </div>
                     <div style="font-size:15px; line-height:1.5">{{ $qj->question->texte }}</div>
-                    @php
-                        $reponses = $qj->reponses->take(2);
-                    @endphp
-                    <div class="mt8" style="display:flex; gap:8px; flex-wrap:wrap">
-                        @foreach ($reponses as $r)
-                            <span class="chip">{{ $r->joueur->name }} : <b style="margin-left:4px">{{ $r->reponse }}</b></span>
-                        @endforeach
-                    </div>
+                    @if ($revele)
+                        <div class="mt8" style="display:flex; gap:8px; flex-wrap:wrap">
+                            @foreach ($reponses as $r)
+                                <span class="chip">{{ $r->joueur->name }} : <b style="margin-left:4px">{{ $r->reponse }}</b></span>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="mt8"><span class="badge neutre">🔒 Réponses jamais révélées</span></div>
+                    @endif
                 </div>
             @endforeach
+
+            @if ($historique->hasPages())
+                <nav class="flex between items-center mt16">
+                    @if ($historique->onFirstPage())
+                        <span class="btn btn-sm btn-ghost" aria-hidden="true" style="opacity:.4">← Plus récent</span>
+                    @else
+                        <a class="btn btn-sm btn-ghost" href="{{ $historique->previousPageUrl() }}">← Plus récent</a>
+                    @endif
+                    <span class="tiny muted">Page {{ $historique->currentPage() }} / {{ $historique->lastPage() }}</span>
+                    @if ($historique->hasMorePages())
+                        <a class="btn btn-sm btn-ghost" href="{{ $historique->nextPageUrl() }}">Plus ancien →</a>
+                    @else
+                        <span class="btn btn-sm btn-ghost" aria-hidden="true" style="opacity:.4">Plus ancien →</span>
+                    @endif
+                </nav>
+            @endif
         @endif
     </div>
 @endsection

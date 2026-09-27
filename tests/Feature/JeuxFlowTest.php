@@ -27,6 +27,7 @@ use App\Models\QuizSession;
 use App\Models\QuizSessionQuestion;
 use App\Models\Recompense;
 use App\Models\ReponseOuiNon;
+use App\Models\ReponseQuestionJournaliere;
 use App\Models\TourVO;
 use App\Models\User;
 use App\Services\QuestionBankService;
@@ -275,6 +276,72 @@ class JeuxFlowTest extends TestCase
             ->getJson(route('question.state'))
             ->assertOk()
             ->assertJson(['poolEpuise' => true]);
+    }
+
+    public function test_question_du_jour_historique_pagine_et_masque_les_reponses_non_revelees(): void
+    {
+        $question = QuestionDuJour::create(['texte' => 'Quel est ton avenir idéal ?', 'categorie' => 'profonde']);
+
+        for ($i = 1; $i <= 25; $i++) {
+            QuestionJournaliere::create([
+                'couple_id' => $this->couple->id,
+                'question_id' => $question->id,
+                'jour' => today()->subDays($i),
+            ]);
+        }
+
+        $premier = QuestionJournaliere::where('couple_id', $this->couple->id)
+            ->whereDate('jour', today()->subDay())
+            ->first();
+
+        ReponseQuestionJournaliere::create([
+            'question_journaliere_id' => $premier->id,
+            'joueur_id' => $this->alice->id,
+            'reponse' => 'Réponse secrète de Alice',
+        ]);
+
+        $page1 = $this->actingAs($this->alice)->get(route('question.index'))->assertOk();
+        $historique = $page1->viewData('historique');
+        $this->assertSame(25, $historique->total());
+        $this->assertCount(20, $historique->items());
+        $this->assertSame(1, $historique->currentPage());
+        $page1->assertSee('Réponses passées');
+        $page1->assertSee('Page 1 / 2');
+        $page1->assertSee('Réponses jamais révélées');
+        $page1->assertDontSee('Réponse secrète de Alice');
+
+        $this->actingAs($this->alice)
+            ->get(route('question.index', ['page' => 2]))
+            ->assertOk()
+            ->assertSee('Page 2 / 2');
+    }
+
+    public function test_question_du_jour_historique_affiche_les_reponses_revelees(): void
+    {
+        $question = QuestionDuJour::create(['texte' => 'Quelle est ta blague préférée ?', 'categorie' => 'drole']);
+
+        $jour = QuestionJournaliere::create([
+            'couple_id' => $this->couple->id,
+            'question_id' => $question->id,
+            'jour' => today()->subDay(),
+        ]);
+
+        foreach ([[$this->alice, 'Une blague sur les blagues'], [$this->bob, 'Pire']] as [$joueur, $reponse]) {
+            ReponseQuestionJournaliere::create([
+                'question_journaliere_id' => $jour->id,
+                'joueur_id' => $joueur->id,
+                'reponse' => $reponse,
+            ]);
+        }
+
+        $this->actingAs($this->alice)
+            ->get(route('question.index'))
+            ->assertOk()
+            ->assertSee('Alice :')
+            ->assertSee('Une blague sur les blagues')
+            ->assertSee('Bob :')
+            ->assertSee('Pire')
+            ->assertDontSee('Réponses jamais révélées');
     }
 
     public function test_vo_partenaire_peut_invalider_verite(): void
