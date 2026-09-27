@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
 use LaravelWebauthn\WebauthnAuthenticatable;
 
 #[Fillable(['name', 'email', 'password', 'gender', 'avatar_url', 'couple_id', 'date_naissance', 'devin_mission_jour', 'devin_mission_reponse', 'devin_mission_resultat', 'devin_mission_compteur', 'timezone', 'mission_question_notif_jour', 'devin_verdict_vu_jour', 'typing_at', 'recording_at'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'pin_hash', 'avatar_url_pending'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -50,6 +50,19 @@ class User extends Authenticatable
         return $this->hasMany(PushSubscription::class);
     }
 
+    /**
+     * Les appareils de confiance : chacun porte un jeton qui évite de ressaisir l'email.
+     */
+    public function deviceTokens(): HasMany
+    {
+        return $this->hasMany(DeviceToken::class);
+    }
+
+    public function hasPin(): bool
+    {
+        return filled($this->pin_hash);
+    }
+
     public function getPartnerAttribute(): ?User
     {
         return $this->coupleModel?->partnerOf($this);
@@ -74,6 +87,20 @@ class User extends Authenticatable
     public function hasPhoto(): bool
     {
         return ! empty($this->avatar_url);
+    }
+
+    public function hasPendingPhoto(): bool
+    {
+        return ! empty($this->avatar_url_pending);
+    }
+
+    public function pendingPhotoUrl(): ?string
+    {
+        if (! $this->avatar_url_pending) {
+            return null;
+        }
+
+        return asset('storage/'.$this->avatar_url_pending);
     }
 
     public function photoUrl(): ?string

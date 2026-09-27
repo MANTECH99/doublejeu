@@ -377,6 +377,8 @@ body {
 .game-tile .t-name { font-weight: 700; font-size: 16px; }
 .game-tile .t-desc { font-size: 12px; opacity: 0.85; margin-top: 3px; }
 .tile-vo { background: linear-gradient(135deg, #e63946, #ff6b6b); }
+/* La tuile d'accueil porte une autre couleur que le badge de la présentation. */
+.tile-vo-accueil { background: linear-gradient(135deg, #c026d3, #f472b6); }
 .tile-ouinon { background: linear-gradient(135deg, #6d28d9, #b197fc); }
 .tile-mission { background: linear-gradient(135deg, #0e7490, #22d3ee); }
 .tile-enveloppe { background: linear-gradient(135deg, #c026d3, #f472b6); }
@@ -878,6 +880,51 @@ section.section-head { display: flex; align-items: center; justify-content: spac
 summary.btn { list-style: none; cursor: pointer; }
 summary.btn::-webkit-details-marker { display: none; }
 
+/* ---------- Photo de profil ---------- */
+.photo-progress { max-width: 220px; margin: 14px auto 0; }
+.photo-progress-bar {
+    height: 6px; border-radius: 999px; overflow: hidden; background: var(--card-2);
+}
+.photo-progress-bar span {
+    display: block; height: 100%; width: 0; border-radius: 999px;
+    background: var(--primary); transition: width .2s ease;
+}
+.photo-progress[hidden] { display: none; }
+
+/* ---------- Code PIN ---------- */
+.pin[hidden] { display: none !important; }
+.pin { text-align: center; margin-top: 20px; }
+.pin-compte { font-size: 13px; color: var(--text-2); margin: 0 0 14px; }
+.pin-points { display: flex; justify-content: center; gap: 12px; margin-bottom: 20px; }
+.pin-points i {
+    width: 15px; height: 15px; border-radius: 50%;
+    background: transparent; border: 2px solid var(--border);
+    transition: background .15s, border-color .15s, transform .15s;
+}
+.pin-points i.on { background: var(--primary); border-color: var(--primary); transform: scale(1.1); }
+.pin-pave {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    max-width: 260px; margin: 0 auto;
+}
+.pin-key {
+    aspect-ratio: 1 / 1; min-height: 58px;
+    display: grid; place-items: center;
+    font-size: 22px; font-weight: 600; color: var(--text);
+    background: var(--card-2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); cursor: pointer;
+    transition: transform .1s, background .15s, border-color .15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.pin-key:hover { border-color: var(--text-3); }
+.pin-key:active, .pin-key:focus-visible { transform: scale(.95); outline: none; border-color: var(--primary); }
+.pin-key-mu { font-size: 19px; color: var(--text-2); }
+.pin-key-ok { background: var(--primary); border-color: var(--primary); color: #fff; }
+.pin-key-ok:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+.pin.est-occupe .pin-pave { opacity: .5; pointer-events: none; }
+@media (max-width: 380px) {
+    .pin-key { min-height: 50px; font-size: 20px; }
+}
+
 /* ---------- Landing ---------- */
 .hero { padding: 26px 0 6px; }
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-top: 16px; }
@@ -887,6 +934,312 @@ summary.btn::-webkit-details-marker { display: none; }
     background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff;
 }
 .steps p { margin: 0; font-size: 13px; line-height: 1.4; }
+
+/* ---------- Présentation animée (home) ---------- */
+.dj-pres { margin-top: 30px; }
+.dj-pres-head { text-align: center; margin-bottom: 16px; }
+.dj-pres-head h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; }
+.dj-pres-head p { margin: 0 auto; max-width: 400px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+
+.dj-player {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: linear-gradient(165deg, var(--card-2), var(--card));
+    box-shadow: var(--shadow);
+}
+.dj-stage { position: relative; width: 100%; aspect-ratio: 16 / 10; max-height: 430px; }
+.dj-scene {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 24px 18px 66px;
+    opacity: 0; transition: opacity .55s ease;
+    pointer-events: none;
+}
+.dj-scene.is-on { opacity: 1; }
+
+.dj-el {
+    opacity: 0;
+    transform: translate(var(--dx, 0), var(--dy, 16px)) scale(var(--ds, .96));
+    transition: opacity .5s ease var(--d, 0s), transform .6s cubic-bezier(.2, .85, .3, 1.15) var(--d, 0s);
+}
+.dj-scene.is-on .dj-el { opacity: 1; transform: none; }
+.dj-up { --dy: 20px; }
+.dj-down { --dy: -20px; }
+.dj-left { --dx: -70px; --ds: .9; }
+.dj-right { --dx: 70px; --ds: .9; }
+.dj-pop { --dy: 0; --ds: .5; }
+
+.dj-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 18px 18px; text-align: center; background: linear-gradient(to top, rgba(6, 6, 12, .55), transparent); }
+.dj-cap-t { font-size: 15px; font-weight: 700; }
+.dj-cap-d { margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
+
+/* Scène 1 — le lien du couple */
+.dj-duo { display: flex; align-items: center; width: 100%; max-width: 360px; }
+.dj-id {
+    width: 78px; height: 96px; flex-shrink: 0;
+    display: grid; place-items: center; align-content: center; gap: 6px;
+    border: 1px solid var(--border); border-radius: 16px; background: var(--card);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+}
+.dj-id .a { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; display: block; }
+.dj-id .a1 { box-shadow: 0 0 0 2px var(--primary); }
+.dj-id .a2 { box-shadow: 0 0 0 2px var(--info); }
+.dj-id .n { font-size: 12px; font-weight: 600; }
+.dj-mid { position: relative; flex: 1; display: grid; place-items: center; }
+.dj-mid::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 2px;
+    background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .3) 0 6px, transparent 6px 12px);
+}
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-mid::before { animation: djDash 1.1s linear infinite; }
+.dj-heart { position: relative; font-size: 26px; padding: 0 10px; border-radius: 999px; background: var(--card); }
+.dj-code {
+    font-size: 14px; font-weight: 800; letter-spacing: 3px; color: var(--gold);
+    background: rgba(255, 209, 102, .12); border: 1px dashed rgba(255, 209, 102, .5);
+    padding: 7px 14px; border-radius: 10px;
+}
+@keyframes djDash { to { background-position: 12px 0; } }
+
+/* Scène 2 — la discussion */
+.dj-chat { display: flex; flex-direction: column; gap: 7px; width: 100%; max-width: 290px; }
+.dj-bubble { max-width: 84%; padding: 8px 12px; border-radius: 14px; font-size: 12.5px; line-height: 1.4; }
+.dj-in { align-self: flex-start; background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
+.dj-out { align-self: flex-end; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border-bottom-right-radius: 5px; }
+.dj-media { display: flex; align-items: center; gap: 7px; }
+.dj-media-ico { font-size: 15px; }
+.dj-typing { display: inline-flex; align-self: flex-start; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); }
+.dj-typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-typing i { animation: djBlink 1.1s infinite; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-typing i:nth-child(2) { animation-delay: .18s; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-typing i:nth-child(3) { animation-delay: .36s; }
+@keyframes djBlink { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
+
+/* Scènes 3 à 16 — les 14 jeux, un aperçu animé par jeu */
+.dj-fade { opacity: 0; transition: opacity .45s ease var(--d, 0s); }
+.dj-scene.is-on .dj-fade { opacity: 1; }
+.dj-jeu-tete { display: flex; align-items: center; gap: 8px; }
+.dj-jeu-badge { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; font-size: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, .25); }
+.dj-jeu-titre { font-size: 15px; font-weight: 800; }
+.dj-jeu-desc { font-size: 11.5px; color: var(--text-3); }
+.dj-apercu { position: relative; width: 100%; max-width: 250px; min-height: 172px; margin: 10px auto 0; padding: 13px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; border: 1px solid var(--border); border-radius: 16px; background: var(--card-2); }
+.dj-ap { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+.dj-ap-q { font-size: 11.5px; font-weight: 600; color: var(--text-2); text-align: center; }
+.dj-ap-choix { display: flex; gap: 8px; }
+.dj-ap-bouton { padding: 7px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text-2); font-size: 11.5px; font-weight: 700; }
+.dj-ap-pick { border-color: transparent; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; }
+.dj-ap-jauge { position: relative; width: 100%; height: 7px; border-radius: 999px; background: var(--card); border: 1px solid var(--border); overflow: hidden; }
+.dj-ap-jauge i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--primary), var(--gold)); transition: width 1.3s ease .3s; }
+.dj-scene.is-on .dj-ap-jauge i { width: 45%; }
+.dj-ap-ligne { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text-2); font-size: 11.5px; }
+.dj-ap-ligne i { margin-left: auto; font-style: normal; font-weight: 800; }
+.dj-ap-ok { border-color: rgba(53, 208, 127, .55); color: #35d07f; }
+.dj-ap-ko { border-color: rgba(230, 57, 70, .5); color: #e63946; }
+.dj-ap-puce { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text-2); font-size: 11px; font-weight: 600; }
+.dj-ap-pts { font-size: 14px; font-weight: 800; color: var(--gold); }
+.dj-ap-accord { font-size: 11.5px; font-weight: 800; color: #35d07f; }
+.dj-ap-emoji { font-size: 28px; }
+.dj-ap-poles { display: flex; justify-content: space-between; width: 100%; font-size: 10.5px; color: var(--text-3); }
+.dj-mois { font-size: 12px; font-weight: 800; }
+
+/* Discussion : la messagerie du jeu */
+.dj-ap-chat { gap: 6px; }
+.dj-apercu .dj-bubble { padding: 7px 10px; font-size: 11.5px; }
+.dj-apercu .dj-typing { padding: 7px 9px; }
+
+/* Vérité ou Action : la carte se retourne */
+.dj-flip { position: relative; width: 110px; height: 60px; transform-style: preserve-3d; transform: rotateY(0); transition: transform 1.3s cubic-bezier(.45, .05, .2, 1) .55s; }
+.dj-scene.is-on .dj-flip { transform: rotateY(180deg); }
+.dj-flip-f, .dj-flip-b { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 12px; font-size: 12.5px; font-weight: 800; letter-spacing: .06em; backface-visibility: hidden; }
+.dj-flip-f { border: 1px solid var(--border); background: var(--card); color: var(--text); }
+.dj-flip-b { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; transform: rotateY(180deg); }
+
+/* Mission secrète : la carte est classée */
+.dj-carte { position: relative; width: 100%; padding: 13px 12px; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--card); text-align: center; }
+.dj-carte-t { display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .14em; color: var(--text-3); }
+.dj-carte-c { display: block; margin-top: 6px; font-size: 12.5px; font-weight: 700; }
+.dj-carte-s { display: block; margin-top: 8px; font-size: 10.5px; color: var(--text-3); }
+.dj-bandeau { position: absolute; top: 50%; left: 50%; padding: 5px 0; width: 132%; background: linear-gradient(90deg, var(--primary), var(--primary-2)); color: #fff; font-size: 10.5px; font-weight: 800; letter-spacing: .2em; text-align: center; transform: translate(-50%, -50%) rotate(-5deg) scaleX(0); transition: opacity .3s ease .5s, transform .6s cubic-bezier(.2, .9, .3, 1) .5s; }
+.dj-scene.is-on .dj-bandeau { opacity: 1; transform: translate(-50%, -50%) rotate(-5deg) scaleX(1); }
+
+/* Enveloppes : rouge, bleue, verte — le cœur sort de l'enveloppe */
+.dj-ap-env { flex-direction: row; justify-content: center; }
+.dj-env { position: relative; display: grid; place-items: center; width: 54px; height: 40px; border-radius: 8px; font-size: 17px; }
+.dj-env-r { background: linear-gradient(135deg, #e63946, #ff6b6b); transform: rotate(-9deg); }
+.dj-env-b { background: linear-gradient(135deg, #2563eb, #818cf8); }
+.dj-env-v { background: linear-gradient(135deg, #16a34a, #4ade80); transform: rotate(9deg); }
+.dj-env-coeur { position: absolute; bottom: calc(100% + 6px); left: 50%; margin-left: -11px; font-size: 20px; transform: translateY(8px) scale(.5); transition: transform .6s cubic-bezier(.2, .9, .3, 1.4); }
+.dj-scene.is-on .dj-env-coeur { transform: translateY(0) scale(1); }
+
+/* Qui de nous deux : la bonne réponse s'allume */
+.dj-avs { display: flex; gap: 16px; }
+.dj-av { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: #fff; font-size: 15px; font-weight: 800; }
+.dj-av-a1 { background: linear-gradient(135deg, #2563eb, #818cf8); }
+.dj-av-a2 { background: linear-gradient(135deg, #e63946, #ff6b6b); transition: box-shadow .4s ease .4s, transform .4s ease .4s; }
+.dj-scene.is-on .dj-av-a2 { box-shadow: 0 0 0 4px rgba(255, 176, 32, .4); transform: scale(1.1); }
+
+/* Question du jour : les réponses se retournent une à une */
+.dj-reps { display: flex; gap: 8px; }
+.dj-rep { padding: 7px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: 11.5px; font-weight: 600; transform: rotateY(90deg); transition: transform .5s ease var(--d, 0s); }
+.dj-scene.is-on .dj-rep { transform: rotateY(0); }
+
+/* Météo du couple : le ciel change, la jauge monte */
+.dj-ciel { position: relative; width: 46px; height: 38px; }
+.dj-ciel span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 28px; opacity: 0; }
+.dj-ciel span:nth-child(3) { opacity: 1; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-ciel span { animation: djCiel 2.4s linear infinite; }
+.dj-ciel span:nth-child(2) { animation-delay: .8s; }
+.dj-ciel span:nth-child(3) { animation-delay: 1.6s; }
+@keyframes djCiel { 0% { opacity: 1; } 28% { opacity: 0; } 100% { opacity: 0; } }
+.dj-ap-jauge-meteo i { background: linear-gradient(90deg, #60a5fa, var(--gold), var(--primary)) !important; }
+.dj-scene.is-on .dj-ap-jauge-meteo i { width: 82%; }
+
+/* Mots croisés : la grille se remplit lettre par lettre */
+.dj-grille { display: grid; grid-template-columns: repeat(3, 30px); gap: 4px; }
+.dj-case { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); font-size: 12.5px; font-weight: 800; }
+.dj-case-vide { background: var(--card-2); opacity: .45; }
+.dj-grille-cal { grid-template-columns: repeat(7, 26px); gap: 3px; }
+.dj-grille-cal .dj-case { width: 26px; height: 21px; border-radius: 5px; }
+.dj-case-rdv { border-color: transparent; background: linear-gradient(135deg, var(--primary), var(--primary-2)); }
+
+/* Bucket List : la liste se coche */
+.dj-lignes { display: grid; gap: 6px; width: 100%; }
+.dj-ligne { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text-2); font-size: 11px; text-align: left; }
+.dj-ligne-boite { display: grid; place-items: center; flex-shrink: 0; width: 15px; height: 15px; border-radius: 5px; background: linear-gradient(135deg, #16a34a, #4ade80); color: #fff; font-size: 9px; font-weight: 800; }
+.dj-ligne-reste { color: var(--text-3); }
+.dj-ligne-reste .dj-ligne-boite { border: 1px dashed var(--border); background: transparent; }
+
+/* Ludo à deux : le dé roule, le pion avance */
+.dj-de { font-size: 32px; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-de { animation: djDe 1.2s cubic-bezier(.3, .8, .4, 1) .3s; }
+@keyframes djDe { 0% { transform: rotate(0) scale(.8); } 60% { transform: rotate(360deg) scale(1.12); } 100% { transform: rotate(360deg) scale(1); } }
+.dj-piste { position: relative; display: flex; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.dj-piste-case { width: 34px; height: 34px; border: 1px dashed var(--border); border-radius: 8px; background: var(--card-2); }
+.dj-pion { position: absolute; top: 12px; left: 14px; width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 3px 8px rgba(0, 0, 0, .3); transform: translateX(0); transition: transform 1s cubic-bezier(.35, .9, .4, 1) .85s; }
+.dj-scene.is-on .dj-pion { transform: translateX(120px); }
+
+/* Quoridor : le mur se pose et bloque le pion */
+.dj-plateau { position: relative; display: grid; grid-template-columns: repeat(4, 32px); gap: 3px; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.dj-plateau .dj-case { width: 32px; height: 19px; border-radius: 4px; }
+.dj-quo-mur { position: absolute; top: 50%; right: 6px; left: 6px; height: 4px; margin-top: -2px; border-radius: 2px; background: linear-gradient(90deg, var(--primary), var(--primary-2)); transform: scaleX(0); transform-origin: left; transition: transform .5s cubic-bezier(.2, .9, .3, 1) .6s; }
+.dj-scene.is-on .dj-quo-mur { transform: scaleX(1); }
+.dj-quo-pion { position: absolute; top: 14px; left: 20px; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #3f3f46, #a1a1aa); transition: opacity .35s ease .35s; }
+.dj-scene.is-on .dj-quo-pion { animation: djBump .45s ease 1.35s 2; }
+@keyframes djBump { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
+
+/* Scène 3 — la journée type */
+.dj-tl { position: relative; width: 100%; max-width: 330px; display: grid; gap: 9px; padding-left: 24px; }
+.dj-tl-line { position: absolute; left: 4px; top: 14px; bottom: 14px; width: 2px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.dj-tl-run { position: absolute; inset: 0; background: linear-gradient(180deg, var(--primary), var(--primary-2)); transform: scaleY(0); transform-origin: top; transition: transform 1.5s ease .2s; }
+.dj-scene.is-on .dj-tl-run { transform: scaleY(1); }
+.dj-tl-row { position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.dj-tl-dot { position: absolute; left: -23.5px; top: 50%; margin-top: -4.5px; width: 9px; height: 9px; border-radius: 50%; background: var(--border); transition: background .35s var(--d, 0s), box-shadow .35s var(--d, 0s); }
+.dj-scene.is-on .dj-tl-dot { background: var(--primary-2); box-shadow: 0 0 0 4px rgba(255, 107, 107, .18); }
+.dj-tl-h { font-size: 11px; font-weight: 800; color: var(--text-3); }
+.dj-tl-row b { font-size: 13px; font-weight: 600; }
+
+/* Scène 4 — points et série */
+.dj-score { text-align: center; }
+.dj-score-n { font-size: 46px; font-weight: 800; line-height: 1; color: var(--gold); font-variant-numeric: tabular-nums; }
+.dj-score-l { margin-top: 4px; font-size: 12px; color: var(--text-3); }
+.dj-jauge { position: relative; width: 200px; height: 8px; margin: 16px auto 0; border-radius: 999px; background: var(--card-2); border: 1px solid var(--border); overflow: hidden; }
+.dj-jauge i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--primary), var(--gold)); transition: width 1.6s cubic-bezier(.2, .8, .3, 1) .35s; }
+.dj-scene.is-on .dj-jauge i { width: var(--pct, 0%); }
+.dj-streak { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 999px; background: rgba(255, 176, 32, .14); color: var(--warning); font-size: 12.5px; font-weight: 700; }
+
+/* Scène 5 — les récompenses */
+.dj-th { display: grid; gap: 7px; width: 100%; max-width: 320px; }
+.dj-th-row { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 11px; background: var(--card); font-size: 12.5px; transition: border-color .4s var(--d, 0s), background .4s var(--d, 0s); }
+.dj-scene.is-on .dj-th-row { border-color: rgba(53, 208, 127, .45); background: rgba(53, 208, 127, .08); }
+.dj-th-row span:last-child { margin-left: auto; font-size: 11.5px; color: var(--text-3); }
+
+/* Scène 21 — l'app installable */
+.dj-app-logo { display: grid; place-items: center; }
+.dj-app-logo img { width: 112px; height: 112px; border-radius: 26px; box-shadow: 0 18px 40px rgba(0, 0, 0, .45); }
+.dj-app-nom { font-size: 24px; font-weight: 800; }
+.dj-app-note { font-size: 12.5px; color: var(--text-2); }
+.dj-app-btn { position: relative; z-index: 7; display: inline-flex; align-items: center; gap: 8px; padding: 13px 24px; border: 0; border-radius: 999px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; pointer-events: auto; box-shadow: 0 12px 28px rgba(230, 57, 70, .45); }
+.dj-app-btn:hover { filter: brightness(1.08); }
+.dj-app-btn:active { filter: brightness(.96); }
+.dj-app-hint { font-size: 11px; color: var(--text-3); }
+.dj-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.dj-chip { padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--card-2); font-size: 11px; color: var(--text-2); }
+
+/* Respiration de la scène : les entrées ne se jouent qu'une fois, sans ces boucles
+   la scène resterait figée jusqu'à la suivante et la motion lirait comme saccadée.
+   On anime `translate` et non `transform` pour ne pas écraser les transitions d'entrée. */
+@keyframes djFlotte { from { translate: 0 -3px; } to { translate: 0 3px; } }
+@keyframes djDerive { 0%, 100% { background-position: 32% 34%; } 50% { background-position: 68% 66%; } }
+@keyframes djHalo { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+
+.dj-scene.is-on {
+    background: radial-gradient(44% 48% at 50% 40%, rgba(230, 57, 70, .15), transparent 72%);
+    background-size: 190% 190%;
+    background-repeat: no-repeat;
+}
+.dj-player[data-state='playing'] .dj-scene.is-on { animation: djDerive 6.4s ease-in-out infinite; }
+
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-apercu { animation: djFlotte 3.8s ease-in-out infinite alternate; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-id:first-child { animation: djFlotte 3.2s ease-in-out infinite alternate; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-id:last-child { animation: djFlotte 3.2s ease-in-out .5s infinite alternate-reverse; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-chat { animation: djFlotte 4.2s ease-in-out infinite alternate; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-tl { animation: djFlotte 4.4s ease-in-out infinite alternate; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-score { animation: djFlotte 3.4s ease-in-out infinite alternate; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-th { animation: djFlotte 4s ease-in-out infinite alternate; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-app-logo { animation: djFlotte 3.6s ease-in-out infinite alternate; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-score-n { animation: djHalo 1.9s ease-in-out infinite; }
+.dj-player[data-state='playing'] .dj-scene.is-on .dj-app-btn { animation: djHalo 2.3s ease-in-out infinite; }
+
+/* Lecteur */
+.dj-playbtn {
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+    border: 0; background: rgba(8, 8, 14, .58); backdrop-filter: blur(3px);
+    color: #fff; cursor: pointer; font: inherit;
+    transition: opacity .3s ease, visibility .3s;
+}
+.dj-player[data-state='playing'] .dj-playbtn,
+.dj-player[data-state='paused'] .dj-playbtn { opacity: 0; visibility: hidden; }
+.dj-playbtn-ico { width: 62px; height: 62px; display: grid; place-items: center; border-radius: 50%; font-size: 21px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 10px 30px rgba(230, 57, 70, .5); transition: transform .2s ease; }
+.dj-playbtn:hover .dj-playbtn-ico { transform: scale(1.08); }
+.dj-playbtn-l { font-size: 13.5px; font-weight: 700; }
+.dj-playbtn-s { font-size: 11.5px; color: var(--text-2); }
+.dj-bar { position: relative; z-index: 6; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--card); }
+.dj-toggle { width: 30px; height: 30px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--card-2); color: var(--text); font-size: 11px; cursor: pointer; }
+.dj-track { position: relative; flex: 1; height: 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--card-2); cursor: pointer; }
+.dj-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--primary), var(--primary-2)); }
+.dj-tick { position: absolute; top: 50%; width: 2px; height: 10px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--text-3); opacity: .5; }
+.dj-tick.on { background: var(--primary); opacity: 1; }
+.dj-time { flex-shrink: 0; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Légende : 21 chapitres, une ligne défilante comme les chapitres d'une vidéo */
+.dj-legende { display: flex; gap: 6px; margin-top: 10px; padding-bottom: 2px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.dj-legende::-webkit-scrollbar { display: none; }
+.dj-chap { flex: 0 0 auto; padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text-2); font: inherit; font-size: 11.5px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: border-color .25s, color .25s, background .25s; }
+.dj-chap.on { border-color: var(--primary); background: rgba(230, 57, 70, .1); color: var(--text); }
+
+@media (max-width: 560px) {
+    .dj-stage { aspect-ratio: 4 / 5; }
+    .dj-score-n { font-size: 38px; }
+    .dj-apercu { max-width: 224px; }
+    .dj-app-logo img { width: 92px; height: 92px; }
+}
+
+/* Pas d'animation : les scènes s'enchaînent sans mouvement, le lecteur reste jouable */
+@media (prefers-reduced-motion: reduce) {
+    .dj-el, .dj-jauge i, .dj-tl-run { transition: none; }
+    .dj-el, .dj-fade { opacity: 1; transform: none; }
+    .dj-typing i, .dj-ciel span, .dj-de, .dj-mid::before { animation: none !important; }
+    .dj-scene.is-on, .dj-scene.is-on .dj-apercu, .dj-scene.is-on .dj-id, .dj-scene.is-on .dj-chat,
+    .dj-scene.is-on .dj-tl, .dj-scene.is-on .dj-score, .dj-scene.is-on .dj-th,
+    .dj-scene.is-on .dj-app-logo, .dj-scene.is-on .dj-score-n, .dj-scene.is-on .dj-app-btn { animation: none !important; }
+    .dj-ciel span { opacity: 0; }
+    .dj-ciel span:nth-child(3) { opacity: 1; }
+    .dj-flip { transform: rotateY(180deg); }
+    .dj-pion, .dj-bandeau, .dj-quo-mur { transform: none; }
+    .dj-scene.is-on .dj-pion { transform: translateX(120px); }
+    .dj-scene.is-on .dj-bandeau, .dj-scene.is-on .dj-quo-mur { transform: translate(-50%, -50%) rotate(-5deg) scaleX(1); }
+    .dj-scene.is-on .dj-quo-mur { transform: scaleX(1); }
+}
 
 /* ---------- Discussion / Chat ---------- */
 .disc-wrap {

@@ -22,6 +22,8 @@
             align-items: center;
             justify-content: center;
             padding: 24px 16px;
+            /* Évite le zoom au double tap sur les écrans de connexion ; le zoom pincé reste possible. */
+            touch-action: manipulation;
         }
         .guest-card {
             width: 100%;

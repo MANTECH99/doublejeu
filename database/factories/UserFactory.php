@@ -42,4 +42,14 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    /**
+     * Un compte qui a choisi son code PIN de déverrouillage.
+     */
+    public function withPin(string $pin = '246810'): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'pin_hash' => Hash::make($pin),
+        ]);
+    }
 }

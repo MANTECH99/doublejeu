@@ -52,6 +52,8 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::post('/profile/photo', [ProfileController::class, 'uploadPhoto'])->name('profile.photo');
+    Route::post('/profile/photo/apply', [ProfileController::class, 'applyPhoto'])->name('profile.photo.apply');
+    Route::post('/profile/photo/cancel', [ProfileController::class, 'cancelPhoto'])->name('profile.photo.cancel');
     Route::delete('/profile/photo', [ProfileController::class, 'deletePhoto'])->name('profile.photo.delete');
     Route::post('/profile/timezone', [ProfileController::class, 'timezone'])->name('profile.timezone');
 });

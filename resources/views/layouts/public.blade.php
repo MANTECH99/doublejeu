@@ -73,6 +73,20 @@
                 buildPopup();
             });
             window.addEventListener('appinstalled', function () { shown = true; dismiss(); });
+
+            /* API pour la présentation de l'accueil : le bouton « Installer » de la motion. */
+            window.djInstallPrompt = {
+                ready: function () { return !!deferredPrompt && !isStandalone(); },
+                /* La bannière masque le bouton de la dernière scène : on la range au lancement. */
+                dismiss: function () { dismiss(); },
+                prompt: function () {
+                    if (isStandalone() || !deferredPrompt) return false;
+                    deferredPrompt.prompt();
+                    deferredPrompt = null;
+                    dismiss();
+                    return true;
+                }
+            };
         })();
     </script>
 
@@ -83,6 +97,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @stack('head')
 </head>
 <body>
     <div class="app-wrap">
@@ -106,5 +121,6 @@
             <a href="{{ route('info.show', 'contact') }}">Contact</a>
         </footer>
     </div>
+    @stack('scripts')
 </body>
 </html>

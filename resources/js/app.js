@@ -188,13 +188,14 @@ window.installPwa = (function () {
     }
 
     // iOS ne déclenche jamais beforeinstallprompt : guide vers le menu Partager.
-    function tryAutoShowIos() {
+    // `force` = l'utilisateur a cliqué sur « Installer » : on montre le guide même s'il
+    // a déjà été fermé ou signalé comme vu.
+    function showIosGuide(force) {
         let suppressed = false;
         try { suppressed = localStorage.getItem('dj_ios_install_done') === '1'; } catch (e) {}
 
-        // Ne plus jamais afficher : app déjà installée (standalone),
-        // guide déjà montré/fermé, ou on n'est pas sur iOS.
-        if (shown || isStandalone() || suppressed || !isIOS()) return;
+        if (isStandalone()) return false;
+        if (!force && (shown || suppressed || !isIOS())) return false;
         shown = true;
         const el = buildDom(`
             <div class="dj-install" id="dj-install-box">
@@ -217,15 +218,16 @@ window.installPwa = (function () {
         el.querySelectorAll('[data-close], [data-later]').forEach((b) => b.addEventListener('click', closeAll));
         if (el.querySelector('.dj-install-close')) el.querySelector('.dj-install-close').addEventListener('click', closeAll);
         document.body.appendChild(el);
+        return true;
     }
 
     if (document.readyState === 'complete') {
-        setTimeout(tryAutoShowIos, 1500);
+        setTimeout(() => showIosGuide(false), 1500);
     } else {
-        window.addEventListener('load', () => setTimeout(tryAutoShowIos, 1500));
+        window.addEventListener('load', () => setTimeout(() => showIosGuide(false), 1500));
     }
 
-    return { dismiss };
+    return { dismiss, showIosGuide };
 })();
 
 /* ============ Push notifications ============ */
@@ -288,6 +290,176 @@ function urlBase64ToUint8Array(base64String) {
     return outputArray;
 }
 
+/* ============ Code PIN ============ */
+/* Le jeton d'appareil identifie le compte : l'email n'est ressaisi qu'en cas de perte. */
+window.djAppareil = (function () {
+    const CLE = 'dj_appareil';
+
+    return {
+        lire() {
+            try {
+                return JSON.parse(window.localStorage.getItem(CLE) || 'null');
+            } catch (e) {
+                return null;
+            }
+        },
+        ecrire(token, nom) {
+            window.localStorage.setItem(CLE, JSON.stringify({ token, nom }));
+        },
+        oublier() {
+            window.localStorage.removeItem(CLE);
+        },
+    };
+})();
+
+/**
+ * Pavé numérique : il s'auto-valide à 6 chiffres et renvoie les erreurs sur place.
+ */
+window.djPin = function djPin(root) {
+    const url = root.dataset.pinUrl;
+    const points = Array.from(root.querySelectorAll('[data-pin-points] i'));
+    const errEl = root.querySelector('[data-pin-err]');
+    const compteEl = root.querySelector('[data-pin-compte]');
+
+    let pin = '';
+    let occupe = false;
+    let appareil = window.djAppareil.lire();
+
+    function montrerCompte() {
+        if (!compteEl || !appareil) return;
+        compteEl.textContent = 'Compte : ' + (appareil.nom || 'toi');
+        compteEl.hidden = false;
+    }
+
+    function Peigner() {
+        points.forEach((p, i) => p.classList.toggle('on', i < pin.length));
+    }
+
+    function dire(message, isErreur) {
+        if (errEl) {
+            errEl.textContent = message || '';
+            errEl.hidden = !message;
+        }
+        if (isErreur && root.animate) {
+            root.animate(
+                [
+                    { transform: 'translateX(0)' },
+                    { transform: 'translateX(-9px)' },
+                    { transform: 'translateX(9px)' },
+                    { transform: 'translateX(0)' },
+                ],
+                { duration: 260 }
+            );
+        }
+    }
+
+    async function envoyer() {
+        if (occupe) return;
+        occupe = true;
+        dire('');
+        root.classList.add('est-occupe');
+
+        const corps = { pin, device_token: appareil ? appareil.token : '' };
+
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrf(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(corps),
+            });
+            const data = await res.json().catch(() => ({}));
+
+            if (res.ok && data.ok) {
+                window.location.href = data.redirect || '/dashboard';
+                return;
+            }
+
+            const message =
+                (data.errors && (data.errors.pin || data.errors.email || []).join(' ')) ||
+                data.message ||
+                'Code incorrect.';
+
+            pin = '';
+            Peigner();
+            dire(message, true);
+        } catch (e) {
+            pin = '';
+            Peigner();
+            dire('Connexion impossible. Vérifie ta connexion.', true);
+        } finally {
+            occupe = false;
+            root.classList.remove('est-occupe');
+        }
+    }
+
+    function ajouter(chiffre) {
+        if (occupe || pin.length >= 6) return;
+        pin += chiffre;
+        Peigner();
+        if (pin.length === 6) {
+            setTimeout(envoyer, 120);
+        }
+    }
+
+    function retrancher() {
+        if (occupe || !pin.length) return;
+        pin = pin.slice(0, -1);
+        Peigner();
+    }
+
+    root.querySelectorAll('[data-pin-key]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const touche = btn.dataset.pinKey;
+            if (touche === 'clear') retrancher();
+            else if (touche === 'ok') envoyer();
+            else ajouter(touche);
+        });
+    });
+
+    root.addEventListener('keydown', (e) => {
+        if (/^\d$/.test(e.key)) ajouter(e.key);
+        else if (e.key === 'Backspace') retrancher();
+        else if (e.key === 'Enter') envoyer();
+    });
+
+    root.tabIndex = -1;
+    root.classList.add('est-pret');
+    montrerCompte();
+
+    /* Appareil révoqué entre-temps : on le raye avant même de proposer le pavé. */
+    if (root.dataset.pinDeviceUrl) {
+        fetch(root.dataset.pinDeviceUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-CSRF-TOKEN': csrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ device_token: appareil ? appareil.token : '' }),
+        })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (data && data.ok && data.nom) {
+                    if (appareil) appareil.nom = data.nom;
+                    montrerCompte();
+                    root.hidden = false;
+                    window.dispatchEvent(new CustomEvent('dj:pin-pret', { detail: { pret: true } }));
+                    return;
+                }
+                window.djAppareil.oublier();
+                root.dispatchEvent(new CustomEvent('dj:pin-perdu'));
+            })
+            .catch(() => window.dispatchEvent(new CustomEvent('dj:pin-perdu')));
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     window.notifications.init();
+    document.querySelectorAll('[data-pin]').forEach((el) => window.djPin(el));
 });

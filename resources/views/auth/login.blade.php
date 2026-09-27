@@ -13,39 +13,48 @@
         </p>
         <p id="webauthn-err" class="err center mt8" style="display:none; margin:12px 0 0"></p>
 
-        <div class="guest-divider">
-            <span>ou utilise ton email</span>
-        </div>
+        {{-- Sur un appareil de confiance, le pavé remplace le formulaire email / mot de passe. --}}
+        <x-pin-pad :url="route('pin.login.store')" />
 
-        <form method="POST" action="{{ route('login') }}" style="text-align:left">
-            @csrf
+        <button id="btn-email" type="button" class="btn btn-ghost btn-block" style="font-size:13px; margin-top:14px">
+            Utiliser mon email et mon mot de passe
+        </button>
 
-            <label class="label" for="email">Email</label>
-            <input class="input" id="email" type="email" name="email"
-                   value="{{ old('email') }}" required autofocus autocomplete="username webauthn"
-                   placeholder="toi@exemple.com">
-
-            <label class="label mt16" for="password">Mot de passe</label>
-            <input class="input" id="password" type="password" name="password"
-                   required autocomplete="current-password"
-                   placeholder="••••••••">
-
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:16px">
-                <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-2); cursor:pointer">
-                    <input type="checkbox" name="remember" style="accent-color:var(--primary); width:16px; height:16px">
-                    Se souvenir
-                </label>
-                @if (Route::has('password.request'))
-                    <a href="{{ route('password.request') }}" style="font-size:13px; color:var(--text-3); text-decoration:none">
-                        Mot de passe oublié ?
-                    </a>
-                @endif
+        <div id="zone-email" hidden>
+            <div class="guest-divider">
+                <span>ou utilise ton email</span>
             </div>
 
-            <button class="btn btn-ghost btn-block mt16" type="submit" style="font-size:14px">
-                Se connecter avec un mot de passe
-            </button>
-        </form>
+            <form method="POST" action="{{ route('login') }}" style="text-align:left">
+                @csrf
+
+                <label class="label" for="email">Email</label>
+                <input class="input" id="email" type="email" name="email"
+                       value="{{ old('email') }}" autocomplete="username webauthn"
+                       placeholder="toi@exemple.com" @if ($errors->any() && old('email') === null) autofocus @endif>
+
+                <label class="label mt16" for="password">Mot de passe</label>
+                <input class="input" id="password" type="password" name="password"
+                       required autocomplete="current-password"
+                       placeholder="••••••••">
+
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-top:16px">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-2); cursor:pointer">
+                        <input type="checkbox" name="remember" style="accent-color:var(--primary); width:16px; height:16px">
+                        Se souvenir
+                    </label>
+                    @if (Route::has('password.request'))
+                        <a href="{{ route('password.request') }}" style="font-size:13px; color:var(--text-3); text-decoration:none">
+                            Mot de passe oublié ?
+                        </a>
+                    @endif
+                </div>
+
+                <button class="btn btn-ghost btn-block mt16" type="submit" style="font-size:14px">
+                    Se connecter avec un mot de passe
+                </button>
+            </form>
+        </div>
 
         <div class="guest-divider">
             <span>ou</span>
@@ -55,6 +64,38 @@
             Créer un compte
         </a>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var zoneEmail = document.getElementById('zone-email');
+            var btnEmail = document.getElementById('btn-email');
+
+            function ouvrirEmail() {
+                zoneEmail.hidden = false;
+                btnEmail.hidden = true;
+            }
+
+            function replierEmail() {
+                zoneEmail.hidden = true;
+                btnEmail.hidden = false;
+            }
+
+            @if ($errors->any())
+                ouvrirEmail();
+            @else
+                replierEmail();
+            @endif
+
+            btnEmail.addEventListener('click', function () {
+                ouvrirEmail();
+                document.getElementById('email').focus();
+            });
+
+            /* Le pavé n'apparaît que si l'appareil est encore de confiance. */
+            window.addEventListener('dj:pin-pret', replierEmail);
+            window.addEventListener('dj:pin-perdu', ouvrirEmail);
+        });
+    </script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
