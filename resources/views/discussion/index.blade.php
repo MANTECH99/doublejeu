@@ -2965,7 +2965,7 @@ function grabVideoThumb(videoEl) {
         // l'historique → le tap sur « Écrire un message… » devait attendre.
         // Ici, tout s'arrête dès la moindre interaction et ne reprend qu'après
         // 1,5 s d'inactivité complète.
-        const CHUNK = 4;
+        const CHUNK = 8;
         const FALLBACK = 90;
         let i = 0;
         let handoff = null;
@@ -3018,9 +3018,20 @@ function grabVideoThumb(videoEl) {
                 schedule();
             }, 1500);
         };
-        const events = ['pointerdown', 'touchstart', 'scroll', 'wheel', 'keydown'];
+        const onScrollUp = () => {
+            // L'utilisateur a quitté le bas du fil (il remonte) : il cherche
+            // l'historique, on n'attend plus les 1,5 s, on relance tout de suite.
+            // La compensation dans step() garde la portion affichée stable.
+            if (!wasAtBottom()) {
+                paused = false;
+                clearTimeout(gauge);
+                schedule();
+            }
+        };
+        const events = ['pointerdown', 'touchstart', 'wheel', 'keydown'];
         const detach = () => {
             events.forEach((ev) => document.removeEventListener(ev, onInteract, true));
+            document.removeEventListener('scroll', onScrollUp, true);
             document.removeEventListener('visibilitychange', onInteract);
             clearTimeout(gauge);
         };
@@ -3031,6 +3042,7 @@ function grabVideoThumb(videoEl) {
             if (wasAtBottom()) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
         };
         events.forEach((ev) => document.addEventListener(ev, onInteract, { capture: true, passive: true }));
+        document.addEventListener('scroll', onScrollUp, { capture: true, passive: true });
         document.addEventListener('visibilitychange', onInteract);
         schedule();
     }
