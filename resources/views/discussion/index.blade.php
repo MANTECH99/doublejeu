@@ -2956,12 +2956,16 @@ function grabVideoThumb(videoEl) {
     }
 
     function prefillOlder(older) {
-        // On construit l'historique restant par petits lots sur plusieurs frames :
-        // la page est déjà affichée et reste interactive pendant ce temps. Les
-        // bulles s'insèrent avant bootAnchor (au-dessus du fil), dans l'ordre.
+        // Chargement rapide des anciens messages (lots de 20 par frame : le fil
+        // se remplit vite), mais GELÉ pendant qu'un doigt est posé sur l'écran.
+        // Le tap sur « Écrire un message… » passe donc immédiatement (le thread
+        // n'est pas occupé à construire des bulles), et le chargement reprend
+        // dès que le doigt est levé.
         const CHUNK = 20;
         let i = 0;
+        let paused = false;
         const step = () => {
+            if (paused) return; // onRelease le relance juste après le pointerup
             const h0 = MESSAGES_EL.scrollHeight;
             const end = Math.min(i + CHUNK, older.length);
             for (; i < end; i++) buildBubble(older[i]);
@@ -2977,11 +2981,22 @@ function grabVideoThumb(videoEl) {
             if (i < older.length) {
                 requestAnimationFrame(step);
             } else {
-                joinSep(bootAnchor);
-                prefillDone = true;
-                if (wasAtBottom()) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+                finish();
             }
         };
+        const onDown = () => { paused = true; };
+        const onRelease = () => { paused = false; requestAnimationFrame(step); };
+        const finish = () => {
+            document.removeEventListener('pointerdown', onDown, true);
+            document.removeEventListener('pointerup', onRelease, true);
+            document.removeEventListener('pointercancel', onRelease, true);
+            joinSep(bootAnchor);
+            prefillDone = true;
+            if (wasAtBottom()) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+        };
+        document.addEventListener('pointerdown', onDown, true);
+        document.addEventListener('pointerup', onRelease, true);
+        document.addEventListener('pointercancel', onRelease, true);
         requestAnimationFrame(step);
     }
 
