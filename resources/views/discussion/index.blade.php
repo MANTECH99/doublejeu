@@ -2934,12 +2934,10 @@ function grabVideoThumb(videoEl) {
         revealDisc();
 
         // Les messages plus anciens se construisent après la première peinture,
-        // en ARRIÈRE-PLAN (priorité basse, pause à la moindre interaction) et
-        // seulement après un court délai : le tap du tout premier instant (sur
-        // « Écrire un message… ») ne trouve jamais le thread occupé.
+        // par lots (rAF), sans rien bloquer (le visible reste en bas).
         if (older.length > 0) {
             prefillDone = false;
-            setTimeout(() => prefillOlder(older), 500);
+            prefillOlder(older);
         }
     }
 
@@ -2958,33 +2956,12 @@ function grabVideoThumb(videoEl) {
     }
 
     function prefillOlder(older) {
-        // Construction de l'historique en ARRIÈRE-PLAN, à priorité très basse
-        // (requestIdleCallback), par lots minuscules. La partie visible (la fin
-        // du fil) est déjà rendue : tout ce qui suit n'est que de l'anticipation.
-        // Plus le fil est long, plus le thread principal serait occupé à bâtir
-        // l'historique → le tap sur « Écrire un message… » devait attendre.
-        // Ici, tout s'arrête dès la moindre interaction et ne reprend qu'après
-        // 1,5 s d'inactivité complète.
-        const CHUNK = 4;
-        const FALLBACK = 90;
+        // On construit l'historique restant par petits lots sur plusieurs frames :
+        // la page est déjà affichée et reste interactive pendant ce temps. Les
+        // bulles s'insèrent avant bootAnchor (au-dessus du fil), dans l'ordre.
+        const CHUNK = 20;
         let i = 0;
-        let handoff = null;
-        let paused = false;
-        let gauge = null;
-
-        const pasActive = () => paused || document.hidden;
-        const schedule = () => {
-            if (handoff !== null) return;
-            handoff = ('requestIdleCallback' in window)
-                ? requestIdleCallback(step, { timeout: 150 })
-                : setTimeout(step, FALLBACK);
-        };
         const step = () => {
-            handoff = null;
-            if (pasActive()) {
-                schedule();
-                return;
-            }
             const h0 = MESSAGES_EL.scrollHeight;
             const end = Math.min(i + CHUNK, older.length);
             for (; i < end; i++) buildBubble(older[i]);
@@ -2998,41 +2975,14 @@ function grabVideoThumb(videoEl) {
                 MESSAGES_EL.scrollTop += added;
             }
             if (i < older.length) {
-                schedule();
+                requestAnimationFrame(step);
             } else {
-                fin();
+                joinSep(bootAnchor);
+                prefillDone = true;
+                if (wasAtBottom()) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
             }
         };
-        const onInteract = () => {
-            // On PAUSE tout de suite : le geste en cours (tap, scroll, frappe)
-            // passe en premier. On ne reprend qu'après 1,5 s de calme.
-            paused = true;
-            if (handoff !== null) {
-                if ('cancelIdleCallback' in window) cancelIdleCallback(handoff);
-                else clearTimeout(handoff);
-                handoff = null;
-            }
-            clearTimeout(gauge);
-            gauge = setTimeout(() => {
-                paused = false;
-                schedule();
-            }, 1500);
-        };
-        const events = ['pointerdown', 'touchstart', 'scroll', 'wheel', 'keydown'];
-        const detach = () => {
-            events.forEach((ev) => document.removeEventListener(ev, onInteract, true));
-            document.removeEventListener('visibilitychange', onInteract);
-            clearTimeout(gauge);
-        };
-        const fin = () => {
-            detach();
-            joinSep(bootAnchor);
-            prefillDone = true;
-            if (wasAtBottom()) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
-        };
-        events.forEach((ev) => document.addEventListener(ev, onInteract, { capture: true, passive: true }));
-        document.addEventListener('visibilitychange', onInteract);
-        schedule();
+        requestAnimationFrame(step);
     }
 
     // Mobile : la barre d'URL se replie ~0,5 s après l'arrivée et agrandit le
