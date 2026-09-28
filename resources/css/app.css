@@ -1709,6 +1709,7 @@ summary.btn::-webkit-details-marker { display: none; }
     scrollbar-width: none; /* cache la barre de défilement (Firefox) */
     -ms-overflow-style: none; /* cache la barre de défilement (ancien Edge/IE) */
     max-height: 132px; /* ~4 lignes maximum, puis défilement interne */
+    touch-action: manipulation; /* pas de délai de double-tap : le premier tap focus immédiatement */
 }
 .disc-input::-webkit-scrollbar {
     display: none; /* cache la barre de défilement (Chrome/Safari) */
