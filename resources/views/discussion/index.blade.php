@@ -2956,12 +2956,30 @@ function grabVideoThumb(videoEl) {
     }
 
     function prefillOlder(older) {
-        // On construit l'historique restant par petits lots sur plusieurs frames :
-        // la page est déjà affichée et reste interactive pendant ce temps. Les
-        // bulles s'insèrent avant bootAnchor (au-dessus du fil), dans l'ordre.
-        const CHUNK = 20;
+        // On construit l'historique restant par petits lots ESPACÉS dans le temps
+        // (setTimeout, pas une boucle par frame) : la page reste interactive
+        // pendant le chargement. Un ensemble de messages sur un téléphone
+        // lent = ~2-3 s de thread saturé, pendant lesquelles le premier tap
+        // (ex. sur « Écrire un message… ») n'était traité qu'à la fin.
+        const CHUNK = 12;
+        const PAUSE = 45;
         let i = 0;
+        let timer = null;
+        let hold = 0;
+
+        const pointerDown = () => { hold += 1; };
+        const pointerUp = () => {
+            hold = Math.max(0, hold - 1);
+            schedule();
+        };
         const step = () => {
+            timer = null;
+            // Pression en cours (doigt posé) : on laisse le tap s'installer,
+            // puis on reprend dès que le doigt est levé.
+            if (hold > 0) {
+                schedule();
+                return;
+            }
             const h0 = MESSAGES_EL.scrollHeight;
             const end = Math.min(i + CHUNK, older.length);
             for (; i < end; i++) buildBubble(older[i]);
@@ -2975,14 +2993,24 @@ function grabVideoThumb(videoEl) {
                 MESSAGES_EL.scrollTop += added;
             }
             if (i < older.length) {
-                requestAnimationFrame(step);
+                schedule();
             } else {
                 joinSep(bootAnchor);
                 prefillDone = true;
                 if (wasAtBottom()) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+                document.removeEventListener('pointerdown', pointerDown);
+                document.removeEventListener('pointerup', pointerUp);
+                document.removeEventListener('pointercancel', pointerUp);
             }
         };
-        requestAnimationFrame(step);
+        const schedule = () => {
+            if (timer === null) timer = setTimeout(step, PAUSE);
+        };
+
+        document.addEventListener('pointerdown', pointerDown, { passive: true });
+        document.addEventListener('pointerup', pointerUp, { passive: true });
+        document.addEventListener('pointercancel', pointerUp, { passive: true });
+        schedule();
     }
 
     // Mobile : la barre d'URL se replie ~0,5 s après l'arrivée et agrandit le
