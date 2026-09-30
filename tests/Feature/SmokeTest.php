@@ -21,6 +21,19 @@ class SmokeTest extends TestCase
         $this->get('/offscreen')->assertOk();
     }
 
+    public function test_manifest_webmanifest_est_revalide_a_chaque_lancement(): void
+    {
+        $response = $this->get('/manifest.webmanifest')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+
+        // Laravel fusionne notre directive avec sa valeur par defaut (no-cache,
+        // private) : on verifie que la revalidation est bien demandee.
+        $cacheControl = $response->headers->get('Cache-Control') ?? '';
+        $this->assertStringContainsString('no-cache', $cacheControl);
+        $this->assertStringContainsString('must-revalidate', $cacheControl);
+    }
+
     public function test_home_affiche_la_presentation_animee(): void
     {
         $response = $this->get('/')->assertOk();
