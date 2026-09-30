@@ -1,7 +1,0 @@
-# Force la revalidation : à chaque lancement de l'app iOS, l'appareil doit
-# re-fetch les images de démarrage au lieu d'utiliser son cache figé depuis
-# l'installation de l'app, pour profiter d'un futur splash mis à jour sans
-# devoir « supprimer + réajouter » l'app à l'écran d'accueil.
-<IfModule mod_headers.c>
-    Header set Cache-Control "no-cache, must-revalidate"
-</IfModule>

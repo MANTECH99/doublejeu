@@ -10,7 +10,7 @@ class PwaController extends Controller
     {
         return response(file_get_contents(public_path('manifest.json')), 200, [
             'Content-Type' => 'application/manifest+json; charset=utf-8',
-            'Cache-Control' => 'no-cache, must-revalidate',
+            'Cache-Control' => 'public, max-age=86400',
         ]);
     }
 
