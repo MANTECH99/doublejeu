@@ -2934,15 +2934,15 @@ function grabVideoThumb(videoEl) {
         // de façon synchrone, avant la première peinture.
         oldestLoadedId = list[0].id;
 
-        // Point d'insertion invisible placé juste avant la fin du fil : chaque lot
-        // de messages plus anciens s'y empile juste au-dessus → ordre
-        // chronologique conservé quelle que soit l'ordre des chargements. Le bouton
-        // « charger plus » reste le tout premier élément du fil.
+        // Point d'insertion invisible qui se tient toujours juste au-dessus du plus
+        // ancien message affiché : chaque lot de messages plus anciens s'y
+        // empile AU-DESSUS → ordre chronologique conservé. C'est lui qui sert de
+        // borne pour dater le séparateur de jour (voir msgDateBefore).
         bootAnchor = document.createElement('i');
         bootAnchor.className = 'disc-boot-anchor';
         bootAnchor.style.display = 'none';
         bootAnchor.dataset.id = list[0].id;
-        MESSAGES_EL.insertBefore(bootAnchor, MESSAGES_EL.querySelector('.disc-welcome'));
+        MESSAGES_EL.appendChild(bootAnchor);
 
         for (const m of list) buildBubble(m);
         // Tous les médias réservent leur hauteur (photos via dimensions natives,
@@ -2952,8 +2952,6 @@ function grabVideoThumb(videoEl) {
     }
 
     // Un lot de messages plus anciens, à la demande (bouton en haut du fil).
-    // Le fil reste ancré sur ce que l'utilisateur regarde : la hauteur ajoutée
-    // au-dessus est compensée, donc la vue ne saute pas.
     function loadOlderMessages() {
         if (loadMorePending || !oldestLoadedId || !bootAnchor) return;
         const btn = document.getElementById('disc-loadmore-btn');
@@ -2972,20 +2970,31 @@ function grabVideoThumb(videoEl) {
                 if (!data) return;
                 const older = (data.messages || []).map(localizeMsg);
                 if (older.length > 0) {
-                    // État avant insertion : « était-on collé en bas ? » se décide
-                    // sur la position de départ, pas après l'ajout au-dessus.
+                    // Position de départ : elle décide de ce qu'on fait après coup.
+                    const top0 = MESSAGES_EL.scrollTop;
                     const atBottom = wasAtBottom();
                     const h0 = MESSAGES_EL.scrollHeight;
                     for (const m of older) buildBubble(m);
                     dedupeDateSeps(); // le joint entre deux lots peut répéter un jour
                     oldestLoadedId = older[0].id;
-                    // Compense le lot inséré au-dessus : l'utilisateur reste sur
-                    // les mêmes messages qu'il regardait.
-                    const added = MESSAGES_EL.scrollHeight - h0;
-                    if (atBottom) {
-                        MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
-                    } else if (added > 0) {
-                        MESSAGES_EL.scrollTop += added;
+                    // L'ancre se replace juste au-dessus du plus ancien message
+                    // affiché : le prochain lot (encore plus ancien) s'empilera
+                    // dessus, et non dessous.
+                    bootAnchor.dataset.id = oldestLoadedId;
+                    MESSAGES_EL.insertBefore(bootAnchor, MESSAGES_EL.querySelector('.disc-bubble-wrap'));
+
+                    if (top0 <= 240 || atBottom) {
+                        // Le bouton étant collé en haut, il est visible en haut ET
+                        // en bas du fil : dans les deux cas on va montrer les
+                        // messages qui viennent d'arriver. Sans ça, la compensation
+                        // de hauteur les cacherait hors de l'écran et le clic
+                        // semblerait sans effet.
+                        MESSAGES_EL.scrollTop = 0;
+                    } else {
+                        // Lecture au milieu du fil : on garde la portion affichée
+                        // stable (le contenu ajouté au-dessus ne fait pas sauter).
+                        const added = MESSAGES_EL.scrollHeight - h0;
+                        if (added > 0) MESSAGES_EL.scrollTop = top0 + added;
                     }
                 }
                 if (!data.hasAnciens) {
