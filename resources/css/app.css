@@ -1679,6 +1679,34 @@ summary.btn::-webkit-details-marker { display: none; }
     color: var(--text-3);
 }
 
+/* Pagination de l'historique : bouton en tête du fil, qui charge les messages
+   plus anciens au clic. Il ne fait pas partie du fil défilant (position sticky
+   en haut), pour rester atteignable sans avoir à remonter au tout début. */
+.disc-loadmore {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    padding: 6px 0 12px;
+}
+.disc-loadmore-btn {
+    background: var(--card-2);
+    color: var(--text-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    -webkit-tap-highlight-color: transparent;
+}
+.disc-loadmore-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 .disc-date-sep {
     text-align: center;
     margin: 16px 0 10px;

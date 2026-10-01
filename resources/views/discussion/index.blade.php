@@ -272,6 +272,13 @@
              première peinture → ouverture directe sur le dernier message, sans
              défilement ni flash, avec un affichage strictement identique. --}}
         <div class="disc-messages" id="disc-messages" style="visibility:hidden">
+            {{-- Bouton de pagination du fil : chargé seulement s'il reste des
+                 messages plus anciens que la fin affichée au démarrage. --}}
+            <div class="disc-loadmore" id="disc-loadmore" style="display:{{ $hasAnciens ? 'block' : 'none' }}">
+                <button type="button" class="disc-loadmore-btn" id="disc-loadmore-btn">
+                    Charger plus de messages
+                </button>
+            </div>
             <div class="disc-welcome">
                 <div style="font-size:36px; margin-bottom:8px">💬</div>
                 <div class="tiny muted">Vos messages sont privés.<br>Discutez de tout, à tout moment.</div>
@@ -526,13 +533,18 @@
     // Correspondance id temporaire (optimiste) → id serveur, pour retrouver un
     // message envoyé juste avant sa réconciliation (ex. suppression immédiate).
     const tmpToRealId = new Map();
-    // Pré-rendu « derniers messages d'abord » : on construit de façon synchrone
-    // uniquement la fin du fil (ce qui est visible en arrivant), puis les plus
-    // anciens s'empilent AU-DESSUS par lots (rAF). bootAnchor est le point
-    // d'insertion invisible qui sépare l'historique construit des suivants ;
-    // prefillDone est faux tant que l'historique injecté n'est pas tout rendu.
+    // Pré-rendu « derniers messages d'abord » : le serveur n'injecte que la fin
+    // du fil (les {{ (int) $pagination }} plus récents), construite de façon
+    // synchrone avant la première peinture. bootAnchor est le point d'insertion
+    // invisible qui sépare l'historique construit des suivants : chaque clic sur
+    // « charger plus » y empile un lot de messages plus anciens.
     let bootAnchor = null;
-    let prefillDone = true;
+    // Id du plus ancien message affiché : borne des chargements « plus anciens ».
+    let oldestLoadedId = 0;
+    let loadMorePending = false;
+    // Curseur du poll : les ✓✓ et les éditions ne sont renvoyés que pour ce qui a
+    // changé depuis le dernier appel (le fil affiché n'est jamais rechargé en entier).
+    let lastPollAt = new Date().toISOString();
     let sending = false;
     let replyTarget = null; // {id, sender_name, body, is_gif, gif_url, is_photo, photo_url, is_video, video_url, video_poster_url}
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
@@ -1107,14 +1119,13 @@
         const welcome = MESSAGES_EL.querySelector('.disc-welcome');
         if (welcome) welcome.remove();
 
-        // Le 1er message du pré-rendu n'a pas de séparateur si un historique
-        // plus ancien (non encore construit) le précède : le drapeau est
-        // consommé au premier buildBubble.
-        const bootNoSep = MESSAGES_EL.dataset.bootNoSep === '1';
-        if (bootNoSep) delete MESSAGES_EL.dataset.bootNoSep;
-        if (!bootNoSep && msg.date !== msgDateBefore(before)) {
+        // Séparateur de jour : posé quand la date change par rapport à la bulle
+        // réellement voisine dans le DOM. `data-date` permet de supprimer plus
+        // tard un séparateur devenu redondant (voir dedupeDateSeps).
+        if (msg.date !== msgDateBefore(before)) {
             const sep = document.createElement('div');
             sep.className = 'disc-date-sep';
+            sep.dataset.date = msg.date;
             sep.innerHTML = '<span>' + escHtml(formatDate(msg.date)) + '</span>';
             if (before) MESSAGES_EL.insertBefore(sep, before);
             else MESSAGES_EL.appendChild(sep);
@@ -1384,10 +1395,24 @@
         }
     }
 
+    // Les accusés de lecture arrivent à part du poll (`lus` : ids de mes messages
+    // que le partenaire vient de lire) : le fil n'est plus rechargé en entier,
+    // mais les ✓✓ se posent quand même sur les bulles affichées.
+    function syncReadReceipts(ids) {
+        for (const id of ids || []) {
+            if (!renderedIds.has(id)) continue;
+            const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + id + '"]');
+            const check = wrap && wrap.querySelector('.disc-check');
+            if (!check) continue;
+            check.textContent = '✓✓';
+            check.classList.add('lu');
+        }
+    }
+
     // Met à jour en place une bulle déjà rendue dont le contenu a changé côté
-    // serveur (édition du texte, façon WhatsApp) : le poll renvoie tout
-    // l'historique, on rafraîchit le texte et le libellé « modifié » sans
-    // reconstruire la bulle (aucun saut de scroll).
+    // serveur (édition du texte, façon WhatsApp) : le poll renvoie le delta des
+    // messages modifiés (`modifies`), on rafraîchit le texte et le libellé
+    // « modifié » sans reconstruire la bulle (aucun saut de scroll).
     function syncMessage(msg) {
         const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + msg.id + '"]');
         if (!wrap) return;
@@ -1424,9 +1449,12 @@
         // diagnostiquer un affichage vide après un déploiement.
         const hard = new URLSearchParams(location.search).has('refresh');
         try {
-            // On récupère les derniers messages à chaque poll : cela permet aussi
-            // de rafraîchir le statut "lu" (✓✓) des bulles déjà affichées.
-            const url = STATE_URL + '?after=0&_=' + Date.now();
+            // Poll incrémental : seuls les messages arrivés depuis le dernier id
+            // connu (le fil affiché n'est jamais rechargé en entier). Les ✓✓ et les
+            // éditions arrivent à part, via le curseur `since`.
+            const url = STATE_URL + '?after=' + lastMessageId
+                + '&since=' + encodeURIComponent(lastPollAt)
+                + '&_=' + Date.now();
             const res = await fetch(url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
@@ -1441,38 +1469,37 @@
                 if (hard) console.error('discussion:fetch json', jsonErr);
                 return;
             }
+            // Le curseur « depuis » avance dès que la réponse est traitée : un
+            // échec réseau ne fait donc pas rejouer le même delta au prochain poll.
+            lastPollAt = new Date().toISOString();
 
             const bottom = wasAtBottom();
-            const hasIncoming = (data.messages || []).some(m => String(m.sender_id) !== String(MY_ID) && !renderedIds.has(m.id));
+            const messages = data.messages || [];
+            const hasIncoming = messages.some(m => String(m.sender_id) !== String(MY_ID) && !renderedIds.has(m.id));
 
-            if (data.messages && data.messages.length > 0) {
-                if (!prefillDone) {
-                    // Pendant le pré-rendu des plus anciens (lots rAF), on ne
-                    // construit RIEN ici : le batch les insère dans l'ordre au
-                    //-dessus du fil. On synchronise seulement l'état "lu" des
-                    // bulles déjà affichées.
-                    syncReadState(data.messages);
-                } else {
-                    for (const msg of data.messages) {
-                        // Message déjà rendu : on synchronise son contenu (édition
-                        // côté serveur) au lieu de le reconstruire.
-                        if (renderedIds.has(msg.id)) {
-                            syncMessage(msg);
-                        } else {
-                            buildBubble(msg);
-                        }
-                    }
-                    syncReadState(data.messages);
-                    // Au tout premier chargement on colle directement tout en bas
-                    // (scroll instantané), sinon on reste en bas de façon animée à
-                    // chaque poll.
-                    if (initialLoad) {
-                        scrollToBottom();
-                        stickyToBottomOnce();
-                    } else if (bottom || hasIncoming) {
-                        scrollToBottom();
-                    }
+            if (messages.length > 0) {
+                for (const msg of messages) {
+                    if (!renderedIds.has(msg.id)) buildBubble(msg);
                 }
+                syncReadState(messages);
+                // Au tout premier chargement on colle directement tout en bas
+                // (scroll instantané), sinon on reste en bas de façon animée à
+                // chaque poll.
+                if (initialLoad) {
+                    scrollToBottom();
+                    stickyToBottomOnce();
+                } else if (bottom || hasIncoming) {
+                    scrollToBottom();
+                }
+            }
+
+            // Accusés de lecture (✓✓) et éditions des messages déjà affichés.
+            syncReadReceipts(data.lus);
+            for (const msg of data.modifies || []) syncMessage(msg);
+
+            if (data.hasAnciens === false) {
+                const box = document.getElementById('disc-loadmore');
+                if (box) box.style.display = 'none';
             }
 
             updateOnline(data.partenaire);
@@ -2903,87 +2930,96 @@ function grabVideoThumb(videoEl) {
             return;
         }
 
-        // On sépare : la fin du fil (pré-affiche synchrone) et les plus anciens
-        // (construits après la peinture, sans bloquer).
-        const TAIL_LEN = 50;
-        const splitAt = Math.max(0, list.length - TAIL_LEN);
-        const older = list.slice(0, splitAt);
-        const tail = list.slice(splitAt);
+        // Le serveur n'injecte que la fin du fil : on la construit entièrement,
+        // de façon synchrone, avant la première peinture.
+        oldestLoadedId = list[0].id;
 
-        // Point d'insertion invisible placé à la fin : la fin du fil se rend en
-        // dessous de lui, les plus anciens s'empileront juste au-dessus →
-        // ordre chronologique conservé quelle que soit l'ordre des passes.
+        // Point d'insertion invisible placé juste avant la fin du fil : chaque lot
+        // de messages plus anciens s'y empile juste au-dessus → ordre
+        // chronologique conservé quelle que soit l'ordre des chargements. Le bouton
+        // « charger plus » reste le tout premier élément du fil.
         bootAnchor = document.createElement('i');
         bootAnchor.className = 'disc-boot-anchor';
         bootAnchor.style.display = 'none';
-        bootAnchor.dataset.id = tail[0].id;
-        bootAnchor.dataset.bootDate = tail[0].date || '';
-        MESSAGES_EL.appendChild(bootAnchor);
+        bootAnchor.dataset.id = list[0].id;
+        MESSAGES_EL.insertBefore(bootAnchor, MESSAGES_EL.querySelector('.disc-welcome'));
 
-        // Le premier message du pré-rendu succède à un historique non construit :
-        // on ne pose AUCUN séparateur devant lui (le joint est géré quand les
-        // plus anciens arrivent). Le très premier message de la conversation
-        // garde son séparateur (cas où tout tient dans la fin pré-affichée).
-        if (older.length > 0 && tail[0]) {
-            MESSAGES_EL.dataset.bootNoSep = '1';
-        }
-        for (const m of tail) buildBubble(m);
+        for (const m of list) buildBubble(m);
         // Tous les médias réservent leur hauteur (photos via dimensions natives,
         // GIF via carré 1/1) : le chargement ne décale pas le fil, on révèle
         // immédiatement sans écran noir pour la partie visible.
         revealDisc();
+    }
 
-        // Les messages plus anciens se construisent après la première peinture,
-        // par lots (rAF), sans rien bloquer (le visible reste en bas).
-        if (older.length > 0) {
-            prefillDone = false;
-            prefillOlder(older);
+    // Un lot de messages plus anciens, à la demande (bouton en haut du fil).
+    // Le fil reste ancré sur ce que l'utilisateur regarde : la hauteur ajoutée
+    // au-dessus est compensée, donc la vue ne saute pas.
+    function loadOlderMessages() {
+        if (loadMorePending || !oldestLoadedId || !bootAnchor) return;
+        const btn = document.getElementById('disc-loadmore-btn');
+        loadMorePending = true;
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Chargement…';
+        }
+
+        fetch(STATE_URL + '?before=' + encodeURIComponent(oldestLoadedId) + '&_=' + Date.now(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store',
+        })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (!data) return;
+                const older = (data.messages || []).map(localizeMsg);
+                if (older.length > 0) {
+                    // État avant insertion : « était-on collé en bas ? » se décide
+                    // sur la position de départ, pas après l'ajout au-dessus.
+                    const atBottom = wasAtBottom();
+                    const h0 = MESSAGES_EL.scrollHeight;
+                    for (const m of older) buildBubble(m);
+                    dedupeDateSeps(); // le joint entre deux lots peut répéter un jour
+                    oldestLoadedId = older[0].id;
+                    // Compense le lot inséré au-dessus : l'utilisateur reste sur
+                    // les mêmes messages qu'il regardait.
+                    const added = MESSAGES_EL.scrollHeight - h0;
+                    if (atBottom) {
+                        MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+                    } else if (added > 0) {
+                        MESSAGES_EL.scrollTop += added;
+                    }
+                }
+                if (!data.hasAnciens) {
+                    const box = document.getElementById('disc-loadmore');
+                    if (box) box.style.display = 'none';
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                loadMorePending = false;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Charger plus de messages';
+                }
+            });
+    }
+
+    // Deux séparateurs de date consécutifs pour le même jour (au joint entre
+    // deux lots) sont redondants : celui du bas est retiré.
+    function dedupeDateSeps() {
+        const seps = Array.from(MESSAGES_EL.querySelectorAll('.disc-date-sep'));
+        for (const sep of seps) {
+            let node = sep.previousElementSibling;
+            while (node && !node.classList.contains('disc-bubble-wrap')) {
+                node = node.previousElementSibling;
+            }
+            if (node && (node.dataset.date || '') === (sep.dataset.date || '')) {
+                sep.remove();
+            }
         }
     }
 
-    // Colle le séparateur de date manquant au joint : le premier message du
-    // pré-rendu n'en a pas (hérité d'un historique non encore construit) ; quand
-    // les plus anciens arrivent et changent de jour, on le pose a posteriori.
-    function joinSep(anchor) {
-        if (!anchor || !anchor.dataset.bootDate) return;
-        const prev = anchor.previousElementSibling;
-        if (!prev || prev.classList.contains('disc-bubble-wrap') === false) return;
-        if ((prev.dataset.date || '') === anchor.dataset.bootDate) return;
-        const sep = document.createElement('div');
-        sep.className = 'disc-date-sep';
-        sep.innerHTML = '<span>' + escHtml(formatDate(anchor.dataset.bootDate)) + '</span>';
-        MESSAGES_EL.insertBefore(sep, anchor);
-    }
-
-    function prefillOlder(older) {
-        // On construit l'historique restant par petits lots sur plusieurs frames :
-        // la page est déjà affichée et reste interactive pendant ce temps. Les
-        // bulles s'insèrent avant bootAnchor (au-dessus du fil), dans l'ordre.
-        const CHUNK = 20;
-        let i = 0;
-        const step = () => {
-            const h0 = MESSAGES_EL.scrollHeight;
-            const end = Math.min(i + CHUNK, older.length);
-            for (; i < end; i++) buildBubble(older[i]);
-            // Compense l'insertion du lot : si l'utilisateur est en bas, on reste
-            // collé ; sinon on garde la portion affichée stable (le contenu ajouté
-            // au-dessus ne le fait pas sauter).
-            const added = MESSAGES_EL.scrollHeight - h0;
-            if (wasAtBottom()) {
-                MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
-            } else if (added > 0) {
-                MESSAGES_EL.scrollTop += added;
-            }
-            if (i < older.length) {
-                requestAnimationFrame(step);
-            } else {
-                joinSep(bootAnchor);
-                prefillDone = true;
-                if (wasAtBottom()) MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
-            }
-        };
-        requestAnimationFrame(step);
-    }
+    document.getElementById('disc-loadmore-btn')
+        .addEventListener('click', loadOlderMessages);
 
     // Mobile : la barre d'URL se replie ~0,5 s après l'arrivée et agrandit le
     // viewport, les polices web s'installent aussi après coup. Chaque changement

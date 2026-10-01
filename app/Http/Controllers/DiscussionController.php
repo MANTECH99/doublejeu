@@ -7,17 +7,28 @@ use App\Models\Message;
 use App\Models\MessageDeletion;
 use App\Services\ActivityService;
 use App\Services\PushService;
+use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use InvalidArgumentException;
 
 class DiscussionController extends Controller
 {
+    /**
+     * Nombre de messages chargés par lot : au démarrage (fin du fil), puis à
+     * chaque clic sur « charger plus » en haut du fil. L'historique n'est plus
+     * envoyé en un seul bloc.
+     */
+    public const PAGINATION = 50;
+
     /**
      * URL racine-relative d'une photo de discussion (ex. `/storage/discussion-photos/x.png`).
      * Contrairement à Storage::url(), on évite l'URL absolue construite à partir
@@ -51,6 +62,45 @@ class DiscussionController extends Controller
         return parse_url(Storage::disk('public')->url($path), PHP_URL_PATH) ?: null;
     }
 
+    /**
+     * Requête de base des messages visibles par un utilisateur : ceux du couple,
+     * moins ceux qu'il a supprimés, avec les relations utiles aux bulles.
+     *
+     * @return Builder<Message>
+     */
+    protected function messagesQuery($couple, int $userId)
+    {
+        return Message::where('couple_id', $couple->id)
+            ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', $userId))
+            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path,audio_path,audio_duration']);
+    }
+
+    /**
+     * Un lot de messages du plus ancien au plus récent, pris en dessous de
+     * `$avantId` (pagination « charger plus »), et s'il en reste sous le plus
+     * ancien de ce lot.
+     *
+     * @return array{0: Collection, 1: bool}
+     */
+    protected function lotAnciens($couple, int $userId, int $avantId): array
+    {
+        $query = $this->messagesQuery($couple, $userId);
+
+        $lot = (clone $query)
+            ->where('id', '<', $avantId)
+            ->orderByDesc('id')
+            ->limit(self::PAGINATION)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $premierId = $lot->first()?->id;
+        $reste = $premierId !== null
+            && (clone $query)->where('id', '<', $premierId)->exists();
+
+        return [$lot, $reste];
+    }
+
     public function index(): View
     {
         ActivityService::touch(Auth::user());
@@ -60,21 +110,27 @@ class DiscussionController extends Controller
 
         $this->marquerLus($couple, Auth::user());
 
-        // Historique complet en vrac (sérialisé, sans HTML) : le JS construit les
+        // Fin du fil uniquement (sérialisée, sans HTML) : le JS construit ces
         // bulles avec buildBubble AVANT la première peinture — l'affichage reste
-        // strictement le rendu JS habituel, mais l'ouverture arrive directe en bas.
-        $messages = Message::where('couple_id', $couple->id)
-            ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', Auth::id()))
-            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path,audio_path,audio_duration'])
+        // strictement le rendu JS habituel, l'ouverture arrive directe en bas.
+        // Le reste de l'historique part de bouton « charger plus » en haut du fil.
+        $messages = $this->messagesQuery($couple, Auth::id())
             ->orderByDesc('id')
+            ->limit(self::PAGINATION)
             ->get()
             ->reverse()
             ->values();
+
+        $premierId = $messages->first()?->id;
+        $hasAnciens = $premierId !== null
+            && $this->messagesQuery($couple, Auth::id())->where('id', '<', $premierId)->exists();
 
         return view('discussion.index', [
             'couple' => $couple,
             'partner' => $partner,
             'messages' => $this->mapMessages($couple, Auth::id(), $messages),
+            'pagination' => self::PAGINATION,
+            'hasAnciens' => $hasAnciens,
         ]);
     }
 
@@ -143,27 +199,36 @@ class DiscussionController extends Controller
         $this->marquerLus($couple, $request->user());
 
         $apresId = (int) $request->query('after', 0);
+        $avantId = (int) $request->query('before', 0);
+        $userId = $request->user()->id;
 
-        $query = Message::where('couple_id', $couple->id)
-            ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', $request->user()->id))
-            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path,audio_path,audio_duration']);
+        $query = $this->messagesQuery($couple, $userId);
 
-        if ($apresId > 0) {
+        if ($avantId > 0) {
+            // Pagination « charger plus » : le lot situé juste au-dessus de ce que
+            // le client a déjà affiché, du plus ancien au plus récent.
+            [$messages, $hasAnciens] = $this->lotAnciens($couple, $userId, $avantId);
+        } elseif ($apresId > 0) {
             // Poll incrémental : seuls les nouveaux messages depuis le dernier id.
             $messages = (clone $query)
                 ->where('id', '>', $apresId)
                 ->orderBy('id')
                 ->get();
+            $hasAnciens = null;
         } else {
-            // Chargement initial : tout l'historique, du plus ancien au plus récent.
+            // Chargement initial : la fin du fil uniquement, du plus ancien au
+            // plus récent (l'historique se poursuit par le bouton en haut).
             $messages = (clone $query)
                 ->orderByDesc('id')
+                ->limit(self::PAGINATION)
                 ->get()
                 ->reverse()
                 ->values();
+            $premierId = $messages->first()?->id;
+            $hasAnciens = $premierId !== null
+                && (clone $query)->where('id', '<', $premierId)->exists();
         }
 
-        $userId = $request->user()->id;
         $messages = $this->mapMessages($couple, $userId, $messages);
 
         $nonLus = Message::where('couple_id', $couple->id)
@@ -171,10 +236,44 @@ class DiscussionController extends Controller
             ->whereNull('read_at')
             ->count();
 
+        // Le poll n'étendant plus l'historique, deux deltas complètent `messages` :
+        // les ids de MES messages passés « lu » depuis le dernier appel (✓✓), et
+        // les messages modifiés depuis (édition du texte côté partenaire).
+        $lus = [];
+        $modifies = [];
+        $depuis = $request->query('since');
+        if (is_string($depuis) && $depuis !== '') {
+            try {
+                $depuisDate = Carbon::parse($depuis);
+            } catch (InvalidArgumentException) {
+                $depuisDate = null;
+            }
+
+            if ($depuisDate) {
+                $lus = Message::where('couple_id', $couple->id)
+                    ->where('sender_id', $userId)
+                    ->whereNotNull('read_at')
+                    ->where('read_at', '>', $depuisDate)
+                    ->orderBy('id')
+                    ->limit(200)
+                    ->pluck('id')
+                    ->all();
+
+                $modifies = $this->mapMessages($couple, $userId, (clone $query)
+                    ->where('edited_at', '>', $depuisDate)
+                    ->orderBy('id')
+                    ->limit(200)
+                    ->get());
+            }
+        }
+
         $partenaire = $couple->partnerOf($request->user())?->fresh();
 
         return response()->json([
             'messages' => $messages,
+            'hasAnciens' => $hasAnciens,
+            'lus' => $lus,
+            'modifies' => $modifies,
             'nonLus' => $nonLus,
             'partenaire' => [
                 'enLigne' => $partenaire?->last_active_at !== null && $partenaire->last_active_at->diffInMinutes() < 1,

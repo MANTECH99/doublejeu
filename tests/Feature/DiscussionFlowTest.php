@@ -126,9 +126,10 @@ class DiscussionFlowTest extends TestCase
         $this->assertSame('Trois', $partial['messages'][0]['body']);
     }
 
-    public function test_fetch_returns_all_messages_in_chronological_order_on_initial_load(): void
+    public function test_initial_fetch_returns_only_the_last_page_in_chronological_order(): void
     {
-        // Tout l'historique est renvoyé au chargement initial, du plus ancien au plus récent.
+        // Le chargement initial ne renvoie QUE la fin du fil (50 messages), pas
+        // tout l'historique : le reste passe par le bouton « charger plus ».
         for ($i = 1; $i <= 110; $i++) {
             Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'm-'.$i]);
         }
@@ -138,9 +139,129 @@ class DiscussionFlowTest extends TestCase
             ->assertOk()
             ->json();
 
-        $this->assertCount(110, $fetch['messages']);
-        $this->assertSame('m-1', $fetch['messages'][0]['body'], 'Le plus ancien message est attendu en premier.');
-        $this->assertSame('m-110', $fetch['messages'][109]['body'], 'Le tout dernier message doit être présent.');
+        $this->assertCount(50, $fetch['messages']);
+        $this->assertSame('m-61', $fetch['messages'][0]['body'], 'Le plus ancien du lot est attendu en premier.');
+        $this->assertSame('m-110', $fetch['messages'][49]['body'], 'Le tout dernier message doit être présent.');
+        $this->assertTrue($fetch['hasAnciens'], 'Il reste des messages plus anciens à charger.');
+    }
+
+    public function test_fetch_before_returns_the_previous_page_of_older_messages(): void
+    {
+        for ($i = 1; $i <= 110; $i++) {
+            Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'm-'.$i]);
+        }
+
+        $this->actingAs($this->bob);
+
+        // Le lot situé juste au-dessus de la fin du fil (m-11 … m-60).
+        $page = $this->getJson(route('discussion.fetch').'?before=61')->assertOk()->json();
+
+        $this->assertCount(50, $page['messages']);
+        $this->assertSame('m-11', $page['messages'][0]['body']);
+        $this->assertSame('m-60', $page['messages'][49]['body']);
+        $this->assertTrue($page['hasAnciens'], 'Un premier lot reste à charger.');
+    }
+
+    public function test_fetch_before_reports_no_more_history_when_the_beginning_is_reached(): void
+    {
+        for ($i = 1; $i <= 60; $i++) {
+            Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'm-'.$i]);
+        }
+
+        $this->actingAs($this->bob);
+
+        $dernierLot = $this->getJson(route('discussion.fetch').'?before=11')->assertOk()->json();
+
+        $this->assertCount(10, $dernierLot['messages']);
+        $this->assertSame('m-1', $dernierLot['messages'][0]['body']);
+        $this->assertFalse($dernierLot['hasAnciens'], 'Le bouton doit disparaître au début de la conversation.');
+    }
+
+    public function test_initial_page_hides_the_load_more_button_when_history_fits_in_one_page(): void
+    {
+        Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Seul']);
+
+        $html = $this->actingAs($this->bob)
+            ->get(route('discussion.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="disc-loadmore"', $html);
+        $this->assertStringContainsString('id="disc-loadmore" style="display:none"', $html);
+    }
+
+    public function test_initial_page_shows_the_load_more_button_when_history_is_longer_than_one_page(): void
+    {
+        for ($i = 1; $i <= 51; $i++) {
+            Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'm-'.$i]);
+        }
+
+        $html = $this->actingAs($this->bob)
+            ->get(route('discussion.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="disc-loadmore" style="display:block"', $html);
+    }
+
+    public function test_initial_page_injects_only_the_last_page_of_messages(): void
+    {
+        for ($i = 1; $i <= 110; $i++) {
+            Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'm-'.$i]);
+        }
+
+        $html = $this->actingAs($this->bob)
+            ->get(route('discussion.index'))
+            ->assertOk()
+            ->getContent();
+
+        preg_match('#id="disc-init-messages">(.*?)</script>#s', $html, $m);
+        $ids = json_decode(html_entity_decode($m[1], ENT_QUOTES, 'UTF-8'), true);
+
+        $this->assertCount(50, $ids, 'Seule la fin du fil est injectée au démarrage.');
+        $this->assertSame('m-61', $ids[0]['body']);
+        $this->assertSame('m-110', $ids[49]['body']);
+    }
+
+    public function test_poll_returns_read_receipts_and_edits_since_a_cursor(): void
+    {
+        $envoyeParAlice = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Coucou']);
+        $envoyeParBob = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->bob->id, 'body' => 'Salut']);
+
+        $this->actingAs($this->bob);
+
+        // Alice corrige son message et lit celui de Bob.
+        $envoyeParAlice->forceFill(['body' => 'Coucou bis', 'edited_at' => now()])->save();
+        $envoyeParBob->markAsRead();
+
+        // Le curseur `since` est au format du navigateur (new Date().toISOString()).
+        $depuis = now()->subMinute()->utc()->format('Y-m-d\TH:i:s\Z');
+        $poll = $this->getJson(route('discussion.fetch').'?after='.$envoyeParBob->id.'&since='.$depuis)
+            ->assertOk()
+            ->json();
+
+        // Aucun nouveau message (l'historique n'est plus renvoyé en entier).
+        $this->assertCount(0, $poll['messages']);
+        // Mais les ✓✓ de MES messages lus par le partenaire, et l'édition reçue.
+        $this->assertContains($envoyeParBob->id, $poll['lus']);
+        $this->assertCount(1, $poll['modifies']);
+        $this->assertSame($envoyeParAlice->id, $poll['modifies'][0]['id']);
+        $this->assertSame('Coucou bis', $poll['modifies'][0]['body']);
+        $this->assertTrue($poll['modifies'][0]['edited']);
+    }
+
+    public function test_poll_ignores_an_invalid_since_cursor(): void
+    {
+        Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Coucou']);
+
+        $poll = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch').'?after=0&since=pas-une-date')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame([], $poll['lus']);
+        $this->assertSame([], $poll['modifies']);
+        $this->assertCount(1, $poll['messages']);
     }
 
     public function test_partner_can_reply_to_a_message(): void
