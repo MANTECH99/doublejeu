@@ -45,9 +45,12 @@
                     </div>
                     <div style="font-size:15px; line-height:1.5">{{ $qj->question->texte }}</div>
                     @if ($revele)
-                        <div class="mt8" style="display:flex; gap:8px; flex-wrap:wrap">
+                        <div class="qj-reponses">
                             @foreach ($reponses as $r)
-                                <span class="chip">{{ $r->joueur->name }} : <b style="margin-left:4px">{{ $r->reponse }}</b></span>
+                                <div class="qj-reponse">
+                                    <div class="qj-reponse-nom">{{ $r->joueur->name }}</div>
+                                    <div class="qj-reponse-texte txt-libre">{{ $r->reponse }}</div>
+                                </div>
                             @endforeach
                         </div>
                     @else
@@ -95,7 +98,7 @@
 
             if (!data.jaiRepondu) {
                 zone.innerHTML = `
-                    <textarea class="input" id="reponse-question" rows="3" maxlength="500" placeholder="Ta réponse, en secret…"></textarea>
+                    <textarea class="input" id="reponse-question" rows="3" maxlength="1500" placeholder="Ta réponse, en secret…"></textarea>
                     <button class="btn btn-primary btn-block mt8" onclick="repondreQuestion()">Répondre 🤫</button>`;
             } else if (!data.revelee) {
                 zone.innerHTML = `
@@ -104,11 +107,26 @@
             } else {
                 zone.innerHTML = `
                     <div class="badge succes mt8">🔓 Réponses révélées !</div>
-                    <div class="mt8" style="display:flex; gap:8px; flex-wrap:wrap">
-                        <span class="chip">Toi : <b style="margin-left:4px">${data.maReponse}</b></span>
-                        <span class="chip">${data.partenaire} : <b style="margin-left:4px">${data.saReponse}</b></span>
+                    <div class="qj-reponses">
+                        <div class="qj-reponse">
+                            <div class="qj-reponse-nom">Toi</div>
+                            <div class="qj-reponse-texte txt-libre"></div>
+                        </div>
+                        <div class="qj-reponse">
+                            <div class="qj-reponse-nom"></div>
+                            <div class="qj-reponse-texte txt-libre"></div>
+                        </div>
                     </div>
                     <div class="tiny muted mt8">À demain pour une nouvelle question 🤍</div>`;
+            }
+
+            // Remplissage en textContent : jamais d'injection, et les paragraphes
+            // sont restitués tels quels grâce à .txt-libre (white-space: pre-wrap).
+            const revealed = zone.querySelectorAll('.qj-reponse');
+            if (revealed.length === 2) {
+                revealed[0].querySelector('.qj-reponse-texte').textContent = data.maReponse ?? '';
+                revealed[1].querySelector('.qj-reponse-nom').textContent = data.partenaire ?? '';
+                revealed[1].querySelector('.qj-reponse-texte').textContent = data.saReponse ?? '';
             }
 
             const textarea = document.getElementById('reponse-question');

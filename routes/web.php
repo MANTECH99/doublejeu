@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AnniversaireController;
 use App\Http\Controllers\BucketListController;
 use App\Http\Controllers\CalendrierController;
 use App\Http\Controllers\CardsController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\MeteoController;
 use App\Http\Controllers\MissionSecreteController;
 use App\Http\Controllers\MotsCroisesController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\OctobreRoseController;
 use App\Http\Controllers\OuiNonController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PwaController;
@@ -76,6 +78,15 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::get('/discussion/non-lus', [DiscussionController::class, 'nonLus'])->name('discussion.non-lus');
     Route::delete('/discussion/message/{id}', [DiscussionController::class, 'delete'])->name('discussion.delete');
     Route::put('/discussion/message/{id}', [DiscussionController::class, 'update'])->name('discussion.update');
+
+    // ---- Anniversaires : cadeau secret préparé à l'avance ----
+    Route::get('/anniversaires/celebration', [AnniversaireController::class, 'celebrer'])->name('anniversaire.celebrer');
+    Route::post('/anniversaires/celebration', [AnniversaireController::class, 'enregistrer'])->name('anniversaire.enregistrer');
+    Route::get('/anniversaires/ma-celebration', [AnniversaireController::class, 'ouvrir'])->name('anniversaire.ouvrir');
+    Route::post('/anniversaires/info-vue', [AnniversaireController::class, 'infoVue'])->name('anniversaire.info.vue');
+
+    // ---- Octobre rose : sensibilisation, le 1er octobre, une fois par an ----
+    Route::post('/octobre-rose/info-vue', [OctobreRoseController::class, 'infoVue'])->name('octobre-rose.info.vue');
 
     // ---- Vérité ou Action ----
     Route::get('/jeux/verite-action', [VeriteActionController::class, 'index'])->name('vo.index');

@@ -79,7 +79,7 @@ class QuestionJourController extends Controller
     public function repondre(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'reponse' => ['required', 'string', 'max:500'],
+            'reponse' => ['required', 'string', 'max:1500'],
         ]);
 
         $couple = $request->user()->coupleModel;

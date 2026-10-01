@@ -246,6 +246,28 @@
             } catch (e) {}
         })();
 
+        // Un seul modal à la fois, sur toute l'app. Les modals rendus par la
+        // page (tutoriel anniversaire, Octobre rose…) et les popups asynchrones
+        // (« question du soir » de 20h) passent tous par cette fonction : le
+        // rappel attend qu'aucun .modal-ov ne soit plus visible.
+        window.djModalLibre = function (rappel) {
+            var attendre = function () {
+                var occupe = Array.prototype.some.call(
+                    document.querySelectorAll('.modal-ov'),
+                    function (el) { return el.style.display === 'flex'; }
+                );
+
+                if (occupe) {
+                    setTimeout(attendre, 300);
+                    return;
+                }
+
+                rappel();
+            };
+
+            attendre();
+        };
+
         // Infos missions : popup persistante « nouvelle mission » / « question du soir » (D'accord = vu).
         (function () {
             var queued = [];
@@ -308,7 +330,10 @@
 
             function kick() {
                 if (!queued.length) return;
-                setTimeout(showNext, 600);
+                // Si un modal de la page est déjà ouvert (anniversaire, Octobre
+                // rose…), la popup attend qu'il soit refermé.
+                if (window.djModalLibre) window.djModalLibre(showNext);
+                else setTimeout(showNext, 600);
             }
 
             if (document.body.getAttribute('data-auth') === '1' && document.body.getAttribute('data-linked') === '1') {
@@ -326,6 +351,24 @@
                 }).catch(function () {});
             }
         })();
+    </script>
+
+    <script>
+        // Formulaires longs (vidéo, son, photos) : on affiche l'état d'envoi,
+        // sinon le bouton semble inerte pendant l'upload.
+        document.querySelectorAll('form[data-busy]').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                const bouton = form.querySelector('[type="submit"]');
+                if (!bouton || bouton.dataset.busyDone) return;
+
+                bouton.dataset.busyDone = '1';
+                bouton.setAttribute('aria-busy', 'true');
+                bouton.classList.add('is-busy');
+                bouton.disabled = true;
+                bouton.innerHTML = '<span class="spinner spinner-sm"></span><span>'
+                    + (form.dataset.busyLabel || 'Envoi en cours…') + '</span>';
+            });
+        });
     </script>
 
     @stack('scripts')

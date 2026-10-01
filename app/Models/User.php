@@ -11,9 +11,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use LaravelWebauthn\WebauthnAuthenticatable;
 
-#[Fillable(['name', 'email', 'password', 'gender', 'avatar_url', 'couple_id', 'date_naissance', 'devin_mission_jour', 'devin_mission_reponse', 'devin_mission_resultat', 'devin_mission_compteur', 'timezone', 'mission_question_notif_jour', 'devin_verdict_vu_jour', 'typing_at', 'recording_at'])]
+#[Fillable(['name', 'email', 'password', 'gender', 'avatar_url', 'couple_id', 'date_naissance', 'devin_mission_jour', 'devin_mission_reponse', 'devin_mission_resultat', 'devin_mission_compteur', 'timezone', 'mission_question_notif_jour', 'devin_verdict_vu_jour', 'anniv_info_vue_annee', 'octobre_rose_vue_annee', 'typing_at', 'recording_at'])]
 #[Hidden(['password', 'remember_token', 'pin_hash', 'avatar_url_pending'])]
 class User extends Authenticatable
 {
@@ -27,6 +28,8 @@ class User extends Authenticatable
             'devin_mission_jour' => 'datetime',
             'mission_question_notif_jour' => 'datetime',
             'devin_verdict_vu_jour' => 'datetime',
+            'anniv_info_vue_annee' => 'integer',
+            'octobre_rose_vue_annee' => 'integer',
             'email_verified_at' => 'datetime',
             'last_active_at' => 'datetime',
             'typing_at' => 'datetime',
@@ -152,5 +155,45 @@ class User extends Authenticatable
         }
 
         return $prochain;
+    }
+
+    /**
+     * Nombre de jours avant le prochain anniversaire (0 le jour J, null si la
+     * date de naissance n'est pas renseignée).
+     */
+    public function joursAvantAnniversaire(): ?int
+    {
+        $prochain = $this->prochainAnniversaire();
+
+        return $prochain ? (int) today()->startOfDay()->diffInDays($prochain) : null;
+    }
+
+    /**
+     * L'utilisateur a-t-il déjà vu le tutoriel d'utilisation du cadeau
+     * d'anniversaire pour l'anniversaire de $annee ? Le tutoriel est
+     * re-proposé chaque année.
+     */
+    public function aVuLInfoAnniversaire(int $annee): bool
+    {
+        return $this->anniv_info_vue_annee === $annee;
+    }
+
+    /**
+     * L'utilisateur a-t-il déjà vu le module de sensibilisation Octobre rose
+     * de l'année $annee ? Il est reproposé chaque année.
+     */
+    public function aVuLOctobreRose(int $annee): bool
+    {
+        return $this->octobre_rose_vue_annee === $annee;
+    }
+
+    /**
+     * L'utilisateur a-t-il indiqué ce genre ? Le champ est saisi librement
+     * (« Femme », « femme », « Homme »…) : on compare donc en ignorant la
+     * casse et les espaces superflus.
+     */
+    public function genreEst(string $genre): bool
+    {
+        return Str::lower(trim((string) $this->gender)) === Str::lower(trim($genre));
     }
 }

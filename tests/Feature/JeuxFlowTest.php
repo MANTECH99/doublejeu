@@ -278,6 +278,55 @@ class JeuxFlowTest extends TestCase
             ->assertJson(['poolEpuise' => true]);
     }
 
+    public function test_question_du_jour_accepte_1500_caracteres_pas_plus(): void
+    {
+        QuestionDuJour::create(['texte' => 'Quel est ton avenir idéal ?', 'categorie' => 'profonde']);
+
+        // Le champ client et la règle serveur doivent rester alignés sur 1500.
+        $this->actingAs($this->alice)
+            ->get(route('question.index'))
+            ->assertOk()
+            ->assertSee('maxlength="1500"', false);
+
+        $this->actingAs($this->alice)
+            ->postJson(route('question.repondre'), ['reponse' => str_repeat('a', 1500)])
+            ->assertOk();
+
+        $this->actingAs($this->bob)
+            ->postJson(route('question.repondre'), ['reponse' => str_repeat('b', 1501)])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('reponse');
+    }
+
+    public function test_question_du_jour_respecte_les_paragraphes_des_reponses(): void
+    {
+        $question = QuestionDuJour::create(['texte' => 'Quel est ton avenir idéal ?', 'categorie' => 'profonde']);
+        $reponse = "Premier paragraphe.\n\nSecond paragraphe.";
+
+        $hier = QuestionJournaliere::create([
+            'couple_id' => $this->couple->id,
+            'question_id' => $question->id,
+            'jour' => today()->subDay(),
+        ]);
+
+        foreach ([[$this->alice, $reponse], [$this->bob, 'Pièce jointe']] as [$joueur, $texte]) {
+            ReponseQuestionJournaliere::create([
+                'question_journaliere_id' => $hier->id,
+                'joueur_id' => $joueur->id,
+                'reponse' => $texte,
+            ]);
+        }
+
+        // Les réponses sont posées en bloc (plus en chip inline) et le texte libre
+        // conserve ses sauts de ligne côté navigateur.
+        $this->actingAs($this->alice)
+            ->get(route('question.index'))
+            ->assertOk()
+            ->assertSee('qj-reponse-texte txt-libre', false)
+            ->assertSee($reponse, false)
+            ->assertDontSee('<span class="chip">Alice', false);
+    }
+
     public function test_question_du_jour_historique_pagine_et_masque_les_reponses_non_revelees(): void
     {
         $question = QuestionDuJour::create(['texte' => 'Quel est ton avenir idéal ?', 'categorie' => 'profonde']);
@@ -337,9 +386,9 @@ class JeuxFlowTest extends TestCase
         $this->actingAs($this->alice)
             ->get(route('question.index'))
             ->assertOk()
-            ->assertSee('Alice :')
+            ->assertSee('Alice', false)
             ->assertSee('Une blague sur les blagues')
-            ->assertSee('Bob :')
+            ->assertSee('Bob', false)
             ->assertSee('Pire')
             ->assertDontSee('Réponses jamais révélées');
     }

@@ -16,7 +16,10 @@
     --primary: #e63946;
     --primary-dark: #c12b37;
     --primary-2: #ff6b6b;
-    --rose: #ff6b6b;
+    /* Octobre rose : roseocyanose du ruban de solidarité. */
+    --rose: #e75480;
+    --rose-soft: #ff8fab;
+    --rose-deep: #a3244d;
     --success: #35d07f;
     --warning: #ffb020;
     --gold: #ffd166;
@@ -411,7 +414,11 @@ body {
 }
 .hero-orb-rose { width: 140px; height: 140px; top: -60px; right: -45px; background: rgba(77, 171, 247, 0.45); }
 .hero-orb-blue { width: 140px; height: 140px; bottom: -60px; left: -45px; background: rgba(77, 171, 247, 0.45); }
-.hero-inner { position: relative; z-index: 1; }
+/* Pas de z-index ici : ce contexte d'empilement enfermerait le bouton
+   Célébrer dans la carte hero, impossible à passer au-dessus du voile du
+   modal. Les orbes n'en ont pas et arrivent avant dans le DOM, donc le hero
+   s'affiche identically sans lui. */
+.hero-inner { position: relative; }
 
 .hero-pair { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .hero-avatars { display: flex; align-items: center; }
@@ -441,6 +448,8 @@ body {
 }
 .hero-amp { color: var(--text-3); font-weight: 600; padding: 0 6px; }
 .hero-sub { margin-top: 3px; }
+.hero-celebrer { margin-top: 12px; }
+.hero-cadeau { max-width: 100%; margin-top: 12px; }
 
 .aniv-list { display: grid; gap: 10px; }
 .aniv-row {
@@ -453,6 +462,15 @@ body {
     border: 1px solid var(--border);
 }
 html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
+.aniv-row-jourj {
+    justify-content: center;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gold);
+    background: linear-gradient(135deg, rgba(255, 209, 102, 0.16), rgba(255, 176, 32, 0.05));
+    border-color: rgba(255, 209, 102, 0.35);
+}
 .aniv-icon {
     width: 42px;
     height: 42px;
@@ -466,6 +484,13 @@ html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
 }
 .aniv-body { min-width: 0; }
 .aniv-name { font-size: 14px; font-weight: 600; }
+.aniv-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
 .aniv-pill {
     flex-shrink: 0;
     padding: 7px 12px;
@@ -476,6 +501,142 @@ html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
     color: var(--primary-2);
     background: linear-gradient(135deg, rgba(230, 57, 70, 0.18), rgba(230, 57, 70, 0.07));
     border: 1px solid rgba(230, 57, 70, 0.35);
+}
+.aniv-pill-cadeau {
+    max-width: 210px;
+    text-align: center;
+    line-height: 1.35;
+    font-size: 12px;
+    color: var(--gold);
+    text-decoration: none;
+    background: linear-gradient(135deg, rgba(255, 209, 102, 0.2), rgba(255, 176, 32, 0.07));
+    border-color: rgba(255, 209, 102, 0.4);
+}
+.aniv-pill-cadeau:hover { border-color: var(--gold); }
+.hero-cadeau {
+    position: relative;
+    overflow: hidden;
+    animation: cadeauHalo 2.4s ease-in-out infinite;
+}
+.hero-cadeau::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+    transform: translateX(-100%);
+    animation: cadeauScintille 2.4s ease-in-out infinite;
+}
+
+/* ---------- Anniversaire : cadeau secret ---------- */
+.confettis {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    overflow: hidden;
+    pointer-events: none;
+}
+.confetti {
+    position: absolute;
+    top: -24px;
+    width: 9px;
+    height: 9px;
+    opacity: 0;
+    animation-name: confettiTombe;
+    animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1);
+    animation-fill-mode: forwards;
+}
+.confetti-carre { border-radius: 2px; }
+.confetti-rond { border-radius: 50%; width: 8px; height: 8px; }
+.confetti-rect { width: 6px; height: 13px; border-radius: 2px; }
+@keyframes confettiTombe {
+    0% { opacity: 1; transform: translate3d(0, -10vh, 0) rotate(0deg); }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% {
+        opacity: 0;
+        transform: translate3d(var(--derive, 40px), 105vh, 0) rotate(var(--rot, 320deg));
+    }
+}
+
+.cel-secret {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: linear-gradient(135deg, rgba(177, 151, 252, 0.12), rgba(177, 151, 252, 0.04));
+    border-color: rgba(177, 151, 252, 0.3);
+}
+.cel-secret-ico { font-size: 22px; flex-shrink: 0; }
+.cel-audio { width: 100%; margin-top: 8px; }
+.cel-video {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    border-radius: var(--radius-sm);
+    background: #000;
+}
+.cel-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 8px;
+    color: var(--text-2);
+}
+.cel-cadeau-auteur {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+}
+.cel-cadeau-coeur { font-size: 20px; }
+.cel-message {
+    font-size: 16px;
+    line-height: 1.65;
+    white-space: pre-line;
+}
+.cel-bloc {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    font-size: 15px;
+    line-height: 1.5;
+}
+.cel-bloc-t {
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-2);
+}
+
+/* Texte libre saisi par un joueur : ses paragraphes sont respectés, et les
+   mots longs ne font pas déborder le bloc. */
+.txt-libre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---------- Question du Jour : réponses empilées ---------- */
+.qj-reponses {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+}
+.qj-reponse {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-soft);
+}
+.qj-reponse-nom {
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-2);
+}
+.qj-reponse-texte {
+    font-size: 14.5px;
+    line-height: 1.55;
 }
 
 /* ---------- Météo du couple dashboard ---------- */
@@ -566,6 +727,8 @@ html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
     .hero-card { padding: 20px 16px; }
     .aniv-pill { font-size: 12px; padding: 6px 10px; }
     .aniv-icon { width: 38px; height: 38px; }
+    .aniv-pill-cadeau { max-width: 100%; }
+    .aniv-actions { flex-wrap: wrap; justify-content: flex-end; }
     .meteo-cell { padding: 14px 6px 12px; }
     .meteo-cell-emoji { width: 50px; height: 50px; font-size: 26px; }
 }
@@ -801,12 +964,27 @@ html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
 @keyframes pop { 0% { transform: scale(0.7); opacity: 0; } 80% { transform: scale(1.06); } 100% { transform: scale(1); opacity: 1; } }
 @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(230,57,70,0.45); } 50% { box-shadow: 0 0 0 12px rgba(230,57,70,0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes cadeauHalo {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 209, 102, 0.35); }
+    50% { box-shadow: 0 0 14px 2px rgba(255, 209, 102, 0.35); }
+}
+@keyframes cadeauScintille {
+    0%, 55% { transform: translateX(-100%); }
+    85%, 100% { transform: translateX(100%); }
+}
 
 .fadeIn { animation: fadeIn 0.4s ease both; }
 .pop { animation: pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
 .pulse-glow { animation: pulseGlow 2s infinite; }
 
 .spinner { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--primary-2); animation: spin 0.8s linear infinite; }
+.spinner-sm { width: 16px; height: 16px; border-width: 2px; }
+
+/* Bouton en attente d'envoi : évite l'impression d'un clic sans effet. */
+.btn.is-busy {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    opacity: 0.8; cursor: progress; pointer-events: none;
+}
 
 /* ---------- Modal ---------- */
 .modal-ov {
@@ -822,6 +1000,137 @@ html[data-theme='light'] .aniv-row { background: rgba(15, 15, 20, 0.03); }
     animation: pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
 .modal h3 { margin: 0 0 10px; font-size: 20px; }
+
+/* ---------- Tutoriel anniversaire : flèche vers le bouton Célébrer ---------- */
+.aniv-info-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 14px;
+    text-align: left;
+    font-size: 14px;
+}
+.aniv-info-list div { display: flex; align-items: center; gap: 9px; }
+
+/* 2e étape du tutoriel : on réutilise le composant .modal-ov/.modal du 1er,
+   qui est déjà rendu partout ailleurs. Le doigt et la flèche sont en haut de la
+   boîte et pointent vers le haut, c'est-à-dire vers le bouton Célébrer. */
+.anniv-tuto-box { position: relative; }
+.anniv-tuto-doigt {
+    font-size: 38px;
+    line-height: 1;
+    margin-bottom: 8px;
+}
+.anniv-tuto-fleche {
+    position: absolute;
+    top: -11px; left: 50%;
+    width: 22px; height: 22px;
+    margin-left: -11px;
+    background: var(--card);
+    border-left: 2px solid var(--border);
+    border-top: 2px solid var(--border);
+    transform: rotate(45deg);
+}
+
+/* Shimmer : un reflet qui traverse le bouton de gauche à droite, en plus de
+   l'aurore pulse-glow. Il passe par un pseudo-élément pour ne pas toucher au
+   fond de btn-primary : le dégradé y est entièrement transparent sauf au
+   milieu, donc la couleur d'origine reste visible sous le reflet. */
+@keyframes shimmer {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+}
+
+.hero-celebrer { position: relative; overflow: hidden; }
+
+.hero-celebrer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(100deg, rgba(255, 255, 255, 0) 35%, rgba(255, 255, 255, 0.32) 50%, rgba(255, 255, 255, 0) 65%);
+    animation: shimmer 2.6s infinite;
+}
+
+/* ---------- Octobre rose : sensibilisation ---------- */
+.rose-ov {
+    background: linear-gradient(165deg, rgba(231, 84, 128, 0.28), rgba(10, 10, 15, 0.86));
+    backdrop-filter: blur(5px);
+}
+
+.rose-box {
+    border-color: var(--rose);
+    box-shadow: 0 18px 50px rgba(231, 84, 128, 0.28);
+}
+
+/* Ruban de solidarité, en haut du modal. */
+.rose-ruban {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 6px;
+    border-radius: 22px 22px 0 0;
+    background: linear-gradient(90deg, var(--rose-deep), var(--rose), var(--rose-soft));
+}
+
+.rose-emoji { font-size: 44px; line-height: 1; margin-bottom: 6px; }
+
+.rose-kicker {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--rose-soft);
+    margin-bottom: 8px;
+}
+
+.rose-box h3 { color: var(--text); }
+.rose-texte { font-size: 14.5px; line-height: 1.6; }
+.rose-texte strong { color: var(--rose-soft); }
+
+/* Encadré de la question à se poser. */
+.rose-ribbon {
+    margin: 14px 0 10px;
+    padding: 12px 14px;
+    border-left: 3px solid var(--rose);
+    border-radius: 0 12px 12px 0;
+    background: rgba(231, 84, 128, 0.10);
+    color: var(--text-2);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Avertissement médical : doit rester discret mais lisible. */
+.rose-foot {
+    color: var(--text-3);
+    font-size: 11.5px;
+    line-height: 1.45;
+    margin: 0 0 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.btn-rose {
+    background: linear-gradient(135deg, var(--rose-deep), var(--rose));
+    color: #fff;
+    box-shadow: 0 8px 26px rgba(231, 84, 128, 0.35);
+}
+.btn-rose:hover { box-shadow: 0 10px 32px rgba(231, 84, 128, 0.5); }
+
+/* Le modal du 2e écran n'a pas de flou : c'est la flèche qui désigne le bouton
+   Célébrer, il doit donc rester net devant. Le reste de la page reste
+   simplement assombri. */
+.modal-ov.anniv-tuto-veil {
+    background: rgba(5, 5, 9, 0.55);
+    backdrop-filter: none;
+}
+
+/* Le modal est légèrement remonté : la flèche gagne ainsi de la place pour
+   viser le bouton Célébrer, situé plus haut dans la page. */
+.anniv-tuto-descend { padding-top: 9vh; }
+
+/* Pendant le tutoriel, le bouton Célébrer — et lui seul — doit rester visible
+   au-dessus du voile, puisque c'est lui que la flèche désigne. Il ne doit pas
+   être surligné pour autant : la flèche suffit. */
+.hero-celebrer.anniv-cible { position: relative; z-index: 151; }
 
 /* ---------- List rows ---------- */
 .row {

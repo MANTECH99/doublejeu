@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Celebration;
 use App\Models\Couple;
 use App\Models\MeteoCouple;
 use App\Models\User;
@@ -40,28 +41,63 @@ class CoupleController extends Controller
             ];
         };
 
-        $anniversaire = function (User $user): array {
-            $prochain = $user->prochainAnniversaire();
+        // Chaque ligne d'anniversaire : le compte à rebours, le cadeau à préparer
+        // (côté partenaire) et le cadeau qui s'ouvre le jour J (côté moi).
+        $anniversaire = function (User $qui, User $auteur, bool $estMoi): array {
+            $celebration = $estMoi
+                ? Celebration::revelable($auteur, $qui)
+                : Celebration::de($auteur, $qui);
 
             return [
-                'name' => $user->name,
-                'date' => $prochain,
-                'jours' => $prochain ? (int) today()->startOfDay()->diffInDays($prochain) : null,
+                'name' => $qui->name,
+                'date' => $qui->prochainAnniversaire(),
+                'jours' => $qui->joursAvantAnniversaire(),
+                'celebration' => $celebration,
+                'peutCelebrer' => ! $estMoi && Celebration::fenetreOuverte($qui->joursAvantAnniversaire()),
+                'cadeauDuJour' => $estMoi && $qui->joursAvantAnniversaire() === 0 && $celebration !== null,
+                // Le tutoriel s'affiche à l'ouverture de la fenêtre, une fois par
+                // utilisateur et par anniversaire : on ne le repropose pas ensuite.
+                'fenetreJours' => Celebration::FENETRE_JOURS,
+                // Pas de condition sur le cadeau : le bouton Célébrer du hero est le seul
+                // moyen d'atteindre la page cadeau, donc le tutoriel est de
+                // toute façon passé avant. On ne le masque donc jamais, et il
+                // revient tant que l'utilisateur ne l'a pas validé.
+                'infoDue' => ! $estMoi
+                    && Celebration::fenetreOuverte($qui->joursAvantAnniversaire())
+                    && ! Auth::user()->aVuLInfoAnniversaire($qui->prochainAnniversaire()?->year ?? 0),
             ];
         };
+
+        $me = Auth::user();
 
         return view('couple.dashboard', [
             'couple' => $couple,
             'partner' => $partner,
-            'me' => Auth::user(),
+            'me' => $me,
             'partiesVo' => $couple->partiesVo()->latest()->limit(5)->get(),
             'missionsEnCours' => $couple->missionsSecreteEnCours()->count(),
             'missionsOuiNon' => $couple->missionsOuiNon()->where('statut', 'a_realiser')->get(),
             'meteoMoi' => $meteoInfo($maHumeur),
             'meteoPartenaire' => $meteoInfo($saHumeur),
             'meteoSynthese' => MeteoCouple::synthese($maHumeur, $saHumeur),
-            'annivMoi' => $anniversaire(Auth::user()),
-            'annivPartenaire' => $anniversaire($partner),
+            'annivMoi' => $anniversaire($me, $partner, true),
+            'annivPartenaire' => $anniversaire($partner, $me, false),
+            'octobreRose' => [
+                // Le 1er octobre uniquement, et une fois par année : le module
+                // revient tous les ans mais pas pendant les 30 jours suivants,
+                // pour ne pas harceler l'utilisateur chaque jour du mois.
+                'due' => today()->month === 10
+                    && today()->day === 1
+                    && ! $me->aVuLOctobreRose(today()->year),
+                'partenaire' => $partner?->name,
+                // Le titre s'adresse à celui qui lit : une femme voit son partenaire
+                // la chercher (« Abdoul pense à toi »), un homme est invité à
+                // penser à elle (« Pense à Penda aujourd'hui »). Sans genre
+                // renseigné, on garde la formulation neutre.
+                'titre' => $me->genreEst('Femme')
+                    ? $partner?->name." pense à toi aujourd'hui"
+                    : 'Pense à '.($partner?->name ?? '')." aujourd'hui",
+            ],
         ]);
     }
 

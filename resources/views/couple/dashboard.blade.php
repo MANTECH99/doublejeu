@@ -17,6 +17,16 @@
                     </div>
                     <div class="hero-names">{{ $me->name }} <span class="hero-amp">&</span> {{ $partner->name }}</div>
                     <div class="hero-sub tiny muted">Votre duo · votre histoire</div>
+                    @if ($annivMoi['cadeauDuJour'])
+                        <a href="{{ route('anniversaire.ouvrir') }}" class="aniv-pill aniv-pill-cadeau hero-cadeau">
+                            🎁 {{ $partner->name }} t'a préparé quelque chose
+                        </a>
+                    @elseif ($annivPartenaire['peutCelebrer'])
+                        <a href="{{ route('anniversaire.celebrer') }}" id="hero-celebrer"
+                            class="btn btn-sm btn-primary hero-celebrer pulse-glow">
+                            {{ $annivPartenaire['celebration'] ? '🎂 Modifier son cadeau' : '🎂 Célébrer son anniversaire' }}
+                        </a>
+                    @endif
                 </div>
             </div>
 
@@ -25,28 +35,36 @@
                 <div class="divider"></div>
                 <div class="aniv-list">
                     @foreach ($anivs as $anniv)
-                        <div class="aniv-row">
-                            <div class="aniv-icon">🎂</div>
-                            <div class="aniv-body grow">
-                                <div class="aniv-name">Anniversaire de {{ $anniv['name'] }}</div>
-                                <div class="tiny muted">
-                                    @if ($anniv['date'])
-                                        {{ $anniv['date']->translatedFormat('l j F Y') }}
-                                    @else
-                                        Date de naissance à renseigner sur le profil
-                                    @endif
+                        @if ($anniv['jours'] === 0)
+                            {{-- Jour J : une seule ligne à la place de la fiche.
+                                 Le lien cadeau, s'il y en a un, est dans le hero. --}}
+                            <div class="aniv-row aniv-row-jourj">
+                                🎉 C'est l'anniversaire de {{ $anniv['name'] }} !
+                            </div>
+                        @else
+                            <div class="aniv-row">
+                                <div class="aniv-icon">🎂</div>
+                                <div class="aniv-body grow">
+                                    <div class="aniv-name">Anniversaire de {{ $anniv['name'] }}</div>
+                                    <div class="tiny muted">
+                                        @if ($anniv['date'])
+                                            {{ $anniv['date']->translatedFormat('l j F Y') }}
+                                        @else
+                                            Date de naissance à renseigner sur le profil
+                                        @endif
+                                    </div>
+                                </div>
+                                <div class="aniv-actions">
+                                    <div class="aniv-pill">
+                                        @if ($anniv['jours'] === null)
+                                            <span class="tiny muted">—</span>
+                                        @else
+                                            j-{{ $anniv['jours'] }} jours
+                                        @endif
+                                    </div>
                                 </div>
                             </div>
-                            <div class="aniv-pill">
-                                @if ($anniv['jours'] === null)
-                                    <span class="tiny muted">—</span>
-                                @elseif ($anniv['jours'] > 0)
-                                    j-{{ $anniv['jours'] }} jours
-                                @else
-                                    🎉 C'est aujourd'hui !
-                                @endif
-                            </div>
-                        </div>
+                        @endif
                     @endforeach
                 </div>
             @endif
@@ -284,7 +302,176 @@
             <a href="{{ route('recompenses.index') }}" class="btn btn-sm btn-primary mt16">Voir les récompenses</a>
         </div>
     </div>
+
+    @if ($octobreRose['due'])
+        {{-- Sensibilisation Octobre rose : le 1er octobre, une fois par
+             utilisateur et par année. Thème rose, ruban de solidarité. --}}
+        <div id="octobre-rose" class="modal-ov rose-ov" style="display:none" role="dialog" aria-modal="true"
+            aria-labelledby="octobre-rose-t">
+            <div class="modal center rose-box">
+                <div class="rose-ruban" aria-hidden="true"></div>
+                <div class="rose-emoji" aria-hidden="true">🎀</div>
+                <div class="rose-kicker">Octobre rose</div>
+                <h3 id="octobre-rose-t">{{ $octobreRose['titre'] }}</h3>
+                <p class="muted rose-texte">
+                    Octobre est le mois de la sensibilisation au cancer du sein.
+                    Au Sénégal, c'est le <strong>2e cancer le plus fréquent chez les
+                    femmes</strong>. Un diagnostic précoce et un dépistage régulier,
+                    c'est ce qui change le cours d'une histoire.
+                </p>
+                <div class="rose-ribbon" aria-hidden="true">
+                    <span>Se demander : est-ce qu'on a fait son mammographie&nbsp;?</span>
+                </div>
+                <p class="rose-foot tiny">
+                    Avertissement · Ce module est informatif et ne remplace pas un avis médical.
+                    Parlez-en à votre médecin. · Source&nbsp;: GLOBOCAN (OMS / CIRC).
+                </p>
+                <button type="button" class="btn btn-rose btn-block" onclick="octobreRoseFermer()">
+                    J'ai compris
+                </button>
+            </div>
+        </div>
+    @endif
+
+    @if ($annivPartenaire['infoDue'])
+        {{-- 1. Explication de la fonctionnalité, à l'ouverture de la fenêtre.
+             Non fermable sur le fond : la seule sortie est le bouton
+             "Où trouver ça ?", qui enchaîne sur la bulle. --}}
+        <div id="anniv-info" class="modal-ov" style="display:none" role="dialog" aria-modal="true"
+            aria-labelledby="anniv-info-t">
+            <div class="modal center">
+                <div style="font-size:44px; margin-bottom:6px">🎂</div>
+                <h3 id="anniv-info-t">C'est bientôt l'anniversaire de {{ $annivPartenaire['name'] }} !</h3>
+                <p class="muted" style="font-size:14.5px; line-height:1.55">
+                    Tu as quelques jours pour lui préparer un cadeau surprise.
+                    Écris-lui un mot, un son, une vidéo, une activité ou une promesse&nbsp;:
+                    <strong>il/elle ne pourra rien voir ni rien modifier avant le jour J.</strong>
+                </p>
+                <div class="aniv-info-list">
+                    <div><span>💌</span> Un mot personnel</div>
+                    <div><span>🎧</span> Un son de ta voix</div>
+                    <div><span>🎬</span> Une vidéo</div>
+                    <div><span>🎁</span> Une idée d'activité</div>
+                    <div><span>💍</span> Une promesse</div>
+                </div>
+                <button type="button" class="btn btn-primary btn-block mt16" onclick="annivInfoSuite()">
+                    Où trouver ça&nbsp;? →
+                </button>
+            </div>
+        </div>
+
+{{-- 2. Indicateur : même composant .modal-ov/.modal que le 1er, avec une
+             flèche en haut qui pointe vers le bouton Célébrer du hero. --}}
+        <div id="anniv-tuto" class="modal-ov anniv-tuto-descend anniv-tuto-veil" style="display:none" role="dialog" aria-modal="true"
+            aria-labelledby="anniv-tuto-t">
+            <div class="modal center anniv-tuto-box">
+                <div class="anniv-tuto-fleche"></div>
+                <div class="anniv-tuto-doigt" aria-hidden="true">👆</div>
+                <h3 id="anniv-tuto-t">C'est par ici !</h3>
+                <p class="muted" style="font-size:14.5px; line-height:1.55; margin-bottom:0">
+                    Le bouton <strong>🎂 Célébrer son anniversaire</strong>, en haut de cette page,
+                    apparaît {{ $annivPartenaire['fenetreJours'] }} jours avant son anniversaire.
+                    Tu peux revenir le modifier autant de fois que tu veux, jusqu'au jour J.
+                </p>
+                <button type="button" class="btn btn-primary btn-block mt16" onclick="annivTutoFermer()">
+                    J'ai compris
+                </button>
+            </div>
+        </div>
+    @endif
 @endsection
+
+@push('scripts')
+    <script>
+        {{-- Octobre rose : affiché seul le 1er octobre, et refermé
+             définitivement après le clic de validation. --}}
+        @if ($octobreRose['due'])
+            function octobreRoseOuvrir() {
+                document.getElementById('octobre-rose').style.display = 'flex';
+            }
+
+            function octobreRoseFermer() {
+                document.getElementById('octobre-rose').style.display = 'none';
+                fetch('{{ route('octobre-rose.info.vue') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    },
+                    body: JSON.stringify({}),
+                }).catch(() => {});
+                // Le 1er octobre peut tomber dans la fenêtre d'un anniversaire :
+                // les deux modals ne doivent jamais se superposer. Le tutoriel
+                // d'anniversaire attend donc la fin de la sensibilisation.
+                if (typeof annivInfoOuvrir === 'function') {
+                    annivInfoOuvrir();
+                }
+            }
+        @endif
+
+        {{-- Le tutoriel d'anniversaire : 2 modals, dans l'ordre, une fois par année.
+             Les deux réutilisent le composant .modal-ov/.modal, déjà utilisé
+             partout. Le bouton Célébrer reste un lien normal : on n'intercepte
+             jamais le clic. --}}
+        @if ($annivPartenaire['infoDue'])
+            {{-- Le scintillement reste toujours actif : il appelle l'utilisateur.
+                 Seul change le passage au-dessus du voile, pour que la flèche
+                 du modal désigne un bouton bien visible. --}}
+            function annivBoutonEtat(modaleOuverte) {
+                document.getElementById('hero-celebrer')?.classList.toggle('anniv-cible', modaleOuverte);
+            }
+
+            function annivInfoOuvrir() {
+                document.getElementById('anniv-info').style.display = 'flex';
+                annivBoutonEtat(true);
+            }
+
+            function annivInfoSuite() {
+                document.getElementById('anniv-info').style.display = 'none';
+                document.getElementById('anniv-tuto').style.display = 'flex';
+                annivBoutonEtat(true);
+            }
+
+            {{-- Le POST n'a lieu qu'après le 2e modal : on est donc sûr que
+                 l'utilisateur a vu l'explication *et* l'indicateur. --}}
+            function annivTutoFermer() {
+                const couche = document.getElementById('anniv-tuto');
+                couche.style.display = 'none';
+                fetch('{{ route('anniversaire.info.vue') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    },
+                    body: JSON.stringify({}),
+                }).then(() => {
+                        // Le scintillement n'est pas touché ici : il reste.
+                        annivBoutonEtat(false);
+                    }).catch(() => {});
+            }
+        @endif
+
+        {{-- Un seul modale à la fois : si la sensibilisation Octobre rose et le
+             tutoriel d'anniversaire tombent le même jour, le premier ouvre,
+             et le second attend la validation du premier. --}}
+        document.addEventListener('DOMContentLoaded', function () {
+            var suite = function () {
+                @if ($octobreRose['due'])
+                    octobreRoseOuvrir();
+                @endif
+                @if ($annivPartenaire['infoDue'] && ! $octobreRose['due'])
+                    annivInfoOuvrir();
+                @endif
+            };
+
+            // Si la popup « question du soir » de 20h est déjà là, on attend.
+            if (window.djModalLibre) window.djModalLibre(suite);
+            else suite();
+        });
+    </script>
+@endpush
 
 @push('scripts')
     <script>
