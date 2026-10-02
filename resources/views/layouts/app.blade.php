@@ -11,6 +11,19 @@
         // reste l'absence d'attribut, c'est la base du design system.
         (function () {
             try {
+                // Migration : tout le monde passe en rose une fois.
+                // On écrase la valeur stockée sans regarder ce qu'elle vaut —
+                // y compris 'light', et y compris une éventuelle valeur
+                // corrompue. Tester l'ancienne valeur ('dark') n'aurait migré
+                // que les sessions sombres et laissé les choix blancs en
+                // place, ce qui n'est pas « tout le monde ». Le marqueur borne
+                // l'opération à une fois : ensuite la valeur est un choix de
+                // l'utilisateur et elle est respectée pour de bon.
+                if (localStorage.getItem('dj_theme_legacy_migrated') !== '1') {
+                    localStorage.setItem('dj_theme', 'rose');
+                    localStorage.setItem('dj_theme_legacy_migrated', '1');
+                }
+
                 var t = localStorage.getItem('dj_theme') || 'rose';
                 if (t === 'light' || t === 'rose') {
                     document.documentElement.setAttribute('data-theme', t);

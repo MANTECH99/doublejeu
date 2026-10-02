@@ -142,6 +142,44 @@ class InfoPagesTest extends TestCase
         );
     }
 
+    public function test_legacy_dark_sessions_are_migrated_to_rose(): void
+    {
+        $html = $this->actingAs(User::factory()->create())
+            ->get(route('profile.edit'))
+            ->assertOk()
+            ->getContent();
+
+        // La migration écrase la valeur stockée SANS la tester. Sous l'ancien
+        // défaut, applyTheme() écrivait 'dark' à chaque chargement, même sans
+        // clic, donc la valeur ne distinguait pas un héritage d'un choix. Un
+        // test du type `=== 'dark'` n'aurait migré que les sessions sombres et
+        // laissé les choix blancs en place : ce n'est pas « tout le monde ».
+        $this->assertStringContainsString('dj_theme_legacy_migrated', $html);
+        $this->assertStringContainsString(
+            "localStorage.setItem('dj_theme', 'rose');",
+            $html
+        );
+        $this->assertStringNotContainsString(
+            "localStorage.getItem('dj_theme') === 'dark'",
+            $html
+        );
+    }
+
+    public function test_the_migration_runs_only_once(): void
+    {
+        $js = (string) file_get_contents(resource_path('js/app.js'));
+
+        // Le marqueur doit court-circuiter la migration : sans cela, un
+        // utilisateur qui choisit volontairement Sombre se reverrait
+        // ramené à Rose à chaque rechargement.
+        $this->assertStringContainsString(
+            "if (localStorage.getItem('dj_theme_legacy_migrated') === '1') return;",
+            $js
+        );
+        $this->assertStringContainsString("localStorage.setItem('dj_theme', DEFAULT_THEME);", $js);
+        $this->assertStringContainsString("localStorage.setItem('dj_theme_legacy_migrated', '1');", $js);
+    }
+
     public function test_the_appearance_button_shows_the_default_theme_before_js_runs(): void
     {
         $html = $this->actingAs(User::factory()->create())

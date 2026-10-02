@@ -47,8 +47,26 @@ import './moodLottie.js';
         });
     }
 
+    // Migration : tout le monde passe en rose une fois, sans regarder la valeur
+    // stockée — 'dark', 'light', valeur corrompue ou rien du tout. Le marqueur
+    // borne l'opération à un seul passage : ensuite la valeur est un choix de
+    // l'utilisateur et elle est respectée définitivement.
+    // Doublé du script en <head> (app.blade.php) qui fait la même chose avant
+    // le premier rendu : sans lui, la migration arriverait trop tard et on
+    // verrait un flash du thème précédent avant le rose.
+    function migrateLegacyTheme() {
+        try {
+            if (localStorage.getItem('dj_theme_legacy_migrated') === '1') return;
+            localStorage.setItem('dj_theme', DEFAULT_THEME);
+            localStorage.setItem('dj_theme_legacy_migrated', '1');
+        } catch (e) {}
+    }
+
     let current = DEFAULT_THEME;
-    try { current = localStorage.getItem('dj_theme') || DEFAULT_THEME; } catch (e) {}
+    try {
+        migrateLegacyTheme();
+        current = localStorage.getItem('dj_theme') || DEFAULT_THEME;
+    } catch (e) {}
     // Une valeur inconnue (ancien stockage, saisie manuelle) retombe sur le
     // thème par défaut plutôt que de laisser la page sans variables.
     if (!THEMES.some((x) => x.id === current)) current = DEFAULT_THEME;
