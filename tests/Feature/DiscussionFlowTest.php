@@ -187,7 +187,10 @@ class DiscussionFlowTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('id="disc-loadmore"', $html);
-        $this->assertStringContainsString('id="disc-loadmore" style="display:none"', $html);
+        // La classe de masquage est présente au démarrage (le fil s'ouvre en bas), et
+        // la boîte « vide » disparaît bien quand il n'y a plus rien à charger.
+        $this->assertStringContainsString('class="disc-loadmore is-hidden is-empty"', $html);
+        $this->assertStringContainsString('data-empty="1"', $html);
     }
 
     public function test_initial_page_shows_the_load_more_button_when_history_is_longer_than_one_page(): void
@@ -201,7 +204,16 @@ class DiscussionFlowTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('id="disc-loadmore" style="display:block"', $html);
+        // Pas de display inline sur la boîte du bouton : il écraserait le display:flex
+        // du CSS et décentrerait le bouton (l'inline gagne sur une règle de
+        // classe). On cible la balise, pas toute la page : les autres éléments
+        // ont legitimately des styles inline.
+        $this->assertStringContainsString('data-empty="0"', $html);
+        $this->assertStringNotContainsString('box.style.display', $html);
+
+        preg_match('/<div[^>]*id="disc-loadmore"[^>]*>/', $html, $tag);
+        $this->assertNotEmpty($tag, 'La balise #disc-loadmore doit être présente.');
+        $this->assertStringNotContainsString('display:', $tag[0]);
     }
 
     public function test_load_more_keeps_the_reading_position_without_jumping_to_the_top(): void
@@ -237,6 +249,30 @@ class DiscussionFlowTest extends TestCase
         );
     }
 
+    public function test_the_load_more_button_is_centred(): void
+    {
+        $css = preg_replace('#/\*.*?\*/#s', '', (string) file_get_contents(resource_path('css/app.css')));
+
+        preg_match('/\.disc-loadmore\s*\{([^}]*)\}/s', (string) $css, $m);
+        $this->assertNotEmpty($m, 'Le bloc CSS .disc-loadmore doit être présent.');
+
+        // .disc-messages est une colonne flex : le bouton doit être centré
+        // explicitement, pas grâce à l'étirement par défaut du flex item.
+        $this->assertStringContainsString('justify-content: center', $m[1]);
+        $this->assertStringContainsString('align-items: center', $m[1]);
+        $this->assertStringContainsString('width: 100%', $m[1]);
+        $this->assertStringContainsString('display: flex', $m[1]);
+
+        // Le masquage « plus rien à charger » passe par une classe : posé en
+        // inline, il prendrait le pas sur le display:flex et décentrerait le
+        // bouton au moment où il redeviendrait visible.
+        $this->assertMatchesRegularExpression(
+            '/\.disc-loadmore\.is-empty\s*\{\s*display:\s*none/s',
+            (string) $css,
+            'Le retrait du bouton doit passer par une classe, pas par un style inline.',
+        );
+    }
+
     public function test_the_scroll_anchor_of_the_browser_is_disabled(): void
     {
         // On retire les commentaires avant de chercher : ils contiennent des
@@ -252,6 +288,43 @@ class DiscussionFlowTest extends TestCase
             (string) $css,
             "L'ancrage de scroll natif doit être désactivé sur le fil des messages.",
         );
+    }
+
+    public function test_the_load_more_button_is_hidden_unless_the_thread_is_scrolled_to_the_top(): void
+    {
+        for ($i = 1; $i <= 51; $i++) {
+            Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'm-'.$i]);
+        }
+
+        $html = $this->actingAs($this->bob)
+            ->get(route('discussion.index'))
+            ->assertOk()
+            ->getContent();
+
+        $css = preg_replace('#/\*.*?\*/#s', '', (string) file_get_contents(resource_path('css/app.css')));
+
+        // La classe de masquage existe, et elle coupe aussi les clics : un bouton
+        // invisible ne doit pas pouvoir se déclencher au hasard.
+        preg_match('/\.disc-loadmore\.is-hidden\s*\{([^}]*)\}/s', (string) $css, $cssBlock);
+        $this->assertNotEmpty($cssBlock, 'Le bloc CSS .disc-loadmore.is-hidden doit être présent.');
+        $this->assertStringContainsString('visibility: hidden', $cssBlock[1]);
+        $this->assertStringContainsString('pointer-events: none', $cssBlock[1]);
+
+        // Le masquage est piloté par la position de défilement.
+        $this->assertStringContainsString('function refreshLoadMoreVisibility()', $html);
+        $this->assertStringContainsString('const atTop = MESSAGES_EL.scrollTop <= LOADMORE_REVEAL_PX;', $html);
+
+        // Écoute passive : le scroll est un événement à haute fréquence pendant
+        // que l'utilisateur lit, on ne doit rien lui bloquer.
+        $this->assertStringContainsString(
+            "MESSAGES_EL.addEventListener('scroll', scheduleLoadMoreVisibility, { passive: true });",
+            $html,
+        );
+
+        // Masqué au démarrage (le fil s'ouvre en bas) et jamais révélé s'il n'y a
+        // plus rien à charger.
+        $this->assertStringContainsString("box.classList.toggle('is-hidden', !atTop);", $html);
+        $this->assertStringContainsString("if (box.dataset.empty === '1') return;", $html);
     }
 
     public function test_load_more_anchor_stays_above_the_date_separators(): void

@@ -1687,15 +1687,35 @@ summary.btn::-webkit-details-marker { display: none; }
 }
 
 /* Pagination de l'historique : bouton en tête du fil, qui charge les messages
-   plus anciens au clic. Il ne fait pas partie du fil défilant (position sticky
-   en haut), pour rester atteignable sans avoir à remonter au tout début. */
+   plus anciens au clic. Il est épinglé en haut (sticky) mais INVISIBLE tant
+   qu'on n'a pas remonté jusqu'au début du fil (voir .is-hidden appliqué en JS
+   au scroll). Un bouton toujours visible flotterait au milieu de la
+   conversation ; on ne veut le proposer qu'au moment où il est utile. */
 .disc-loadmore {
     position: sticky;
     top: 0;
     z-index: 2;
     display: flex;
+    /* Centrage explicite du bouton : .disc-messages est une colonne flex, donc
+       on ne se fie pas à l'étirement par défaut du flex item, et on couvre aussi
+       le cas où la boîte ne remplirait pas la largeur disponible. */
+    width: 100%;
     justify-content: center;
+    align-items: center;
+    box-sizing: border-box;
     padding: 6px 0 12px;
+    flex-shrink: 0;
+    /* Invisible = non cliquable : on ne doit pas pouvoir le déclencher par
+       hasard au milieu du fil. */
+    transition: opacity 0.12s ease;
+}
+.disc-loadmore.is-empty {
+    display: none;
+}
+.disc-loadmore.is-hidden {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
 }
 .disc-loadmore-btn {
     background: var(--card-2);

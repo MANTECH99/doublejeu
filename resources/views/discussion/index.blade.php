@@ -273,8 +273,13 @@
              défilement ni flash, avec un affichage strictement identique. --}}
         <div class="disc-messages" id="disc-messages" style="visibility:hidden">
             {{-- Bouton de pagination du fil : chargé seulement s'il reste des
-                 messages plus anciens que la fin affichée au démarrage. --}}
-            <div class="disc-loadmore" id="disc-loadmore" style="display:{{ $hasAnciens ? 'block' : 'none' }}">
+                 messages plus anciens que la fin affichée au démarrage.
+                 data-empty=1 verrouille le masquage (rien à charger → on ne
+                 le révèle jamais).
+                 L'affichage passe par la classe .is-empty, PAS par un style
+                 inline : un display inline écraserait le display:flex du CSS et
+                 cassait le centrage du bouton. --}}
+            <div class="disc-loadmore is-hidden {{ $hasAnciens ? '' : 'is-empty' }}" id="disc-loadmore" data-empty="{{ $hasAnciens ? '0' : '1' }}">
                 <button type="button" class="disc-loadmore-btn" id="disc-loadmore-btn">
                     Charger plus de messages
                 </button>
@@ -572,10 +577,39 @@
     let lastToggleAt = -9999; // dernier moment où la sélection a été basculée (anti-rebond/doublon)
     let initialLoad = true; // premier chargement : scroll direct en bas
 
+    // Le bouton « charger plus » ne sert qu'au tout début du fil : il reste
+    // masqué tant qu'on n'a pas remonté jusque-là, et réapparaît dès qu'on y
+    // arrive. Sans ça, épinglé en sticky, il flotterait au-dessus de la
+    // conversation en permanence.
+    // Seuil en px : on révèle dès qu'on frôle le haut, sans exiger un pixel
+    // exact — sinon le bouton scintille à chaque arrondi de scrollTop.
+    const LOADMORE_REVEAL_PX = 12;
+    let loadMoreRafPending = false;
+
+    function refreshLoadMoreVisibility() {
+        const box = document.getElementById('disc-loadmore');
+        if (!box) return;
+        if (box.dataset.empty === '1') return; // plus rien à charger : ne rien révéler
+        const atTop = MESSAGES_EL.scrollTop <= LOADMORE_REVEAL_PX;
+        box.classList.toggle('is-hidden', !atTop);
+    }
+
+    // Le scroll est un événement à haute fréquence ; on n'applique la
+    // classe qu'une fois par frame au maximum.
+    function scheduleLoadMoreVisibility() {
+        if (loadMoreRafPending) return;
+        loadMoreRafPending = true;
+        requestAnimationFrame(() => {
+            loadMoreRafPending = false;
+            refreshLoadMoreVisibility();
+        });
+    }
+
     // Colle en bas, toujours sans animation (aucun défilement visible) :
     // à l'envoi comme à la réception, le dernier message apparaît d'un coup.
     function scrollToBottom() {
         MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
+        refreshLoadMoreVisibility();
     }
 
     // Au premier chargement : colle tout en bas puis re-colle quand les images
@@ -1515,7 +1549,12 @@
 
             if (data.hasAnciens === false) {
                 const box = document.getElementById('disc-loadmore');
-                if (box) box.style.display = 'none';
+                if (box) {
+                    box.dataset.empty = '1';
+                    // Classe, pas style inline : un display inline écraserait le
+                    // display:flex du CSS et décentrerait le bouton.
+                    box.classList.add('is-empty');
+                }
             }
 
             updateOnline(data.partenaire);
@@ -2930,6 +2969,10 @@ function grabVideoThumb(videoEl) {
         };
         requestAnimationFrame(pinDuringSettle);
     }
+    // Révocation/masquage du bouton « charger plus » selon la position verticale.
+    // passif + rAF : cette période est passive, l'utilisateur fait défiler en
+    // lisant, on ne doit rien lui bloquer.
+    MESSAGES_EL.addEventListener('scroll', scheduleLoadMoreVisibility, { passive: true });
     function bootPrerendered() {
         const el = document.getElementById('disc-init-messages');
         let list = [];
@@ -2971,6 +3014,9 @@ function grabVideoThumb(videoEl) {
         // GIF via carré 1/1) : le chargement ne décale pas le fil, on révèle
         // immédiatement sans écran noir pour la partie visible.
         revealDisc();
+        // On ouvre en bas : le bouton « charger plus » doit donc être masqué
+        // dès la première peinture.
+        refreshLoadMoreVisibility();
     }
 
     // Un lot de messages plus anciens, à la demande (bouton en haut du fil).
@@ -3029,10 +3075,17 @@ function grabVideoThumb(videoEl) {
                     // On rend exactement la hauteur ajoutée : le regard ne bouge pas.
                     const added = MESSAGES_EL.scrollHeight - h0;
                     if (added > 0) MESSAGES_EL.scrollTop = top0 + added;
+                    // On n'est plus en haut : le bouton doit disparaître, il
+                    // réapparaîtra quand on remontera.
+                    refreshLoadMoreVisibility();
                 }
                 if (!data.hasAnciens) {
                     const box = document.getElementById('disc-loadmore');
-                    if (box) box.style.display = 'none';
+                    if (box) {
+                        box.dataset.empty = '1';
+                        // Classe, pas style inline : voir fetchMessages().
+                        box.classList.add('is-empty');
+                    }
                 }
             })
             .catch(() => {})
