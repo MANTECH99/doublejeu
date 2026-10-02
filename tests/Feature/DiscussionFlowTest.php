@@ -317,7 +317,7 @@ class DiscussionFlowTest extends TestCase
         // Écoute passive : le scroll est un événement à haute fréquence pendant
         // que l'utilisateur lit, on ne doit rien lui bloquer.
         $this->assertStringContainsString(
-            "MESSAGES_EL.addEventListener('scroll', scheduleLoadMoreVisibility, { passive: true });",
+            "MESSAGES_EL.addEventListener('scroll', scheduleScrollAffordances, { passive: true });",
             $html,
         );
 
@@ -325,6 +325,72 @@ class DiscussionFlowTest extends TestCase
         // plus rien à charger.
         $this->assertStringContainsString("box.classList.toggle('is-hidden', !atTop);", $html);
         $this->assertStringContainsString("if (box.dataset.empty === '1') return;", $html);
+    }
+
+    public function test_the_down_arrow_returns_to_the_latest_message(): void
+    {
+        $html = $this->actingAs($this->bob)
+            ->get(route('discussion.index'))
+            ->assertOk()
+            ->getContent();
+
+        $css = preg_replace('#/\*.*?\*/#s', '', (string) file_get_contents(resource_path('css/app.css')));
+
+        // La flèche est ancrée sur le composer et posée au-dessus par
+        // bottom:100% : elle suit ainsi la hauteur réelle du composer, qui
+        // change selon la barre d'enregistrement ou le clavier. Ancrée sur
+        // .disc-wrap, elle passerait DERRIÈRE le composer, qui est au-dessus
+        // avec z-index:60 et un fond opaque — c'est ce qui la rendait invisible.
+        $this->assertStringContainsString('id="disc-tobottom"', $html);
+
+        // La flèche doit être À L'INTÉRIEUR du composer, qui est son ancrage.
+        // Un commentaire Blade {{-- --}} n'est pas rendu : on compare donc
+        // les positions dans le HTML final.
+        $composerAt = strpos($html, 'class="disc-composer"');
+        $arrowAt = strpos($html, 'id="disc-tobottom"');
+        $gifAt = strpos($html, 'id="disc-gif-btn"');
+        $composerEnd = strpos($html, '</div>', (int) $composerAt);
+        $this->assertNotFalse($composerAt);
+        $this->assertNotFalse($arrowAt);
+        $this->assertGreaterThan((int) $composerAt, $arrowAt, 'La flèche doit suivre l\'ouverture du composer.');
+        $this->assertLessThan((int) $gifAt, $arrowAt, 'La flèche doit être le premier enfant du composer.');
+        $this->assertNotFalse($composerEnd);
+
+        preg_match('/\.disc-tobottom\s*\{([^}]*)\}/s', (string) $css, $block);
+        $this->assertNotEmpty($block, 'Le bloc CSS .disc-tobottom doit être présent.');
+        $this->assertStringContainsString('position: absolute', $block[1]);
+        $this->assertStringContainsString('bottom: 100%', $block[1]);
+
+        // Elle doit rester au-dessus du fil : le composer est en z-index:60.
+        $this->assertMatchesRegularExpression(
+            '/\.disc-composer\s*\{[^}]*z-index:\s*60/s',
+            (string) $css,
+            'Le composer doit rester empilé au-dessus du fil, sinon le test d\'ancrage ne tient plus.',
+        );
+
+        // Même dégradé que le bouton d'envoi : la flèche suit le thème
+        // (rose en thème rose) sans code supplémentaire.
+        preg_match('/\.disc-send\s*\{([^}]*)\}/s', (string) $css, $sendBlock);
+        $this->assertNotEmpty($sendBlock);
+        $degrade = 'linear-gradient(135deg, var(--primary), var(--primary-2))';
+        $this->assertStringContainsString($degrade, $sendBlock[1]);
+        $this->assertStringContainsString($degrade, $block[1]);
+
+        // Invisible = non cliquable, comme le bouton « charger plus ».
+        preg_match('/\.disc-tobottom\.is-hidden\s*\{([^}]*)\}/s', (string) $css, $hidden);
+        $this->assertNotEmpty($hidden);
+        $this->assertStringContainsString('pointer-events: none', $hidden[1]);
+
+        // Masquée au démarrage (le fil s'ouvre en bas) et révélée dès qu'on
+        // remonte. wasAtBottom() porte une marge de 80px, sinon la flèche
+        // scintille sur les derniers pixels.
+        $this->assertStringContainsString('class="disc-tobottom is-hidden"', $html);
+        $this->assertStringContainsString('function refreshToBottomVisibility()', $html);
+        $this->assertStringContainsString("btn.classList.toggle('is-hidden', wasAtBottom());", $html);
+
+        // Défilement doux : ici le clic est une navigation volontaire, donc
+        // contrairement à l'envoi où l'on colle instantanément.
+        $this->assertStringContainsString("MESSAGES_EL.scrollTo({ top: MESSAGES_EL.scrollHeight, behavior: 'smooth' });", $html);
     }
 
     public function test_load_more_anchor_stays_above_the_date_separators(): void

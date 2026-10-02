@@ -1746,6 +1746,46 @@ summary.btn::-webkit-details-marker { display: none; }
     cursor: default;
 }
 
+/* Flèche « descendre en bas », façon WhatsApp. Ancrée sur le composer
+   (position: relative) et posée juste au-dessus par bottom:100% : elle suit
+   donc la hauteur réelle du composer, qui change selon la barre d'enregistrement
+   ou le clavier. Impossible de la poser sur .disc-wrap, le composer est
+   au-dessus avec z-index:60 et un fond opaque.
+   Hors du flux de messages : elle reste affichée quand on remonte dans les
+   anciens, au lieu de défiler hors du champ avec le contenu. */
+.disc-tobottom {
+    position: absolute;
+    right: 14px;
+    bottom: 100%;
+    margin-bottom: 10px;
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 50%;
+    /* Même dégradé que le bouton d'envoi : la flèche suit le thème sans
+       code supplémentaire (rose en thème rose, rouge en thème sombre). */
+    background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.disc-tobottom:active {
+    transform: scale(0.92);
+}
+/* Même contrat que .disc-loadmore : invisible = non cliquable. */
+.disc-tobottom.is-hidden {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .disc-date-sep {
     text-align: center;
     margin: 16px 0 10px;

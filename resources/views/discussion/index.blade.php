@@ -309,6 +309,16 @@
 
         {{-- Composer (fixe, juste au-dessus de la barre de navigation) --}}
         <div class="disc-composer" id="disc-composer">
+            {{-- Descendre en bas, façon WhatsApp : la flèche n'apparaît que
+                 lorsqu'on est remonté dans le fil.
+                 Elle est ancrée sur le composer (position: relative) et posée
+                 au-dessus par bottom:100%, donc elle suit la hauteur réelle du
+                 composer — qui change selon la barre d'enregistrement ou le
+                 clavier. Ancrée sur .disc-wrap, elle passerait derrière le
+                 composer, qui est posé au-dessus avec z-index:60.
+                 Masquée par défaut : au chargement on ouvre déjà en bas,
+                 l'afficher d'emblée ferait clignoter un bouton inutile. --}}
+            <button type="button" class="disc-tobottom is-hidden" id="disc-tobottom" aria-label="Aller au dernier message" title="Aller en bas">↓</button>
             <button class="disc-gif-btn" id="disc-gif-btn" type="button" aria-label="Envoyer un GIF">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="3" width="18" height="18" rx="2"></rect>
@@ -594,14 +604,24 @@
         box.classList.toggle('is-hidden', !atTop);
     }
 
-    // Le scroll est un événement à haute fréquence ; on n'applique la
-    // classe qu'une fois par frame au maximum.
-    function scheduleLoadMoreVisibility() {
+    // Flèche « descendre en bas ». Elle se cache quand on est déjà en bas :
+    // wasAtBottom() porte une marge de 80px, sinon elle scintille sur les
+    // derniers pixels du fil.
+    function refreshToBottomVisibility() {
+        const btn = document.getElementById('disc-tobottom');
+        if (!btn) return;
+        btn.classList.toggle('is-hidden', wasAtBottom());
+    }
+
+    // Le scroll est un événement à haute fréquence ; on n'applique les
+    // classes qu'une fois par frame au maximum.
+    function scheduleScrollAffordances() {
         if (loadMoreRafPending) return;
         loadMoreRafPending = true;
         requestAnimationFrame(() => {
             loadMoreRafPending = false;
             refreshLoadMoreVisibility();
+            refreshToBottomVisibility();
         });
     }
 
@@ -610,6 +630,7 @@
     function scrollToBottom() {
         MESSAGES_EL.scrollTop = MESSAGES_EL.scrollHeight;
         refreshLoadMoreVisibility();
+        refreshToBottomVisibility();
     }
 
     // Au premier chargement : colle tout en bas puis re-colle quand les images
@@ -2972,7 +2993,7 @@ function grabVideoThumb(videoEl) {
     // Révocation/masquage du bouton « charger plus » selon la position verticale.
     // passif + rAF : cette période est passive, l'utilisateur fait défiler en
     // lisant, on ne doit rien lui bloquer.
-    MESSAGES_EL.addEventListener('scroll', scheduleLoadMoreVisibility, { passive: true });
+    MESSAGES_EL.addEventListener('scroll', scheduleScrollAffordances, { passive: true });
     function bootPrerendered() {
         const el = document.getElementById('disc-init-messages');
         let list = [];
@@ -3014,9 +3035,11 @@ function grabVideoThumb(videoEl) {
         // GIF via carré 1/1) : le chargement ne décale pas le fil, on révèle
         // immédiatement sans écran noir pour la partie visible.
         revealDisc();
-        // On ouvre en bas : le bouton « charger plus » doit donc être masqué
-        // dès la première peinture.
+        // On ouvre en bas : les deux boutons contextuels (« charger plus » en
+        // haut, « aller en bas ») doivent donc être masqués dès la première
+        // peinture.
         refreshLoadMoreVisibility();
+        refreshToBottomVisibility();
     }
 
     // Un lot de messages plus anciens, à la demande (bouton en haut du fil).
@@ -3076,8 +3099,10 @@ function grabVideoThumb(videoEl) {
                     const added = MESSAGES_EL.scrollHeight - h0;
                     if (added > 0) MESSAGES_EL.scrollTop = top0 + added;
                     // On n'est plus en haut : le bouton doit disparaître, il
-                    // réapparaîtra quand on remontera.
+                    // réapparaîtra quand on remontera. La flèche « aller en
+                    // bas » fait l'inverse : on est remonté, elle apparaît.
                     refreshLoadMoreVisibility();
+                    refreshToBottomVisibility();
                 }
                 if (!data.hasAnciens) {
                     const box = document.getElementById('disc-loadmore');
@@ -3115,6 +3140,14 @@ function grabVideoThumb(videoEl) {
 
     document.getElementById('disc-loadmore-btn')
         .addEventListener('click', loadOlderMessages);
+
+    // Flèche « aller en bas ». Défilement doux, contrairement à scrollToBottom()
+    // qui colle instantanément (là, le clic est un geste volontaire de
+    // navigation : l'animation rend le trajet lisible quand on remonte loin).
+    document.getElementById('disc-tobottom')
+        .addEventListener('click', () => {
+            MESSAGES_EL.scrollTo({ top: MESSAGES_EL.scrollHeight, behavior: 'smooth' });
+        });
 
     // Mobile : la barre d'URL se replie ~0,5 s après l'arrivée et agrandit le
     // viewport, les polices web s'installent aussi après coup. Chaque changement
