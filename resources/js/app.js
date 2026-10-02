@@ -56,9 +56,13 @@ import './moodLottie.js';
     // verrait un flash du thème précédent avant le rose.
     function migrateLegacyTheme() {
         try {
-            if (localStorage.getItem('dj_theme_legacy_migrated') === '1') return;
+            // La valeur du marqueur est une version : passer de '1' à '2' est ce
+            // qui fait relancer la bascule rose pour tous, y compris pour les
+            // navigateurs qui avaient déjà exécuté une version plus ancienne de
+            // cette migration et seraient donc restés sur leur thème précédent.
+            if (localStorage.getItem('dj_theme_legacy_migrated') === '2') return;
             localStorage.setItem('dj_theme', DEFAULT_THEME);
-            localStorage.setItem('dj_theme_legacy_migrated', '1');
+            localStorage.setItem('dj_theme_legacy_migrated', '2');
         } catch (e) {}
     }
 

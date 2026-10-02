@@ -173,11 +173,24 @@ class InfoPagesTest extends TestCase
         // utilisateur qui choisit volontairement Sombre se reverrait
         // ramené à Rose à chaque rechargement.
         $this->assertStringContainsString(
-            "if (localStorage.getItem('dj_theme_legacy_migrated') === '1') return;",
+            "if (localStorage.getItem('dj_theme_legacy_migrated') === '2') return;",
             $js
         );
         $this->assertStringContainsString("localStorage.setItem('dj_theme', DEFAULT_THEME);", $js);
-        $this->assertStringContainsString("localStorage.setItem('dj_theme_legacy_migrated', '1');", $js);
+        $this->assertStringContainsString("localStorage.setItem('dj_theme_legacy_migrated', '2');", $js);
+    }
+
+    public function test_the_theme_marker_is_versioned_so_rose_actually_reaches_everyone(): void
+    {
+        $js = (string) file_get_contents(resource_path('js/app.js'));
+        $html = (string) file_get_contents(resource_path('views/layouts/app.blade.php'));
+
+        // Le marqueur est une version, pas un simple « déjà migré ». Avec la
+        // valeur '1', les navigateurs qui avaient déjà exécuté la version
+        // précédente (celle qui ne migrait que les sessions 'dark') auraient
+        // court-circuité la bascule et seraient restés sur leur thème.
+        $this->assertStringContainsString("localStorage.setItem('dj_theme_legacy_migrated', '2');", $js);
+        $this->assertStringContainsString("localStorage.setItem('dj_theme_legacy_migrated', '2');", $html);
     }
 
     public function test_the_appearance_button_shows_the_default_theme_before_js_runs(): void

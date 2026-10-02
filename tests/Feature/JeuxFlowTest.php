@@ -31,6 +31,7 @@ use App\Models\ReponseQuestionJournaliere;
 use App\Models\TourVO;
 use App\Models\User;
 use App\Services\QuestionBankService;
+use Database\Seeders\MissionCatalogueSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -72,6 +73,12 @@ class JeuxFlowTest extends TestCase
         DefiEnveloppe::create(['texte' => 'Dis 3 choses que tu adores chez moi', 'couleur' => 'bleue']);
         QuestionOuiNon::create(['texte' => 'Te verrais-tu vivre à l\'étranger ?', 'categorie' => 'aventure']);
         QuestionOuiNon::create(['texte' => 'Crois-tu à l\'amour au premier regard ?', 'categorie' => 'intimite']);
+
+        // Ces tests se placent dans le temps autour d'octobre : on ouvre le
+        // catalogue pour qu'ils ne dépendent pas de la date réelle de bascule.
+        config(['missions.catalogue_start_date' => '2020-01-01']);
+
+        $this->seed(MissionCatalogueSeeder::class);
     }
 
     public function test_vo_complete_round(): void

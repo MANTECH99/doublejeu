@@ -2,41 +2,39 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Mission;
 use App\Models\MissionSecrete;
+use App\Models\MissionTrack;
 use App\Models\Point;
 use App\Models\User;
 use App\Services\ActivityService;
 use App\Services\RecompenseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class MissionSecreteController extends Controller
 {
-    public const MISSIONS = [
-        ['texte' => 'Envoie un message disant « Tu me manques » à un moment inattendu aujourd\'hui', 'difficulte' => 'facile'],
-        ['texte' => 'Appelle ton/ta partenaire pour lui dire « Je t\'aime » sans raison apparente', 'difficulte' => 'facile'],
-        ['texte' => 'Envoie un selfie en faisant un clin d\'œil', 'difficulte' => 'facile'],
-        ['texte' => 'Écris un poème court et envoie-le par message', 'difficulte' => 'moyen'],
-        ['texte' => 'Envoie un vocal de 20 secondes en chuchotant', 'difficulte' => 'moyen'],
-        ['texte' => 'Demande à ton/ta partenaire quel est son rêve le plus fou pour vous deux', 'difficulte' => 'facile'],
-        ['texte' => 'Envoie un message coquin à 14h exactement', 'difficulte' => 'difficile'],
-        ['texte' => 'Fais un compliment très précis sur une partie du corps de ton/ta partenaire', 'difficulte' => 'facile'],
-        ['texte' => 'Envoie une photo de l\'endroit où tu aimerais qu\'on se retrouve', 'difficulte' => 'moyen'],
-        ['texte' => 'Raconte à ton/ta partenaire un souvenir précis de votre première rencontre', 'difficulte' => 'facile'],
-        ['texte' => 'Envoie un emoji mystérieux et attends sa réaction', 'difficulte' => 'facile'],
-        ['texte' => 'Pose une question très intime à ton/ta partenaire', 'difficulte' => 'difficile'],
-        ['texte' => 'Envoie une photo de ce que tu portes en ce moment', 'difficulte' => 'moyen'],
-        ['texte' => 'Dis à ton/ta partenaire de regarder la lune à la même heure ce soir', 'difficulte' => 'facile'],
-        ['texte' => 'Envoie un message en langue étrangère et laisse-le/la deviner', 'difficulte' => 'moyen'],
-        ['texte' => 'Mets une photo de vous deux en fond d\'écran sans le mentionner', 'difficulte' => 'moyen'],
-        ['texte' => 'Raconte ton meilleur souvenir de nuit avec lui/elle en vocal', 'difficulte' => 'difficile'],
-        ['texte' => 'Envoie un audio de toi en train de rire aux éclats', 'difficulte' => 'facile'],
-    ];
+    /**
+     * Date à laquelle le catalogue remplace le tirage au hasard.
+     *
+     * Repli utilisé si la configuration est absente — par exemple un cache de
+     * configuration périmé en prod. Sans ce repli, une valeur nulle ferait
+     * interpreted « maintenant » comme date de bascule et bloquerait le jeu
+     * pour tout le monde.
+     */
+    public const CATALOGUE_START_DATE_DEFAUT = '2026-10-03';
 
     /**
      * Récupère (ou crée) la mission du jour d'un partenaire.
+     *
+     * La mission provient du catalogue persistant `missions` et jamais deux fois
+     * pour un même joueur : `mission_tracks` mémorise ce qui a déjà été servi,
+     * donc on ne tire que parmi les missions non encore vues. Un joueur ayant
+     * épuisé les 100 missions n'en obtient plus.
      *
      * @return array{0: ?MissionSecrete, 1: bool} la mission et « créée maintenant ? »
      */
@@ -53,24 +51,75 @@ class MissionSecreteController extends Controller
             return [$mission, false];
         }
 
-        $mission = self::MISSIONS[array_rand(self::MISSIONS)];
+        if (! self::catalogueActif($user)) {
+            return [null, false];
+        }
 
         try {
-            MissionSecrete::create([
-                'couple_id' => $couple->id,
-                'joueur_cible_id' => $user->id,
-                'texte' => $mission['texte'],
-                'difficulte' => $mission['difficulte'],
-                'statut' => 'en_attente',
-                'date_mission' => $date,
-                'date_debut' => now(),
-                'date_fin' => $user->deadlineSoir()->setTimezone(config('app.timezone', 'UTC')),
-            ]);
+            // La transaction retourne false si le catalogue est épuisé : rien
+            // n'est créé et rien n'est consommé.
+            $servie = DB::transaction(function () use ($couple, $user, $date) {
+                // L'ordre par id rend la distribution déterministe : on sert les
+                // missions dans l'ordre du catalogue, ce qui garantit qu'aucune ne
+                // revient avant d'avoir parcouru les 100.
+                $catalogue = Mission::query()
+                    ->whereDoesntHave('tracks', fn ($q) => $q->where('user_id', $user->id))
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $catalogue) {
+                    return false;
+                }
+
+                // L'unicité (user_id, mission_id) est la garde-fou finale : si
+                // deux exécutions se chevauchent, la seconde insertion échoue et
+                // toute la transaction est annulée plutôt que de servir un doublon.
+                MissionTrack::create([
+                    'user_id' => $user->id,
+                    'mission_id' => $catalogue->id,
+                    'served_at' => now(),
+                ]);
+
+                MissionSecrete::create([
+                    'couple_id' => $couple->id,
+                    'joueur_cible_id' => $user->id,
+                    'texte' => $catalogue->texte,
+                    'difficulte' => $catalogue->difficulte,
+                    'statut' => 'en_attente',
+                    'date_mission' => $date,
+                    'date_debut' => now(),
+                    'date_fin' => $user->deadlineSoir()->setTimezone(config('app.timezone', 'UTC')),
+                ]);
+
+                return true;
+            });
         } catch (\Throwable) {
             return [$trouvee(), false];
         }
 
-        return [$trouvee(), true];
+        return [$trouvee(), $servie];
+    }
+
+    /**
+     * Le catalogue ne devient actif qu'à la date configurée, pour que les
+     * missions déjà attribuées le jour même restent valables.
+     */
+    public static function catalogueActif(User $user): bool
+    {
+        return $user->localToday()->gte(Carbon::parse(
+            config('missions.catalogue_start_date') ?: self::CATALOGUE_START_DATE_DEFAUT
+        ));
+    }
+
+    /**
+     * Nombre de missions du catalogue que ce joueur n'a pas encore reçues.
+     */
+    public static function missionsRestantes(User $user): int
+    {
+        return Mission::query()
+            ->whereDoesntHave('tracks', fn ($q) => $q->where('user_id', $user->id))
+            ->count();
     }
 
     public function index(): View
@@ -101,12 +150,18 @@ class MissionSecreteController extends Controller
 
         $questionOuverte = $me->deadlineSoirPassee();
 
+        // Une seule requête : le compteur sert aussi à détecter l'épuisement.
+        $catalogueActif = self::catalogueActif($me);
+        $missionsRestantes = $catalogueActif ? self::missionsRestantes($me) : null;
+
         return view('jeux.mission.index', [
             'couple' => $couple,
             'me' => $me,
             'partner' => $partner,
             'maMission' => $maMission,
             'saMission' => $saMission,
+            'catalogueEpuise' => $catalogueActif && $missionsRestantes === 0,
+            'missionsRestantes' => $missionsRestantes,
             'questionOuverte' => $questionOuverte,
             'reponduAujourdhui' => $me->devin_mission_jour?->toDateString() === $today,
             'nombreReponses' => $me->devin_mission_jour?->toDateString() === $today ? 1 : 0,

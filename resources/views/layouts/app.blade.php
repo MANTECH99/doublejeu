@@ -19,9 +19,12 @@
                 // place, ce qui n'est pas « tout le monde ». Le marqueur borne
                 // l'opération à une fois : ensuite la valeur est un choix de
                 // l'utilisateur et elle est respectée pour de bon.
-                if (localStorage.getItem('dj_theme_legacy_migrated') !== '1') {
+                // Le marqueur est versionné : le passer de '1' à '2' force la
+                // bascule rose même pour les navigateurs qui avaient déjà
+                // exécuté la version précédente de cette migration.
+                if (localStorage.getItem('dj_theme_legacy_migrated') !== '2') {
                     localStorage.setItem('dj_theme', 'rose');
-                    localStorage.setItem('dj_theme_legacy_migrated', '1');
+                    localStorage.setItem('dj_theme_legacy_migrated', '2');
                 }
 
                 var t = localStorage.getItem('dj_theme') || 'rose';

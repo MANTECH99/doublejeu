@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Couple;
 use App\Models\User;
+use Database\Seeders\MissionCatalogueSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -32,6 +33,10 @@ class OctobreRoseTest extends TestCase
 
         $this->abdoul->forceFill(['couple_id' => $couple->id])->save();
         $this->penda->forceFill(['couple_id' => $couple->id])->save();
+
+        config(['missions.catalogue_start_date' => '2020-01-01']);
+
+        $this->seed(MissionCatalogueSeeder::class);
     }
 
     public function test_le_module_octobre_rose_s_affiche_le_premier_octobre(): void

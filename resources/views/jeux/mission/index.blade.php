@@ -15,9 +15,13 @@
         <div class="card mb16" style="padding:16px 18px">
             @if (! $maMission)
                 <div class="center">
-                    <div style="font-size:26px">🌙</div>
-                    <strong class="block">Rien pour l'instant</strong>
-                    <div class="tiny muted">Ta mission du jour est en préparation. Reviens quelques minutes après 00h !</div>
+                    <div style="font-size:26px">{{ $catalogueEpuise ? '🏆' : '🌙' }}</div>
+                    <strong class="block">{{ $catalogueEpuise ? 'Plus de mission' : 'Rien pour l\'instant' }}</strong>
+                    @if ($catalogueEpuise)
+                        <div class="tiny muted">Tu as parcouru les 100 missions secrètes, une par une. Le jeu est terminé pour toi — bravo !</div>
+                    @else
+                        <div class="tiny muted">Ta mission du jour est en préparation. Reviens quelques minutes après 00h !</div>
+                    @endif
                     @if ($partenaireARepondu)
                         <div class="tiny muted mt8">
                             {{ $partner->name }} a répondu à la question du soir : « {{ $partenaireReponse === 'oui' ? 'Oui, je te soupçonne' : 'Non, tout était spontané' }} ».
