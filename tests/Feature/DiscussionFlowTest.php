@@ -204,6 +204,41 @@ class DiscussionFlowTest extends TestCase
         $this->assertStringContainsString('id="disc-loadmore" style="display:block"', $html);
     }
 
+    public function test_load_more_anchor_stays_above_the_date_separators(): void
+    {
+        $html = $this->actingAs($this->bob)
+            ->get(route('discussion.index'))
+            ->assertOk()
+            ->getContent();
+
+        // Au démarrage, l'ancre est insérée après la boîte du bouton, sinon le
+        // bouton « charger plus » se retrouve sous les séparateurs de date.
+        $this->assertStringContainsString(
+            'MESSAGES_EL.insertBefore(bootAnchor, loadMoreBox ? loadMoreBox.nextSibling : MESSAGES_EL.firstChild);',
+            $html,
+            "L'ancre initiale doit être placée juste après le bouton, pas à la fin du fil.",
+        );
+
+        // Après chaque lot, la cible est le premier SÉPARATEUR de date, avec repli
+        // sur la bulle. Viser la première bulle ferait passer l'ancre entre le
+        // séparateur et les messages qu'il annonce.
+        $this->assertStringContainsString(
+            "MESSAGES_EL.querySelector('.disc-date-sep')",
+            $html,
+            "L'ancre doit remonter au-dessus du premier séparateur de date.",
+        );
+        $this->assertStringContainsString(
+            "|| MESSAGES_EL.querySelector('.disc-bubble-wrap');",
+            $html,
+            'Le repli sur la première bulle doit rester en place quand aucun séparateur n existe.',
+        );
+        $this->assertStringNotContainsString(
+            "MESSAGES_EL.insertBefore(bootAnchor, MESSAGES_EL.querySelector('.disc-bubble-wrap'));",
+            $html,
+            "L'ancre ne doit plus être insérée devant la première bulle : les jours seraient mal étiquetés.",
+        );
+    }
+
     public function test_initial_page_injects_only_the_last_page_of_messages(): void
     {
         for ($i = 1; $i <= 110; $i++) {

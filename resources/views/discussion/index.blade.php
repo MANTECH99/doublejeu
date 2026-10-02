@@ -2942,7 +2942,13 @@ function grabVideoThumb(videoEl) {
         bootAnchor.className = 'disc-boot-anchor';
         bootAnchor.style.display = 'none';
         bootAnchor.dataset.id = list[0].id;
-        MESSAGES_EL.appendChild(bootAnchor);
+        // L'ancre se place juste APRÈS le bouton « charger plus » : elle reste sous le
+        // bouton (qui doit demeurer en tête du fil) mais au-dessus des séparateurs
+        // de date. Après chaque chargement elle se replace au-dessus du plus ancien
+        // jour affiché (voir loadOlderMessages), pour que le lot suivant s'empile
+        // par-dessus le lot courant et non en dessous.
+        const loadMoreBox = document.getElementById('disc-loadmore');
+        MESSAGES_EL.insertBefore(bootAnchor, loadMoreBox ? loadMoreBox.nextSibling : MESSAGES_EL.firstChild);
 
         for (const m of list) buildBubble(m);
         // Tous les médias réservent leur hauteur (photos via dimensions natives,
@@ -2977,11 +2983,19 @@ function grabVideoThumb(videoEl) {
                     for (const m of older) buildBubble(m);
                     dedupeDateSeps(); // le joint entre deux lots peut répéter un jour
                     oldestLoadedId = older[0].id;
-                    // L'ancre se replace juste au-dessus du plus ancien message
-                    // affiché : le prochain lot (encore plus ancien) s'empilera
-                    // dessus, et non dessous.
+                    // L'ancre se replace au plus haut du fil, au-dessus du plus ancien jour
+                    // affiché. Sans ce repositionnement, le lot suivant s'insérerait
+                    // au même endroit et se retrouverait SOUS le lot précédent, ce
+                    // qui inverse l'ordre chronologique dès le 2e clic.
+                    // La cible est le premier SÉPARATEUR de date, pas la première
+                    // bulle : viser la bulle ferait glisser l'ancre entre le
+                    // séparateur et les messages qu'il annonce, et les jours seraient
+                    // mal étiquetés d'un lot à l'autre. Repli sur la bulle tant que
+                    // le fil n'a aucun séparateur.
                     bootAnchor.dataset.id = oldestLoadedId;
-                    MESSAGES_EL.insertBefore(bootAnchor, MESSAGES_EL.querySelector('.disc-bubble-wrap'));
+                    const anchorTarget = MESSAGES_EL.querySelector('.disc-date-sep')
+                        || MESSAGES_EL.querySelector('.disc-bubble-wrap');
+                    if (anchorTarget) MESSAGES_EL.insertBefore(bootAnchor, anchorTarget);
 
                     if (top0 <= 240 || atBottom) {
                         // Le bouton étant collé en haut, il est visible en haut ET
