@@ -1671,6 +1671,13 @@ summary.btn::-webkit-details-marker { display: none; }
        instantanément (comme WhatsApp), sans défilement visible. Les éventuelles
        animations explicites passent par scrollTo({behavior:'smooth'}). */
     -webkit-overflow-scrolling: touch;
+    /* On désactive l'ancrage de scroll NATIF du navigateur. Il compensait de
+       lui-même l'insertion de contenu au-dessus, en caractéant un nœud choisi
+       au hasard : le résultat variait selon ce que le navigateur jugeait
+       important, et le message lu pouvait se retrouver décalé. La compensation
+       est faite explicitement dans loadOlderMessages(), de façon déterministe :
+       le contenu sous les yeux ne bouge pas. */
+    overflow-anchor: none;
 }
 
 .disc-welcome {

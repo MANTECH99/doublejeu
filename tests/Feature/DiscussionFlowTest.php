@@ -204,6 +204,56 @@ class DiscussionFlowTest extends TestCase
         $this->assertStringContainsString('id="disc-loadmore" style="display:block"', $html);
     }
 
+    public function test_load_more_keeps_the_reading_position_without_jumping_to_the_top(): void
+    {
+        $html = $this->actingAs($this->bob)
+            ->get(route('discussion.index'))
+            ->assertOk()
+            ->getContent();
+
+        preg_match('#function loadOlderMessages\(\)\s*\{(.*?)\n    \}\n#s', $html, $m);
+        $this->assertNotEmpty($m, 'Le handler loadOlderMessages doit être présent.');
+
+        // Le lot s'insère au-dessus : sans restitution de la hauteur ajoutée, le
+        // regard retombe sur le DÉBUT du nouveau lot au lieu de rester à la
+        // frontière avec ce qui venait d'être lu.
+        $this->assertStringContainsString(
+            'const top0 = MESSAGES_EL.scrollTop;',
+            $m[1],
+            'La position avant insertion doit être relevée.',
+        );
+        $this->assertStringContainsString(
+            'MESSAGES_EL.scrollTop = top0 + added;',
+            $m[1],
+            'La hauteur ajoutée doit être rendue pour rester à la même place.',
+        );
+
+        // En revanche, aucune remise à zéro : c'est ce qui projetait la vue en
+        // haut du fil à chaque clic.
+        $this->assertStringNotContainsString(
+            'scrollTop = 0',
+            $m[1],
+            'Charger plus ancien ne doit jamais projeter la vue en haut du fil.',
+        );
+    }
+
+    public function test_the_scroll_anchor_of_the_browser_is_disabled(): void
+    {
+        // On retire les commentaires avant de chercher : ils contiennent des
+        // accolades (scrollTo({behavior:'smooth'})), qui casseraient le repérage
+        // du bloc.
+        $css = preg_replace('#/\*.*?\*/#s', '', (string) file_get_contents(resource_path('css/app.css')));
+
+        // Le navigateur compense de lui-même l'insertion au-dessus en ancrant un
+        // nœud de son choix : le résultat varie selon ce qu'il juge important. La
+        // compensation doit être la nôtre, pas la sienne.
+        $this->assertMatchesRegularExpression(
+            '/\.disc-messages\s*\{[^}]*overflow-anchor:\s*none/s',
+            (string) $css,
+            "L'ancrage de scroll natif doit être désactivé sur le fil des messages.",
+        );
+    }
+
     public function test_load_more_anchor_stays_above_the_date_separators(): void
     {
         $html = $this->actingAs($this->bob)

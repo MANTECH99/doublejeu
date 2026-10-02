@@ -2992,9 +2992,22 @@ function grabVideoThumb(videoEl) {
                 if (!data) return;
                 const older = (data.messages || []).map(localizeMsg);
                 if (older.length > 0) {
-                    // Position de départ : elle décide de ce qu'on fait après coup.
+                    // Le lot s'insère AU-DESSUS de ce qui est affiché. On relève la
+                    // position et la hauteur avant, puis on les restitue après : le
+                    // message lu ne bouge pas d'un pixel, et le regard reste à la
+                    // MÊME place — c'est-à-dire à la frontière entre ce qu'on
+                    // venait de lire et ce qui vient d'arriver.
+                    //
+                    // C'est ce qui fait qu'on atterrit sur les DERNIERS messages du
+                    // nouveau lot, ceux qui prolongent la conversation, et qu'on
+                    // remonte soi-même vers les plus anciens. Ne rien faire
+                    // laisserait scrollTop à sa valeur absolue : on retomberait sur
+                    // le DÉBUT du lot, et il faudrait remonter de toute la hauteur
+                    // ajoutée pour retrouver où on en était.
+                    //
+                    // En revanche on ne replace JAMAIS la vue en haut du fil : c'est
+                    // ce qui donnait l'impression d'un saut à chaque clic.
                     const top0 = MESSAGES_EL.scrollTop;
-                    const atBottom = wasAtBottom();
                     const h0 = MESSAGES_EL.scrollHeight;
                     for (const m of older) buildBubble(m);
                     dedupeDateSeps(); // le joint entre deux lots peut répéter un jour
@@ -3013,19 +3026,9 @@ function grabVideoThumb(videoEl) {
                         || MESSAGES_EL.querySelector('.disc-bubble-wrap');
                     if (anchorTarget) MESSAGES_EL.insertBefore(bootAnchor, anchorTarget);
 
-                    if (top0 <= 240 || atBottom) {
-                        // Le bouton étant collé en haut, il est visible en haut ET
-                        // en bas du fil : dans les deux cas on va montrer les
-                        // messages qui viennent d'arriver. Sans ça, la compensation
-                        // de hauteur les cacherait hors de l'écran et le clic
-                        // semblerait sans effet.
-                        MESSAGES_EL.scrollTop = 0;
-                    } else {
-                        // Lecture au milieu du fil : on garde la portion affichée
-                        // stable (le contenu ajouté au-dessus ne fait pas sauter).
-                        const added = MESSAGES_EL.scrollHeight - h0;
-                        if (added > 0) MESSAGES_EL.scrollTop = top0 + added;
-                    }
+                    // On rend exactement la hauteur ajoutée : le regard ne bouge pas.
+                    const added = MESSAGES_EL.scrollHeight - h0;
+                    if (added > 0) MESSAGES_EL.scrollTop = top0 + added;
                 }
                 if (!data.hasAnciens) {
                     const box = document.getElementById('disc-loadmore');
