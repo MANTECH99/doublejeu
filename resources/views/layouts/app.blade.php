@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script>
-        // Thème clair/sombre appliqué avant le premier rendu (évite le flash).
+        // Thème (sombre / rose / blanc) appliqué avant le premier rendu, pour
+        // éviter le flash de la palette par défaut. 'dark' reste l'absence
+        // d'attribut : c'est le thème par défaut du design system.
         (function () {
             try {
-                if (localStorage.getItem('dj_theme') === 'light') {
-                    document.documentElement.setAttribute('data-theme', 'light');
+                var t = localStorage.getItem('dj_theme');
+                if (t === 'light' || t === 'rose') {
+                    document.documentElement.setAttribute('data-theme', t);
                 }
             } catch (e) {}
         })();

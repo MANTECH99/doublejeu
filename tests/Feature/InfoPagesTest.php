@@ -66,4 +66,68 @@ class InfoPagesTest extends TestCase
             ->assertSee('data-theme-toggle')
             ->assertSee('Apparence');
     }
+
+    public function test_the_appearance_button_offers_three_themes(): void
+    {
+        $user = User::factory()->create();
+
+        $html = $this->actingAs($user)
+            ->get(route('profile.edit'))
+            ->assertOk()
+            ->getContent();
+
+        // Le libellé est dynamique : c'est applyTheme() qui le remplit.
+        $this->assertStringContainsString('data-theme-toggle', $html);
+        $this->assertStringContainsString('theme-label', $html);
+        $this->assertStringContainsString('Sombre', $html);
+    }
+
+    public function test_the_rose_theme_stays_on_two_rose_tints(): void
+    {
+        $css = (string) file_get_contents(resource_path('css/app.css'));
+
+        preg_match('/html\[data-theme=\'rose\'\]\s*\{([^}]*)\}/s', $css, $m);
+        $this->assertNotEmpty($m, 'Le thème rose doit exister dans le CSS.');
+
+        // Les deux roses du ruban, et rien d'autre. Le noir bleuté, les cartes
+        // et les textes sont hérités du thème sombre : les redéclarer ici
+        // serait du bruit qui peut dériver sans qu'on le voie.
+        $this->assertStringContainsString('--primary: #e75480;', $m[1]);
+        $this->assertStringContainsString('--primary-dark: #a3244d;', $m[1]);
+        $this->assertStringNotContainsString('--bg:', $m[1]);
+        $this->assertStringNotContainsString('--card', $m[1]);
+        $this->assertStringNotContainsString('--text', $m[1]);
+        $this->assertStringNotContainsString('--border:', $m[1]);
+
+        // --primary-2 doit reprendre --primary : le rose pâle #ff8fab
+        // s'introduirait sinon par les dégradés, en troisième teinte.
+        $this->assertStringContainsString('--primary-2: #e75480;', $m[1]);
+        $this->assertStringNotContainsString('#ff8fab', $m[1]);
+    }
+
+    public function test_the_appearance_toggle_cycles_through_dark_rose_and_light(): void
+    {
+        $js = (string) file_get_contents(resource_path('js/app.js'));
+
+        // Le cycle doit contenir les trois thèmes, dans l'ordre du libellé.
+        $this->assertStringContainsString("{ id: 'dark',", $js);
+        $this->assertStringContainsString("{ id: 'rose',", $js);
+        $this->assertStringContainsString("{ id: 'light',", $js);
+
+        // Un thème inconnu (ancien localStorage, saisie manuelle) retombe sur
+        // le thème sombre au lieu de laisser la page sans variables.
+        $this->assertStringContainsString("if (!THEMES.some((x) => x.id === current)) current = 'dark';", $js);
+    }
+
+    public function test_the_pre_paint_script_applies_the_rose_theme_without_a_flash(): void
+    {
+        $html = $this->actingAs(User::factory()->create())
+            ->get(route('profile.edit'))
+            ->assertOk()
+            ->getContent();
+
+        // Sans cela, un utilisateur en rose verrait un flash sombre avant que
+        // app.js ne prenne le relais.
+        $this->assertStringContainsString("t === 'light' || t === 'rose'", $html);
+    }
 }

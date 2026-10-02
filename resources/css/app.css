@@ -31,6 +31,18 @@
     --maxw: 640px;
 }
 
+/* ---------- Thème rose ----------
+   Deux roses seulement : le rose vif et le rose profond du ruban de
+   solidarité. --primary-2 reprend volontairement --primary, sinon la teinte
+   pâle s'introduirait par la porte des dégradés et le thème dépasserait les
+   deux couleurs voulues. Tout le reste (noir bleuté, cartes, textes) est
+   hérité tel quel du thème sombre. */
+html[data-theme='rose'] {
+    --primary: #e75480;      /* --rose */
+    --primary-dark: #a3244d; /* --rose-deep */
+    --primary-2: #e75480;    /* reprend --primary, pas la teinte pâle */
+}
+
 /* ---------- Thème clair (« fond blanc ») ---------- */
 html[data-theme='light'] {
     --bg: #f2f2f7;

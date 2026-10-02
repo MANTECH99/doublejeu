@@ -5,33 +5,57 @@ Alpine.start();
 
 import './moodLottie.js';
 
-/* ============ Thème clair / sombre ============ */
+/* ============ Thème clair / sombre / rose ============ */
 (function () {
     const root = document.documentElement;
 
+    // Cycle du bouton « Apparence » : sombre → rose → blanc → sombre.
+    // 'dark' est l'absence d'attribut : c'est le thème par défaut du design system.
+    const THEMES = [
+        { id: 'dark', ico: '🌙', label: 'Sombre' },
+        { id: 'rose', ico: '🌹', label: 'Rose' },
+        { id: 'light', ico: '☀️', label: 'Blanc' },
+    ];
+
+    function themeId() {
+        return root.getAttribute('data-theme') || 'dark';
+    }
+
     function applyTheme(t) {
-        if (t === 'light') {
-            root.setAttribute('data-theme', 'light');
+        if (t === 'light' || t === 'rose') {
+            root.setAttribute('data-theme', t);
         } else {
             root.removeAttribute('data-theme');
         }
         try { localStorage.setItem('dj_theme', t); } catch (e) {}
+        const current = THEMES.find((x) => x.id === t) || THEMES[0];
         document.querySelectorAll('[data-theme-toggle]').forEach((b) => {
             const ico = b.querySelector('.theme-ico') || b;
-            ico.textContent = t === 'light' ? '🌙' : '☀️';
+            const label = b.querySelector('.theme-label');
+            if (label) label.textContent = current.label;
+            // data-theme-current sert aux tests et au débogage : on peut lire
+            // le thème actif sans inspecter le DOM.
+            b.dataset.themeCurrent = current.id;
+            if (!b.dataset.iconBound) {
+                ico.textContent = current.ico;
+                b.dataset.iconBound = '1';
+            }
         });
     }
 
     let current = 'dark';
     try { current = localStorage.getItem('dj_theme') || 'dark'; } catch (e) {}
+    // Une valeur inconnue (ancien stockage, saisie manuelle) retombe sur le
+    // thème sombre plutôt que de laisser la page sans variables.
+    if (!THEMES.some((x) => x.id === current)) current = 'dark';
 
     applyTheme(current);
 
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-theme-toggle]');
         if (!btn) return;
-        const next = root.hasAttribute('data-theme') ? 'dark' : 'light';
-        applyTheme(next);
+        const idx = THEMES.findIndex((x) => x.id === themeId());
+        applyTheme(THEMES[(idx + 1) % THEMES.length].id);
     });
 })();
 

@@ -1,6 +1,6 @@
 {
   "node_modules/lottie-web/build/player/lottie.js": {
-    "file": "assets/lottie-0xmtLnMu.js",
+    "file": "assets/lottie-BBMpeM28.js",
     "name": "lottie",
     "src": "node_modules/lottie-web/build/player/lottie.js",
     "isDynamicEntry": true,
@@ -9,7 +9,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-CSJ9__oz.css",
+    "file": "assets/app-BBWoZ3Dw.css",
     "name": "app",
     "names": [
       "app.css"
@@ -18,7 +18,7 @@
     "isEntry": true
   },
   "resources/js/app.js": {
-    "file": "assets/app-_4PeYi4b.js",
+    "file": "assets/app-CBFks0_a.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
