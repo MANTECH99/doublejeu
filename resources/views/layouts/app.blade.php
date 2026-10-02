@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script>
-        // Thème (sombre / rose / blanc) appliqué avant le premier rendu, pour
-        // éviter le flash de la palette par défaut. 'dark' reste l'absence
-        // d'attribut : c'est le thème par défaut du design system.
+        // Thème (rose / sombre / blanc) appliqué avant le premier rendu, pour
+        // éviter le flash de la palette par défaut. Rose est le thème par défaut :
+        // sans valeur en localStorage on pose donc data-theme="rose". 'dark'
+        // reste l'absence d'attribut, c'est la base du design system.
         (function () {
             try {
-                var t = localStorage.getItem('dj_theme');
+                var t = localStorage.getItem('dj_theme') || 'rose';
                 if (t === 'light' || t === 'rose') {
                     document.documentElement.setAttribute('data-theme', t);
                 }

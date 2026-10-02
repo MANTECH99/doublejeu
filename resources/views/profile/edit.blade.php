@@ -268,9 +268,12 @@
         <section class="card pad-lg">
             <h2 class="section-title">🎨 Apparence</h2>
             {{-- Le libellé et l'icône sont réécrits par applyTheme() : le bouton
-                 fait défiler Sombre → Rose → Blanc. --}}
+                 fait défiler Rose → Sombre → Blanc. Ce markup n'est visible
+                 qu'avant l'exécution d'app.js ; il doit donc annoncer le
+                 thème par défaut, sinon l'utilisateur voit « Sombre » le temps
+                 d'un aller-retour réseau sur un site rose. --}}
             <button type="button" class="flex between items-center info-link info-link-last" data-theme-toggle style="background:none;border:none;cursor:pointer;width:100%;text-align:left">
-                <span><span class="theme-ico">🌙</span> Thème : <span class="theme-label">Sombre</span></span>
+                <span><span class="theme-ico">🌹</span> Thème : <span class="theme-label">Rose</span></span>
                 <span class="info-arrow">></span>
             </button>
         </section>

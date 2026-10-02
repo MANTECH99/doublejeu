@@ -9,13 +9,17 @@ import './moodLottie.js';
 (function () {
     const root = document.documentElement;
 
-    // Cycle du bouton « Apparence » : sombre → rose → blanc → sombre.
-    // 'dark' est l'absence d'attribut : c'est le thème par défaut du design system.
+    // Cycle du bouton « Apparence » : rose → sombre → blanc → rose.
+    // Rose est le thème par défaut, donc le premier du cycle.
+    // Côté CSS, 'dark' reste l'absence d'attribut : c'est la base sur laquelle
+    // 'rose' et 'light' viennent se greffer.
     const THEMES = [
-        { id: 'dark', ico: '🌙', label: 'Sombre' },
         { id: 'rose', ico: '🌹', label: 'Rose' },
+        { id: 'dark', ico: '🌙', label: 'Sombre' },
         { id: 'light', ico: '☀️', label: 'Blanc' },
     ];
+
+    const DEFAULT_THEME = 'rose';
 
     function themeId() {
         return root.getAttribute('data-theme') || 'dark';
@@ -43,11 +47,11 @@ import './moodLottie.js';
         });
     }
 
-    let current = 'dark';
-    try { current = localStorage.getItem('dj_theme') || 'dark'; } catch (e) {}
+    let current = DEFAULT_THEME;
+    try { current = localStorage.getItem('dj_theme') || DEFAULT_THEME; } catch (e) {}
     // Une valeur inconnue (ancien stockage, saisie manuelle) retombe sur le
-    // thème sombre plutôt que de laisser la page sans variables.
-    if (!THEMES.some((x) => x.id === current)) current = 'dark';
+    // thème par défaut plutôt que de laisser la page sans variables.
+    if (!THEMES.some((x) => x.id === current)) current = DEFAULT_THEME;
 
     applyTheme(current);
 

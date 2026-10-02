@@ -69,17 +69,20 @@ class InfoPagesTest extends TestCase
 
     public function test_the_appearance_button_offers_three_themes(): void
     {
-        $user = User::factory()->create();
-
-        $html = $this->actingAs($user)
+        $html = $this->actingAs(User::factory()->create())
             ->get(route('profile.edit'))
             ->assertOk()
             ->getContent();
 
-        // Le libellé est dynamique : c'est applyTheme() qui le remplit.
         $this->assertStringContainsString('data-theme-toggle', $html);
         $this->assertStringContainsString('theme-label', $html);
-        $this->assertStringContainsString('Sombre', $html);
+
+        // Les trois libellés vivent dans app.js, pas dans le Blade : le markup
+        // n'affiche que le thème courant (applyTheme() réécrit le reste).
+        $js = (string) file_get_contents(resource_path('js/app.js'));
+        $this->assertStringContainsString("label: 'Rose'", $js);
+        $this->assertStringContainsString("label: 'Sombre'", $js);
+        $this->assertStringContainsString("label: 'Blanc'", $js);
     }
 
     public function test_the_rose_theme_stays_on_two_rose_tints(): void
@@ -115,8 +118,41 @@ class InfoPagesTest extends TestCase
         $this->assertStringContainsString("{ id: 'light',", $js);
 
         // Un thème inconnu (ancien localStorage, saisie manuelle) retombe sur
-        // le thème sombre au lieu de laisser la page sans variables.
-        $this->assertStringContainsString("if (!THEMES.some((x) => x.id === current)) current = 'dark';", $js);
+        // le thème par défaut au lieu de laisser la page sans variables.
+        $this->assertStringContainsString(
+            'if (!THEMES.some((x) => x.id === current)) current = DEFAULT_THEME;',
+            $js
+        );
+    }
+
+    public function test_rose_is_the_default_theme(): void
+    {
+        $js = (string) file_get_contents(resource_path('js/app.js'));
+
+        // Rose en premier du cycle, et utilisé comme défaut à deux endroits :
+        // la valeur initiale et le repli sur valeur inconnue.
+        $this->assertStringContainsString("const DEFAULT_THEME = 'rose';", $js);
+        $this->assertStringContainsString('current = DEFAULT_THEME;', $js);
+        $this->assertStringContainsString('|| DEFAULT_THEME;', $js);
+
+        // L'ordre du cycle suit le défaut : rose → sombre → blanc.
+        $this->assertMatchesRegularExpression(
+            "/\{ id: 'rose',.*\{ id: 'dark',.*\{ id: 'light',/s",
+            $js
+        );
+    }
+
+    public function test_the_appearance_button_shows_the_default_theme_before_js_runs(): void
+    {
+        $html = $this->actingAs(User::factory()->create())
+            ->get(route('profile.edit'))
+            ->assertOk()
+            ->getContent();
+
+        // Le markup est visible avant l'exécution d'app.js. S'il annonçait
+        // « Sombre », un utilisateur en rose verrait le mauvais thème le temps
+        // d'un aller-retour réseau.
+        $this->assertStringContainsString('class="theme-label">Rose<', $html);
     }
 
     public function test_the_pre_paint_script_applies_the_rose_theme_without_a_flash(): void
@@ -126,8 +162,10 @@ class InfoPagesTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        // Sans cela, un utilisateur en rose verrait un flash sombre avant que
-        // app.js ne prenne le relais.
+        // Sans cela, un utilisateur verrait un flash sombre avant que
+        // app.js ne prenne le relais. Le défaut doit aussi être rose : le
+        // repli sur la base sombre se verrait sur le premier rendu.
         $this->assertStringContainsString("t === 'light' || t === 'rose'", $html);
+        $this->assertStringContainsString("localStorage.getItem('dj_theme') || 'rose'", $html);
     }
 }
