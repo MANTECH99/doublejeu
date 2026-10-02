@@ -542,9 +542,14 @@
     // Id du plus ancien message affiché : borne des chargements « plus anciens ».
     let oldestLoadedId = 0;
     let loadMorePending = false;
-    // Curseur du poll : les ✓✓ et les éditions ne sont renvoyés que pour ce qui a
-    // changé depuis le dernier appel (le fil affiché n'est jamais rechargé en entier).
-    let lastPollAt = new Date().toISOString();
+    // Curseur du poll pour les ✓✓ et les éditions : ce sont les horodatages
+    // renvoyés par le SERVEUR (data.curseur), jamais l'horloge du navigateur.
+    // Horodater soi-même le curseur créait une fenêtre aveugle : le curseur
+    // avançait après la réception de la réponse, donc plus tard que l'instant où
+    // le serveur avait interrogé la base, et les lectures survenues entre les deux
+    // n'étaient vues par aucun poll. D'où des ✓✓ aléatoires. Tant que le serveur
+    // n'a pas répondu, on n'envoie rien : il renverra alors tout l'état « lu ».
+    let curseurSync = { lus: '', modifies: '' };
     let sending = false;
     let replyTarget = null; // {id, sender_name, body, is_gif, gif_url, is_photo, photo_url, is_video, video_url, video_poster_url}
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
@@ -1451,10 +1456,11 @@
         try {
             // Poll incrémental : seuls les messages arrivés depuis le dernier id
             // connu (le fil affiché n'est jamais rechargé en entier). Les ✓✓ et les
-            // éditions arrivent à part, via le curseur `since`.
-            const url = STATE_URL + '?after=' + lastMessageId
-                + '&since=' + encodeURIComponent(lastPollAt)
-                + '&_=' + Date.now();
+            // éditions arrivent à part, via le curseur serveur.
+            const params = new URLSearchParams({ after: lastMessageId, _: Date.now() });
+            if (curseurSync.lus) params.set('lusSince', curseurSync.lus);
+            if (curseurSync.modifies) params.set('modifiesSince', curseurSync.modifies);
+            const url = STATE_URL + '?' + params.toString();
             const res = await fetch(url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
@@ -1469,9 +1475,19 @@
                 if (hard) console.error('discussion:fetch json', jsonErr);
                 return;
             }
-            // Le curseur « depuis » avance dès que la réponse est traitée : un
-            // échec réseau ne fait donc pas rejouer le même delta au prochain poll.
-            lastPollAt = new Date().toISOString();
+            // Curseur « depuis » pour le poll suivant : celui que le serveur a capturé
+            // AVANT de calculer le delta qu'on vient d'appliquer. Le transmettre
+            // tel quel est sans risque — le serveur l'a figé avant d'interroger la
+            // base, donc tout ce qui est arrivé pendant la requête reste au-dessus
+            // et sera renvoyé au prochain poll. Un échec réseau ne met donc pas le
+            // curseur à jour : le même delta sera rejoué, sans doublon puisque la
+            // mise à jour des ✓✓ est idempotente.
+            if (data.curseur) {
+                curseurSync = {
+                    lus: data.curseur.lus || curseurSync.lus,
+                    modifies: data.curseur.modifies || curseurSync.modifies,
+                };
+            }
 
             const bottom = wasAtBottom();
             const messages = data.messages || [];

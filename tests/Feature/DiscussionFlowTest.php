@@ -269,9 +269,13 @@ class DiscussionFlowTest extends TestCase
         $envoyeParAlice->forceFill(['body' => 'Coucou bis', 'edited_at' => now()])->save();
         $envoyeParBob->markAsRead();
 
-        // Le curseur `since` est au format du navigateur (new Date().toISOString()).
-        $depuis = now()->subMinute()->utc()->format('Y-m-d\TH:i:s\Z');
-        $poll = $this->getJson(route('discussion.fetch').'?after='.$envoyeParBob->id.'&since='.$depuis)
+        // Les curseurs sont ceux que le serveur a délivrés lors d'un poll précédent,
+        // au format UTC avec microsecondes.
+        $depuis = now()->subMinute()->utc()->format('Y-m-d\TH:i:s.u\Z');
+        $poll = $this->getJson(route('discussion.fetch')
+            .'?after='.$envoyeParBob->id
+            .'&lusSince='.$depuis
+            .'&modifiesSince='.$depuis)
             ->assertOk()
             ->json();
 
@@ -283,20 +287,76 @@ class DiscussionFlowTest extends TestCase
         $this->assertSame($envoyeParAlice->id, $poll['modifies'][0]['id']);
         $this->assertSame('Coucou bis', $poll['modifies'][0]['body']);
         $this->assertTrue($poll['modifies'][0]['edited']);
+
+        // Le curseur renvoyé correspond à l'état réel de la base.
+        $this->assertSame(
+            $envoyeParBob->read_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
+            $poll['curseur']['lus'],
+        );
     }
 
-    public function test_poll_ignores_an_invalid_since_cursor(): void
+    public function test_poll_ignores_an_invalid_cursor(): void
     {
         Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->alice->id, 'body' => 'Coucou']);
 
         $poll = $this->actingAs($this->bob)
-            ->getJson(route('discussion.fetch').'?after=0&since=pas-une-date')
+            ->getJson(route('discussion.fetch').'?after=0&lusSince=pas-une-date&modifiesSince=pas-une-date')
             ->assertOk()
             ->json();
 
-        $this->assertSame([], $poll['lus']);
-        $this->assertSame([], $poll['modifies']);
+        // Un curseur illisible ne doit pas faire planter le poll : il vaut
+        // « aucune borne basse », le serveur se recalibre sur la base.
+        $this->assertIsArray($poll['lus']);
+        $this->assertIsArray($poll['modifies']);
         $this->assertCount(1, $poll['messages']);
+    }
+
+    public function test_a_receipt_is_never_skipped_by_a_poll_that_already_captured_the_cursor(): void
+    {
+        $envoye = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->bob->id, 'body' => 'Tu me lis ?']);
+
+        // Poll 1 : le serveur fige son curseur. Aucun read_at n'existe encore,
+        // donc le curseur des ✓✓ est absent.
+        $premier = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch').'?after='.$envoye->id)
+            ->assertOk()
+            ->json();
+        $this->assertNull($premier['curseur']['lus']);
+
+        // Le partenaire lit le message : read_at est donc postérieur au curseur
+        // déjà capturé. C'est EXACTEMENT la lecture qui disparaissait avec l'ancien
+        // curseur horodaté côté client : celui-ci avançait après la réception de la
+        // réponse, donc au-delà de cet instant, et aucun poll ne pouvait plus la
+        // voir — d'où les ✓✓ apparaissant une fois sur trois.
+        $envoye->markAsRead();
+
+        $poll = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch')
+                .'?after='.$envoye->id
+                .'&lusSince='.$premier['curseur']['lus'])
+            ->assertOk()
+            ->json();
+
+        $this->assertContains($envoye->id, $poll['lus']);
+    }
+
+    public function test_the_client_clock_can_no_longer_hide_a_read_receipt(): void
+    {
+        $envoye = Message::create(['couple_id' => $this->couple->id, 'sender_id' => $this->bob->id, 'body' => 'Tu me lis ?']);
+        $envoye->markAsRead();
+
+        // `since` était l'horodatage du navigateur, et il avançait après chaque
+        // réponse. Une horloge d'appareil en avance le faisait passer devant le
+        // read_at du serveur : la lecture était alors définitivement perdue.
+        // Le curseur ne doit plus dépendre d'aucune horloge client.
+        $avenir = now()->addMinute()->utc()->format('Y-m-d\TH:i:s.u\Z');
+
+        $poll = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch').'?after='.$envoye->id.'&since='.$avenir)
+            ->assertOk()
+            ->json();
+
+        $this->assertContains($envoye->id, $poll['lus']);
     }
 
     public function test_partner_can_reply_to_a_message(): void

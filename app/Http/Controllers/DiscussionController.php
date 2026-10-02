@@ -237,34 +237,65 @@ class DiscussionController extends Controller
             ->count();
 
         // Le poll n'étendant plus l'historique, deux deltas complètent `messages` :
-        // les ids de MES messages passés « lu » depuis le dernier appel (✓✓), et
-        // les messages modifiés depuis (édition du texte côté partenaire).
+        // les ids de MES messages passés « lu » (✓✓), et les messages modifiés
+        // (édition du texte côté partenaire).
+        //
+        // Le curseur vient du SERVEUR, jamais de l'horloge du navigateur. Un
+        // curseur horodaté côté client crée une fenêtre aveugle à chaque poll : le
+        // navigateur estampille son curseur APRÈS avoir reçu la réponse, donc plus
+        // tard que l'instant où le serveur a interrogé la base. Les lectures
+        // survenues entre les deux (réponse en vol + écart entre les horloges) se
+        // retrouvent derrière le curseur, sans qu'aucun poll ait jamais pu les
+        // voir ; le curseur ne redescendant jamais, elles sont perdues
+        // définitivement. D'où des ✓✓ apparaissant ALÉATOIREMENT, selon la phase
+        // du cycle de poll où tombe la lecture.
+        //
+        // L'ordre des opérations ci-dessous est ce qui ferme la fenêtre :
+        //
+        //   1. on LIT le curseur courant, c'est-à-dire l'état réel de la base à
+        //      cet instant ;
+        //   2. on calcule le delta entre le curseur REÇU et celui-là, avec une
+        //      borne haute ;
+        //   3. on renvoie ce même curseur pour le prochain appel.
+        //
+        // Toute lecture survenue après l'étape 1 porte un read_at postérieur au
+        // curseur : elle sort du delta courant mais reste au-dessus du curseur
+        // renvoyé, donc elle est servie au poll suivant. Aucune perte possible.
+        //
+        // Les 200 plus récentes sont renvoyées en priorité (ordre décroissant) :
+        // en cas de rafale, ce sont elles qui sont affichées à l'écran, et
+        // l'élagage des plus anciennes ne crée pas de trou puisque le curseur
+        // reste le maximum réel.
+        $curseur = $this->curseurSync($couple, $userId);
+        $lusDepuis = $this->parseCurseur($request->query('lusSince'));
+        $modifiesDepuis = $this->parseCurseur($request->query('modifiesSince'));
         $lus = [];
         $modifies = [];
-        $depuis = $request->query('since');
-        if (is_string($depuis) && $depuis !== '') {
-            try {
-                $depuisDate = Carbon::parse($depuis);
-            } catch (InvalidArgumentException) {
-                $depuisDate = null;
-            }
 
-            if ($depuisDate) {
-                $lus = Message::where('couple_id', $couple->id)
-                    ->where('sender_id', $userId)
-                    ->whereNotNull('read_at')
-                    ->where('read_at', '>', $depuisDate)
-                    ->orderBy('id')
-                    ->limit(200)
-                    ->pluck('id')
-                    ->all();
+        if ($curseur['lus']) {
+            $lus = Message::where('couple_id', $couple->id)
+                ->where('sender_id', $userId)
+                ->whereNotNull('read_at')
+                ->when($lusDepuis, fn ($q) => $q->where('read_at', '>', $lusDepuis))
+                ->where('read_at', '<=', $this->parseCurseur($curseur['lus']))
+                ->orderByDesc('read_at')
+                ->orderByDesc('id')
+                ->limit(200)
+                ->pluck('id')
+                ->all();
+        }
 
-                $modifies = $this->mapMessages($couple, $userId, (clone $query)
-                    ->where('edited_at', '>', $depuisDate)
-                    ->orderBy('id')
-                    ->limit(200)
-                    ->get());
-            }
+        if ($curseur['modifies']) {
+            $modifies = $this->mapMessages($couple, $userId, (clone $query)
+                ->whereNotNull('edited_at')
+                ->when($modifiesDepuis, fn ($q) => $q->where('edited_at', '>', $modifiesDepuis))
+                ->where('edited_at', '<=', $this->parseCurseur($curseur['modifies']))
+                ->orderByDesc('edited_at')
+                ->orderByDesc('id')
+                ->limit(200)
+                ->get()
+                ->sortBy('id')
+                ->values());
         }
 
         $partenaire = $couple->partnerOf($request->user())?->fresh();
@@ -274,6 +305,11 @@ class DiscussionController extends Controller
             'hasAnciens' => $hasAnciens,
             'lus' => $lus,
             'modifies' => $modifies,
+            // Curseur de synchronisation des ✓✓ et des éditions : c'est celui
+            // CAPTURÉ AVANT le calcul des deltas ci-dessus, donc l'état réel de la
+            // base au moment où le delta a été figé. Le renvoyer tel quel garantit
+            // qu'aucun événement ne saute, et qu'aucun ne soit rejoué.
+            'curseur' => $curseur,
             'nonLus' => $nonLus,
             'partenaire' => [
                 'enLigne' => $partenaire?->last_active_at !== null && $partenaire->last_active_at->diffInMinutes() < 1,
@@ -720,5 +756,62 @@ class DiscussionController extends Controller
             ->where('sender_id', '!=', $user->id)
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
+    }
+
+    /**
+     * Curseur de synchronisation des ✓✓ et des éditions pour un couple : les
+     * horodatages serveur les plus récents présents en base.
+     *
+     * @return array{lus: ?string, modifies: ?string}
+     */
+    protected function curseurSync($couple, int $userId): array
+    {
+        $lus = Message::where('couple_id', $couple->id)
+            ->where('sender_id', $userId)
+            ->whereNotNull('read_at')
+            ->max('read_at');
+
+        $modifies = Message::where('couple_id', $couple->id)
+            ->whereNotNull('edited_at')
+            ->max('edited_at');
+
+        return [
+            'lus' => $this->formatCurseur($lus),
+            'modifies' => $this->formatCurseur($modifies),
+        ];
+    }
+
+    /**
+     * Format d'échange : UTC, ISO 8601, avec les microsecondes. Les
+     * microsecondes sont indispensables car deux événements peuvent tomber dans
+     * la même seconde — sans elles, le curseur sauterait le second d'entre-deux.
+     */
+    protected function formatCurseur($valeur): ?string
+    {
+        if ($valeur === null) {
+            return null;
+        }
+
+        // max() renvoie une valeur brute (une chaîne), pas un Carbon : il faut
+        // repasser par l'analyseur de dates.
+        return Carbon::parse($valeur)->utc()->format('Y-m-d\TH:i:s.u\Z');
+    }
+
+    /**
+     * Curseur reçu du client. Une valeur absente ou illisible ne doit pas casser
+     * le poll : elle vaut « aucune borne basse », c'est-à-dire que le delta
+     * repart de ce que la base contient réellement.
+     */
+    protected function parseCurseur($valeur): ?Carbon
+    {
+        if (! is_string($valeur) || $valeur === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($valeur);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
     }
 }
