@@ -3569,3 +3569,172 @@ summary.btn::-webkit-details-marker { display: none; }
     border-radius: 50%;
     background: var(--primary);
 }
+
+/* ---- Vocal de la préparation d'anniversaire ---- */
+.cel-vocal {
+    margin-top: 12px;
+}
+.cel-vocal-idle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.cel-vocal-mic {
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    color: #fff;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(230, 57, 70, 0.35);
+    transition: 0.15s;
+}
+.cel-vocal-mic:hover { filter: brightness(1.08); }
+.cel-vocal-mic:active { transform: scale(0.92); }
+.cel-vocal-mic.recording {
+    background: linear-gradient(135deg, #e63946, #c1121f);
+    animation: cel-vocal-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cel-vocal-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(230, 57, 70, 0.45); }
+    50% { box-shadow: 0 0 0 10px rgba(230, 57, 70, 0); }
+}
+.cel-vocal-hint {
+    font-size: 13px;
+    color: var(--text-2);
+}
+.cel-vocal-hint strong {
+    color: var(--primary);
+}
+.cel-vocal-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card-2);
+}
+.cel-vocal-bar .disc-rec-send { margin-right: 0; }
+.cel-vocal-preview {
+    margin-top: 10px;
+}
+.cel-vocal .disc-audio-time {
+    color: var(--text-2);
+}
+.cel-vocal .disc-audio-play {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--primary);
+}
+.cel-vocal-echec {
+    font-size: 13px;
+    color: var(--danger, #e63946);
+}
+/* Bulle du vocal sur la page du cadeau (reprend la bulle de discussion) */
+.cel-vocal-cadeau {
+    padding: 2px 0;
+}
+.cel-vocal-cadeau .disc-audio-play {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--primary);
+}
+.cel-vocal-cadeau .disc-audio-time {
+    color: var(--text-2);
+}
+
+/* ---------- Liens cliquables + aperçu de lien (façon WhatsApp) ---------- */
+.disc-bubble-text a {
+    color: inherit;
+    text-decoration: underline;
+    word-break: break-word;
+}
+
+.disc-link-card {
+    display: block;
+    margin-top: 8px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.18);
+    border-left: 3px solid var(--primary);
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+.disc-bubble.me .disc-link-card {
+    background: rgba(0, 0, 0, 0.18);
+    border-left-color: rgba(255, 255, 255, 0.7);
+}
+.disc-bubble.them .disc-link-card {
+    background: var(--card);
+    border-left-color: var(--primary);
+}
+.disc-link-img {
+    display: block;
+    width: 100%;
+    max-height: 180px;
+    object-fit: cover;
+    background: rgba(255, 255, 255, 0.06);
+}
+.disc-link-body {
+    padding: 8px 12px;
+}
+.disc-link-site {
+    font-size: 12px;
+    opacity: 0.75;
+    margin-bottom: 2px;
+}
+.disc-link-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+.disc-link-desc {
+    font-size: 12.5px;
+    opacity: 0.8;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Aperçu de lien du composeur, au-dessus de la zone de saisie. */
+.disc-link-preview {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: rgba(30, 30, 38, 0.97);
+    border-top: 1px solid var(--border);
+    z-index: 60;
+}
+.disc-link-preview-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--card-2);
+}
+.disc-link-preview-info {
+    flex: 1;
+    min-width: 0;
+}
+.disc-link-preview-site {
+    font-size: 11px;
+    color: var(--text-3);
+}
+.disc-link-preview-title {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

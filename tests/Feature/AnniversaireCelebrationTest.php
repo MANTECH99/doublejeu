@@ -443,4 +443,295 @@ class AnniversaireCelebrationTest extends TestCase
         $this->assertSame('De la part d\'Abdoul', Celebration::de($this->abdoul, $this->penda)?->message);
         $this->assertSame('De la part de Penda', Celebration::de($this->penda, $this->abdoul)?->message);
     }
+
+    public function test_upload_vocal_stocke_dans_le_dossier_de_l_utilisateur(): void
+    {
+        Storage::fake('public');
+
+        $reponse = $this->actingAs($this->abdoul)
+            ->post(route('anniversaire.vocal'), [
+                'audio' => $this->smallWav('vocal.wav', 4),
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $path = json_decode($reponse->getContent(), true)['path'];
+
+        $this->assertStringStartsWith('anniversaire-vocal/'.$this->abdoul->id.'/', $path);
+        Storage::disk('public')->assertExists($path);
+    }
+
+    public function test_upload_vocal_est_reserve_aux_membres_du_couple(): void
+    {
+        $this->post(route('anniversaire.vocal'), [
+            'audio' => UploadedFile::fake()->create('vocal.webm', 64, 'audio/webm'),
+        ])->assertRedirect(route('login'));
+    }
+
+    public function test_upload_vocal_refuse_un_fichier_invalide(): void
+    {
+        $this->actingAs($this->abdoul)
+            ->post(route('anniversaire.vocal'), [
+                'audio' => UploadedFile::fake()->create('fichier.doc', 64, 'application/msword'),
+            ])
+            ->assertSessionHasErrors('audio');
+    }
+
+    public function test_upload_vocal_accepte_une_capture_audio_webm_de_mic(): void
+    {
+        Storage::fake('public');
+
+        // Une capture MediaRecorder complète : conteneur WebM (EBML) avec un type
+        // client portant les codecs ("audio/webm;codecs=opus").
+        $temp = tempnam(sys_get_temp_dir(), 'vocal');
+        file_put_contents($temp, "\x1A\x45\xDF\xA3".str_repeat("\0", 512));
+
+        $capture = new UploadedFile($temp, 'vocal.webm', 'audio/webm;codecs=opus', null, true);
+
+        $reponse = $this->actingAs($this->abdoul)
+            ->post(route('anniversaire.vocal'), [
+                'audio' => $capture,
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $path = json_decode($reponse->getContent(), true)['path'];
+
+        $this->assertStringStartsWith('anniversaire-vocal/'.$this->abdoul->id.'/', $path);
+        Storage::disk('public')->assertExists($path);
+
+        @unlink($temp);
+    }
+
+    public function test_upload_vocal_accepte_une_capture_audio_mp4_de_mic(): void
+    {
+        Storage::fake('public');
+
+        // Les navigateurs qui ne produisent pas de WebM envoient un conteneur MP4 :
+        // l'atome "ftyp" se trouve à l'offset 4.
+        $temp = tempnam(sys_get_temp_dir(), 'vocal');
+        file_put_contents($temp, "\x00\x00\x00\x18".'ftyp'.str_repeat("\0", 512));
+
+        $capture = new UploadedFile($temp, 'vocal.mp4', 'audio/mp4', null, true);
+
+        $this->actingAs($this->abdoul)
+            ->post(route('anniversaire.vocal'), [
+                'audio' => $capture,
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        @unlink($temp);
+    }
+
+    public function test_upload_vocal_refuse_un_fragment_sans_en_tete(): void
+    {
+        Storage::fake('public');
+
+        // Un enregistrement dont les morceaux n'ont pas été rassemblés : la trame
+        // est présente mais l'en-tête WebM manque. L'ancienne règle trop permissive
+        // laissait passer ce contenu non lisible (application/octet-stream, ex.
+        // "vocal.bin") : il doit désormais être refusé.
+        $temp = tempnam(sys_get_temp_dir(), 'vocal');
+        file_put_contents($temp, "\x43\xC3\x81\x00".str_repeat("\x9F", 1024));
+
+        $capture = new UploadedFile($temp, 'vocal.webm', 'audio/webm;codecs=opus', null, true);
+
+        $this->actingAs($this->abdoul)
+            ->post(route('anniversaire.vocal'), [
+                'audio' => $capture,
+            ])
+            ->assertSessionHasErrors('audio');
+
+        Storage::disk('public')->assertDirectoryEmpty('anniversaire-vocal');
+
+        @unlink($temp);
+    }
+
+    public function test_upload_vocal_refuse_un_contenu_identifie_comme_non_media(): void
+    {
+        Storage::fake('public');
+
+        // Un contenu HTMLe déguisé en vocal.webm doit rester refusé même si
+        // l'extension et le type client sont audio.
+        $temp = tempnam(sys_get_temp_dir(), 'vocal');
+        file_put_contents($temp, '<!doctype html><html><script>alert(1)</script></html>');
+
+        $capture = new UploadedFile($temp, 'vocal.webm', 'audio/webm', null, true);
+
+        $this->actingAs($this->abdoul)
+            ->post(route('anniversaire.vocal'), [
+                'audio' => $capture,
+            ])
+            ->assertSessionHasErrors('audio');
+
+        Storage::disk('public')->assertDirectoryEmpty('anniversaire-vocal');
+
+        @unlink($temp);
+    }
+
+    public function test_un_vocal_enregistre_part_avec_le_cadeau_puis_se_remplace_ou_se_supprime(): void
+    {
+        Storage::fake('public');
+        $this->travelTo('2026-12-27 10:00:00');
+
+        Storage::disk('public')->put('anniversaire-vocal/'.$this->abdoul->id.'/vocal1.webm', 'fake');
+
+        $this->actingAs($this->abdoul)->post(route('anniversaire.enregistrer'), [
+            'message' => 'Joyeux anniversaire mon amour 💌',
+            'vocal_path' => 'anniversaire-vocal/'.$this->abdoul->id.'/vocal1.webm',
+            'vocal_duration' => 12,
+            'vocal_bars' => '30,40,50',
+        ])->assertRedirect()->assertSessionHas('flash');
+
+        $celebration = Celebration::de($this->abdoul, $this->penda);
+        $this->assertNotNull($celebration);
+        $this->assertTrue($celebration->aUnVocal());
+        $this->assertSame('anniversaire-vocal/'.$this->abdoul->id.'/vocal1.webm', $celebration->vocal_path);
+        $this->assertSame(12, $celebration->vocal_duration);
+        $this->assertSame('30,40,50', $celebration->vocal_bars);
+        Storage::disk('public')->assertExists($celebration->vocal_path);
+
+        // Un nouvel enregistrement remplace l'ancien fichier.
+        Storage::disk('public')->put('anniversaire-vocal/'.$this->abdoul->id.'/vocal2.webm', 'fake');
+
+        $this->post(route('anniversaire.enregistrer'), [
+            'message' => 'Joyeux anniversaire mon amour 💌',
+            'vocal_path' => 'anniversaire-vocal/'.$this->abdoul->id.'/vocal2.webm',
+            'vocal_duration' => 8,
+            'vocal_bars' => '20,30',
+        ]);
+
+        Storage::disk('public')->assertMissing('anniversaire-vocal/'.$this->abdoul->id.'/vocal1.webm');
+        $this->assertSame('anniversaire-vocal/'.$this->abdoul->id.'/vocal2.webm', $celebration->fresh()->vocal_path);
+
+        // La case « Supprimer ce vocal » retire tout, fichier compris. Le vrai
+        // formulaire envoie aussi les champs cachés vocal_path/duration/bars
+        // pré-remplis avec le vocal existant : la suppression doit primer dessus.
+        $this->post(route('anniversaire.enregistrer'), [
+            'message' => 'Joyeux anniversaire mon amour 💌',
+            'supprimer_vocal' => '1',
+            'vocal_path' => 'anniversaire-vocal/'.$this->abdoul->id.'/vocal2.webm',
+            'vocal_duration' => 8,
+            'vocal_bars' => '20,30',
+        ]);
+
+        Storage::disk('public')->assertMissing('anniversaire-vocal/'.$this->abdoul->id.'/vocal2.webm');
+        $this->assertFalse($celebration->fresh()->aUnVocal());
+        $this->assertNull($celebration->fresh()->vocal_duration);
+        $this->assertNull($celebration->fresh()->vocal_bars);
+    }
+
+    public function test_un_vocal_du_dossier_d_un_autre_utilisateur_est_refuse(): void
+    {
+        $this->travelTo('2026-12-27 10:00:00');
+
+        $this->actingAs($this->abdoul)
+            ->post(route('anniversaire.enregistrer'), [
+                'message' => 'Cadeau',
+                'vocal_path' => 'anniversaire-vocal/999/vocal.webm',
+                'vocal_duration' => 5,
+            ])
+            ->assertStatus(422);
+
+        Storage::disk('public')->put('discussion-audio/vocal.webm', 'fake');
+
+        $this->post(route('anniversaire.enregistrer'), [
+            'message' => 'Cadeau',
+            'vocal_path' => 'discussion-audio/vocal.webm',
+            'vocal_duration' => 5,
+        ])->assertStatus(422);
+
+        $this->assertNull(Celebration::de($this->abdoul, $this->penda));
+    }
+
+    public function test_les_metadonnees_du_vocal_sont_validees(): void
+    {
+        $this->travelTo('2026-12-27 10:00:00');
+
+        $this->actingAs($this->abdoul)
+            ->post(route('anniversaire.enregistrer'), [
+                'message' => 'Cadeau',
+                'vocal_path' => 'anniversaire-vocal/'.$this->abdoul->id.'/vocal.webm',
+                'vocal_duration' => 0,
+            ])
+            ->assertSessionHasErrors('vocal_duration');
+    }
+
+    public function test_la_page_de_preparation_retrouve_le_vocal_existant(): void
+    {
+        Storage::fake('public');
+        $this->travelTo('2026-12-27 10:00:00');
+
+        $sansVocal = $this->actingAs($this->abdoul)->get(route('anniversaire.celebrer'))->assertOk();
+        $sansVocal->assertSee('Un vocal pour elle/lui', false);
+        $sansVocal->assertSee('id="vocal-zone"', false);
+        $sansVocal->assertSee('id="vocal-mic-btn"', false);
+        $sansVocal->assertDontSee('anniversaire-vocal');
+
+        Storage::disk('public')->put('anniversaire-vocal/'.$this->abdoul->id.'/vocal.webm', 'fake');
+
+        $this->post(route('anniversaire.enregistrer'), [
+            'message' => 'Deja prêt',
+            'vocal_path' => 'anniversaire-vocal/'.$this->abdoul->id.'/vocal.webm',
+            'vocal_duration' => 6,
+            'vocal_bars' => '10,20,30',
+        ]);
+
+        $page = $this->get(route('anniversaire.celebrer'))->assertOk();
+        $page->assertSee('anniversaire-vocal/'.$this->abdoul->id.'/vocal.webm');
+        $page->assertSee(route('anniversaire.vocal'));
+    }
+
+    public function test_le_vocal_du_cadeau_s_affiche_le_jour_j(): void
+    {
+        Storage::fake('public');
+        $this->travelTo('2026-12-27 10:00:00');
+
+        Storage::disk('public')->put('anniversaire-vocal/'.$this->abdoul->id.'/vocal.webm', 'fake');
+
+        $this->actingAs($this->abdoul)->post(route('anniversaire.enregistrer'), [
+            'message' => 'Mon cadeau secret',
+            'vocal_path' => 'anniversaire-vocal/'.$this->abdoul->id.'/vocal.webm',
+            'vocal_duration' => 6,
+            'vocal_bars' => '10,20,30,40,50,60,70,80,90,10,20,30,40,50,60,70,80,90,10,20,30,40,50,60,70,80,90,10,20,30,40,50,60,70,80,90',
+        ]);
+
+        $this->actingAs($this->penda);
+        $this->get(route('anniversaire.ouvrir'))->assertRedirect(route('dashboard'));
+
+        $this->travelTo('2027-01-01 08:30:00');
+
+        $cadeau = $this->get(route('anniversaire.ouvrir'))->assertOk();
+        $cadeau->assertSee('Un vocal pour toi');
+        $cadeau->assertSee('id="cel-vocal"', false);
+        $cadeau->assertSee('id="cel-vocal-play"', false);
+        $cadeau->assertSee('disc-vw-bar', false);
+        $cadeau->assertSee('/storage/anniversaire-vocal/'.$this->abdoul->id.'/vocal.webm');
+    }
+
+    /**
+     * Vrai WAV minimal : la règle mimes juge le contenu, pas l'extension, et un
+     * UploadedFile::fake() n'a pas de contenu audio réel.
+     */
+    private function smallWav(string $name, int $seconds): UploadedFile
+    {
+        $sampleRate = 8000;
+        $dataSize = $sampleRate * $seconds;
+        $bytes = 16;
+        $header = 'RIFF'.pack('V', 36 + $dataSize * 2).'WAVE'
+            .'fmt '.pack('V', 16).pack('v', 1)
+            .pack('v', 1)
+            .pack('V', $sampleRate)
+            .pack('V', $sampleRate * $bytes / 8)
+            .pack('v', $bytes / 8)
+            .pack('v', $bytes)
+            .'data'.pack('V', $dataSize * 2)
+            .str_repeat("\0", $dataSize * 2);
+
+        $temp = tempnam(sys_get_temp_dir(), 'vocal');
+        file_put_contents($temp, $header);
+
+        return new UploadedFile($temp, $name, 'audio/wav', null, true);
+    }
 }

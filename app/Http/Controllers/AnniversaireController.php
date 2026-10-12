@@ -55,12 +55,16 @@ class AnniversaireController extends Controller
 
         $data = $request->validate([
             'message' => ['required', 'string', 'max:2000'],
-            'son' => ['nullable', 'file', 'mimes:webm,mp4,ogg,oga,m4a,mp3,wav', 'max:10240'],
+            'son' => ['nullable', 'file', 'mimes:weba,webm,mp4,m4a,ogg,oga,opus,spx,wav,mp3', 'max:10240'],
             'activite' => ['nullable', 'string', 'max:255'],
             'promesse' => ['nullable', 'string', 'max:255'],
             'video' => ['nullable', 'file', 'mimes:mp4,webm,ogg,qt,mov', 'max:51200'],
             'supprimer_son' => ['nullable', 'boolean'],
             'supprimer_video' => ['nullable', 'boolean'],
+            'supprimer_vocal' => ['nullable', 'boolean'],
+            'vocal_path' => ['nullable', 'string', 'max:255'],
+            'vocal_duration' => ['nullable', 'integer', 'min:1', 'max:3600'],
+            'vocal_bars' => ['nullable', 'string', 'max:500'],
         ]);
 
         $celebration = Celebration::de($me, $partner);
@@ -99,6 +103,31 @@ class AnniversaireController extends Controller
             $champs['video_path'] = null;
         }
 
+        // La suppression prime sur le chemin pré-rempli par le formulaire : le champ
+        // caché vocal_path contient toujours le vocal existant, donc sans cette
+        // priorité la case « Supprimer ce vocal » ne servirait à rien.
+        if ($request->boolean('supprimer_vocal') && $celebration?->vocal_path) {
+            Storage::disk('public')->delete($celebration->vocal_path);
+            $champs['vocal_path'] = null;
+            $champs['vocal_duration'] = null;
+            $champs['vocal_bars'] = null;
+        } elseif (filled($request->input('vocal_path'))) {
+            $chemin = $request->input('vocal_path');
+
+            // Le vocal a été uploadé juste avant par cet utilisateur : on refuse
+            // tout chemin venu d'ailleurs (fichier d'un autre, chemin arbitraire).
+            abort_unless(str_starts_with($chemin, 'anniversaire-vocal/'.$me->id.'/'), 422, 'Vocal invalide.');
+
+            $ancien = $celebration?->vocal_path;
+            $champs['vocal_path'] = $chemin;
+            $champs['vocal_duration'] = $request->input('vocal_duration');
+            $champs['vocal_bars'] = $request->input('vocal_bars');
+
+            if ($ancien && $ancien !== $chemin) {
+                Storage::disk('public')->delete($ancien);
+            }
+        }
+
         if ($celebration) {
             $celebration->forceFill($champs)->save();
         } else {
@@ -115,6 +144,25 @@ class AnniversaireController extends Controller
         return back()->with('flash', [
             'type' => 'success',
             'message' => 'Cadeau enregistré ! '.$partner->name.' ne pourra le découvrir que le '.$partner->prochainAnniversaire()->translatedFormat('j F Y').'.',
+        ]);
+    }
+
+    // / Upload immédiat du vocal enregistré : la page de préparation attache
+    // / ensuite le chemin renvoyé au formulaire (comme les audios de discussion).
+    public function uploadVocal(Request $request): JsonResponse
+    {
+        $request->validate([
+            'audio' => ['required', 'file', 'max:20480', $this->regleCaptureRecorderAudio()],
+        ]);
+
+        /** @var UploadedFile $file */
+        $file = $request->file('audio');
+        $path = $file->store('anniversaire-vocal/'.$request->user()->id, 'public');
+
+        return response()->json([
+            'ok' => true,
+            'path' => $path,
+            'url' => parse_url(Storage::disk('public')->url($path), PHP_URL_PATH) ?: null,
         ]);
     }
 

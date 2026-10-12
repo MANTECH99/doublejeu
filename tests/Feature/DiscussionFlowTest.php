@@ -6,6 +6,7 @@ use App\Models\Couple;
 use App\Models\GifFavorite;
 use App\Models\Message;
 use App\Models\User;
+use App\Services\LinkPreviewService;
 use App\Services\PushService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -977,6 +978,20 @@ class DiscussionFlowTest extends TestCase
         $this->assertTrue(str_contains($response->getContent(), '"id":'.$texte->id));
     }
 
+    public function test_discussion_page_renders_link_preview_hooks(): void
+    {
+        $response = $this->actingAs($this->alice)
+            ->get(route('discussion.index'))
+            ->assertOk();
+
+        // Le composeur, la carte de bulle et l'endpoint d'aperçu sont bien rendus.
+        $response->assertSee('id="disc-link-preview"', false);
+        $response->assertSee('buildLinkCard', false);
+        $response->assertSee('linkifyHtml', false);
+        $response->assertSee('scheduleLinkPreview', false);
+        $response->assertSee(route('discussion.apercu'), false);
+    }
+
     public function test_message_push_carries_unread_badge_count_for_partner(): void
     {
         // Bob a déjà 2 messages non lus (il n'a jamais lu la discussion).
@@ -1569,5 +1584,160 @@ class DiscussionFlowTest extends TestCase
         file_put_contents($temp, $header);
 
         return new UploadedFile($temp, $name, 'audio/wav', null, true);
+    }
+
+    public function test_sending_a_message_with_a_link_attaches_an_open_graph_preview(): void
+    {
+        Storage::fake('public');
+        $this->fakeLinkPreview();
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['body' => 'Regarde http://93.184.216.34/article'])
+            ->assertOk()
+            ->assertJson([
+                'ok' => true,
+                'link_url' => 'http://93.184.216.34/article',
+                'link_title' => 'Titre de test',
+                'link_site' => 'MonSite',
+            ]);
+
+        $msg = Message::where('couple_id', $this->couple->id)->firstOrFail();
+
+        $this->assertSame('http://93.184.216.34/article', $msg->link_url);
+        $this->assertSame('Titre de test', $msg->link_title);
+        $this->assertSame('Une description', $msg->link_description);
+        $this->assertSame('MonSite', $msg->link_site);
+        $this->assertNotNull($msg->link_image_path);
+        Storage::disk('public')->assertExists($msg->link_image_path);
+
+        // Le partenaire reçoit les champs d'aperçu, l'image servie en local.
+        $bobFetch = $this->actingAs($this->bob)
+            ->getJson(route('discussion.fetch'))
+            ->assertOk()
+            ->json();
+
+        $received = $bobFetch['messages'][0];
+        $this->assertSame('http://93.184.216.34/article', $received['link_url']);
+        $this->assertSame('Titre de test', $received['link_title']);
+        $this->assertSame('MonSite', $received['link_site']);
+        $this->assertStringStartsWith('/storage/discussion-link-previews/', $received['link_image_url']);
+    }
+
+    public function test_link_preview_endpoint_returns_open_graph_metadata(): void
+    {
+        Storage::fake('public');
+        $this->fakeLinkPreview();
+
+        $this->actingAs($this->alice)
+            ->getJson(route('discussion.apercu', ['url' => 'http://93.184.216.34/article']))
+            ->assertOk()
+            ->assertJson([
+                'ok' => true,
+                'preview' => [
+                    'url' => 'http://93.184.216.34/article',
+                    'title' => 'Titre de test',
+                    'description' => 'Une description',
+                    'site' => 'MonSite',
+                ],
+            ]);
+    }
+
+    public function test_link_preview_is_served_from_cache_on_second_request(): void
+    {
+        Storage::fake('public');
+        $this->fakeLinkPreview();
+
+        $this->actingAs($this->alice)
+            ->getJson(route('discussion.apercu', ['url' => 'http://93.184.216.34/article']))
+            ->assertOk();
+
+        $this->actingAs($this->alice)
+            ->getJson(route('discussion.apercu', ['url' => 'http://93.184.216.34/article']))
+            ->assertOk();
+
+        // Une seule entrée de cache et un seul cycle de requêtes HTTP.
+        $this->assertDatabaseCount('link_previews', 1);
+        Http::assertSentCount(2); // page HTML + image, une seule fois.
+    }
+
+    public function test_link_preview_endpoint_rejects_unsafe_urls(): void
+    {
+        $unsafe = [
+            'http://127.0.0.1/page',
+            'http://localhost/page',
+            'http://169.254.169.254/latest/meta-data/',
+            'http://192.168.1.1/page',
+            'http://10.0.0.1/page',
+            'ftp://93.184.216.34/page',
+            'not a url',
+        ];
+
+        foreach ($unsafe as $url) {
+            $this->actingAs($this->alice)
+                ->getJson(route('discussion.apercu', ['url' => $url]))
+                ->assertStatus(422);
+        }
+    }
+
+    public function test_link_preview_is_skipped_when_sender_dismisses_it(): void
+    {
+        Storage::fake('public');
+        $this->fakeLinkPreview();
+
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), [
+                'body' => 'Sans aperçu http://93.184.216.34/article',
+                'sans_apercu' => 1,
+            ])
+            ->assertOk();
+
+        $msg = Message::where('couple_id', $this->couple->id)->firstOrFail();
+        $this->assertNull($msg->link_url);
+        $this->assertDatabaseCount('link_previews', 0);
+    }
+
+    public function test_message_without_a_link_has_no_preview(): void
+    {
+        $this->actingAs($this->alice)
+            ->postJson(route('discussion.send'), ['body' => 'Aucun lien ici.'])
+            ->assertOk();
+
+        $msg = Message::where('couple_id', $this->couple->id)->firstOrFail();
+        $this->assertNull($msg->link_url);
+        $this->assertDatabaseCount('link_previews', 0);
+    }
+
+    public function test_link_preview_normalizes_scheme_less_and_trailing_punctuation(): void
+    {
+        $service = app(LinkPreviewService::class);
+
+        $this->assertSame('http://www.example.com/article', $service->extractFirstUrl('vois www.example.com/article'));
+        $this->assertSame('https://laravel.com/x', $service->extractFirstUrl('vois https://laravel.com/x.'));
+        $this->assertSame('http://www.example.com', $service->normalizeUrl('www.example.com'));
+        $this->assertNull($service->normalizeUrl('pas une url'));
+        $this->assertNull($service->extractFirstUrl('aucun lien ici'));
+    }
+
+    /**
+     * Simule une page Open Graph et son image sur une IP publique littérale
+     * (évite toute résolution DNS réseau dans les tests).
+     */
+    private function fakeLinkPreview(): void
+    {
+        $html = '<html><head>'
+            .'<meta property="og:title" content="Titre de test">'
+            .'<meta property="og:description" content="Une description">'
+            .'<meta property="og:site_name" content="MonSite">'
+            .'<meta property="og:image" content="http://93.184.216.34/og.png">'
+            .'</head><body></body></html>';
+
+        Http::fake([
+            'http://93.184.216.34/og.png' => Http::response(
+                base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII='),
+                200,
+                ['Content-Type' => 'image/png'],
+            ),
+            'http://93.184.216.34/*' => Http::response($html, 200, ['Content-Type' => 'text/html; charset=utf-8']),
+        ]);
     }
 }

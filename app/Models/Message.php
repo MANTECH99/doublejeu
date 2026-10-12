@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['couple_id', 'sender_id', 'body', 'edited_at', 'reply_to_id', 'gif_url', 'gif_alt', 'photo_path', 'photo_w', 'photo_h', 'video_path', 'video_w', 'video_h', 'video_poster_path', 'audio_path', 'audio_duration', 'audio_bars', 'read_at', 'deleted_at', 'deleted_by'])]
+#[Fillable(['couple_id', 'sender_id', 'body', 'edited_at', 'reply_to_id', 'gif_url', 'gif_alt', 'link_url', 'link_title', 'link_description', 'link_site', 'link_image_path', 'photo_path', 'photo_w', 'photo_h', 'video_path', 'video_w', 'video_h', 'video_poster_path', 'audio_path', 'audio_duration', 'audio_bars', 'read_at', 'deleted_at', 'deleted_by'])]
 class Message extends Model
 {
     use HasFactory;
@@ -75,6 +75,11 @@ class Message extends Model
     public function isAudio(): bool
     {
         return ! empty($this->audio_path);
+    }
+
+    public function hasLinkPreview(): bool
+    {
+        return ! empty($this->link_url);
     }
 
     public function markAsRead(): void

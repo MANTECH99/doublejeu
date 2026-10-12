@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['couple_id', 'auteur_id', 'destinataire_id', 'annee', 'message', 'audio_path', 'video_path', 'activite', 'promesse'])]
+#[Fillable(['couple_id', 'auteur_id', 'destinataire_id', 'annee', 'message', 'audio_path', 'vocal_path', 'vocal_duration', 'vocal_bars', 'video_path', 'activite', 'promesse'])]
 class Celebration extends Model
 {
     use HasFactory;
@@ -23,6 +23,7 @@ class Celebration extends Model
     {
         return [
             'annee' => 'integer',
+            'vocal_duration' => 'integer',
         ];
     }
 
@@ -97,6 +98,11 @@ class Celebration extends Model
         return filled($this->audio_path);
     }
 
+    public function aUnVocal(): bool
+    {
+        return filled($this->vocal_path);
+    }
+
     public function aUneVideo(): bool
     {
         return filled($this->video_path);
@@ -122,5 +128,19 @@ class Celebration extends Model
         }
 
         return parse_url(Storage::disk('public')->url($this->video_path), PHP_URL_PATH) ?: null;
+    }
+
+    /**
+     * URL racine-relative du vocal enregistré (chemin stocké sur le disque
+     * public au moment de l'enregistrement : la préparation ne upload que le
+     * chemin, pas la vidéo).
+     */
+    public function vocalUrl(): ?string
+    {
+        if (blank($this->vocal_path)) {
+            return null;
+        }
+
+        return parse_url(Storage::disk('public')->url($this->vocal_path), PHP_URL_PATH) ?: null;
     }
 }

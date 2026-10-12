@@ -6,6 +6,7 @@ use App\Models\GifFavorite;
 use App\Models\Message;
 use App\Models\MessageDeletion;
 use App\Services\ActivityService;
+use App\Services\LinkPreviewService;
 use App\Services\PushService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
@@ -150,6 +151,11 @@ class DiscussionController extends Controller
                 'body' => $deletedForAll ? null : $m->body,
                 'gif_url' => $deletedForAll ? null : $m->gif_url,
                 'gif_alt' => $deletedForAll ? null : $m->gif_alt,
+                'link_url' => $deletedForAll ? null : $m->link_url,
+                'link_title' => $deletedForAll ? null : $m->link_title,
+                'link_description' => $deletedForAll ? null : $m->link_description,
+                'link_site' => $deletedForAll ? null : $m->link_site,
+                'link_image_url' => $deletedForAll ? null : $this->photoUrl($m->link_image_path),
                 'photo_url' => $deletedForAll ? null : $this->photoUrl($m->photo_path),
                 'photo_w' => $deletedForAll ? null : $m->photo_w,
                 'photo_h' => $deletedForAll ? null : $m->photo_h,
@@ -411,6 +417,34 @@ class DiscussionController extends Controller
         return response()->json(['stickers' => $stickers]);
     }
 
+    /**
+     * Aperçu de lien (Open Graph) pour le composeur : le client le demande dès
+     * qu'une URL est saisie, et le résultat est mis en cache pour l'envoi.
+     */
+    public function apercu(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'url' => ['required', 'string', 'max:2048'],
+        ]);
+
+        $lien = app(LinkPreviewService::class)->resolve($data['url']);
+
+        if ($lien === null) {
+            return response()->json(['error' => 'Aperçu indisponible.'], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'preview' => [
+                'url' => $lien['url'],
+                'title' => $lien['title'],
+                'description' => $lien['description'],
+                'site' => $lien['site'],
+                'image_url' => $this->photoUrl($lien['image_path']),
+            ],
+        ]);
+    }
+
     public function favorites(Request $request): JsonResponse
     {
         $couple = $request->user()->coupleModel;
@@ -484,6 +518,7 @@ class DiscussionController extends Controller
             'audio_duration' => ['nullable', 'integer', 'min:1', 'max:600'],
             'audio_bars' => ['nullable', 'string', 'max:2048'],
             'reply_to_id' => ['nullable', 'integer'],
+            'sans_apercu' => ['nullable', 'boolean'],
         ]);
 
         // Un message doit contenir du texte, un GIF, une photo, une vidéo ou un vocal.
@@ -513,12 +548,29 @@ class DiscussionController extends Controller
             }
         }
 
+        // Aperçu de lien (façon WhatsApp) : la première URL du texte est résolue
+        // via le cache (l'aperçu a généralement déjà été demandé par le composeur).
+        // Le client peut refuser l'aperçu (sans_apercu).
+        $lien = null;
+        if (! $request->boolean('sans_apercu') && filled($data['body'] ?? null)) {
+            $preview = app(LinkPreviewService::class);
+            $url = $preview->extractFirstUrl($data['body']);
+            if ($url !== null) {
+                $lien = $preview->resolve($url);
+            }
+        }
+
         $message = Message::create([
             'couple_id' => $couple->id,
             'sender_id' => $request->user()->id,
             'body' => $data['body'] ?? '',
             'gif_url' => $data['gif_url'] ?? null,
             'gif_alt' => $data['gif_alt'] ?? null,
+            'link_url' => $lien['url'] ?? null,
+            'link_title' => $lien['title'] ?? null,
+            'link_description' => $lien['description'] ?? null,
+            'link_site' => $lien['site'] ?? null,
+            'link_image_path' => $lien['image_path'] ?? null,
             'photo_path' => $data['photo_path'] ?? null,
             'photo_w' => $data['photo_w'] ?? null,
             'photo_h' => $data['photo_h'] ?? null,
@@ -563,6 +615,11 @@ class DiscussionController extends Controller
             'ok' => true,
             'id' => $message->id,
             'created_at' => $message->created_at->format('H:i'),
+            'link_url' => $message->link_url,
+            'link_title' => $message->link_title,
+            'link_description' => $message->link_description,
+            'link_site' => $message->link_site,
+            'link_image_url' => $this->photoUrl($message->link_image_path),
         ]);
     }
 
@@ -631,7 +688,7 @@ class DiscussionController extends Controller
     public function uploadAudio(Request $request): JsonResponse
     {
         $request->validate([
-            'audio' => ['required', 'file', 'mimes:webm,mp4,ogg,oga,m4a,mp3,wav', 'max:20480'],
+            'audio' => ['required', 'file', 'max:20480', $this->regleCaptureRecorderAudio()],
         ]);
 
         /** @var UploadedFile $file */

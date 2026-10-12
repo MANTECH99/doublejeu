@@ -307,6 +307,16 @@
             <button class="disc-reply-close" id="disc-reply-close" aria-label="Annuler la réponse">✕</button>
         </div>
 
+        {{-- Aperçu de lien (façon WhatsApp) : affiché quand une URL est saisie. --}}
+        <div class="disc-link-preview" id="disc-link-preview" style="display:none">
+            <img class="disc-link-preview-thumb" id="disc-link-preview-thumb" alt="" loading="lazy">
+            <div class="disc-link-preview-info">
+                <div class="disc-link-preview-site" id="disc-link-preview-site"></div>
+                <div class="disc-link-preview-title" id="disc-link-preview-title"></div>
+            </div>
+            <button class="disc-reply-close" id="disc-link-preview-close" type="button" aria-label="Retirer l'aperçu">✕</button>
+        </div>
+
         {{-- Composer (fixe, juste au-dessus de la barre de navigation) --}}
         <div class="disc-composer" id="disc-composer">
             {{-- Descendre en bas, façon WhatsApp : la flèche n'apparaît que
@@ -501,6 +511,11 @@
     const REPLY_ROW_EL = document.getElementById('disc-reply-row');
     const REPLY_BODY_EL = document.getElementById('disc-reply-body');
     const REPLY_CLOSE_EL = document.getElementById('disc-reply-close');
+    const LINK_PREVIEW_EL = document.getElementById('disc-link-preview');
+    const LINK_PREVIEW_THUMB = document.getElementById('disc-link-preview-thumb');
+    const LINK_PREVIEW_SITE = document.getElementById('disc-link-preview-site');
+    const LINK_PREVIEW_TITLE = document.getElementById('disc-link-preview-title');
+    const LINK_PREVIEW_CLOSE = document.getElementById('disc-link-preview-close');
     const SEL_BAR = document.getElementById('disc-selectionbar');
     const SEL_BACK = document.getElementById('disc-sel-back');
     const SEL_COUNT = document.getElementById('disc-sel-count');
@@ -532,6 +547,7 @@
     const STICKERS_URL = '{{ route("discussion.stickers") }}';
     const FAVORITES_URL = '{{ route("discussion.favorites") }}';
     const FAVORITES_TOGGLE_URL = '{{ route("discussion.favorites.toggle") }}';
+    const LINK_PREVIEW_URL = '{{ route("discussion.apercu") }}';
     const DELETE_URL = '/discussion/message/';
     const EDIT_URL = '{{ route("discussion.update", ':id') }}';
     const MY_ID = {{ $me->id }};
@@ -548,6 +564,12 @@
     // Correspondance id temporaire (optimiste) → id serveur, pour retrouver un
     // message envoyé juste avant sa réconciliation (ex. suppression immédiate).
     const tmpToRealId = new Map();
+    // Aperçu de lien du composeur (façon WhatsApp) : aperçu résolu pour l'URL
+    // courante, état « refusé » (bouton retirer) et minuteur de détection.
+    let linkPending = null;
+    let linkDismissed = false;
+    let linkCheckedUrl = null;
+    let linkTimer = null;
     // Pré-rendu « derniers messages d'abord » : le serveur n'injecte que la fin
     // du fil (les {{ (int) $pagination }} plus récents), construite de façon
     // synchrone avant la première peinture. bootAnchor est le point d'insertion
@@ -695,6 +717,156 @@
         const el = document.createElement('div');
         el.textContent = s;
         return el.innerHTML;
+    }
+
+    /* ---------- Liens cliquables + aperçu de lien (façon WhatsApp) ---------- */
+    const URL_RE = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
+
+    // Retire la ponctuation finale non significative d'une URL (point, virgule,
+    // parenthèse fermante non appariée…), comme le fait le serveur.
+    function trimUrl(raw) {
+        let url = raw.replace(/[.,;:!?]+$/, '');
+        let opens = (url.match(/\(/g) || []).length;
+        let closes = (url.match(/\)/g) || []).length;
+        while (closes > opens && url.endsWith(')')) {
+            url = url.slice(0, -1);
+            closes--;
+        }
+        return url;
+    }
+
+    // Extrait la première URL d'un texte (pour la détection côté composeur).
+    function detectUrl(text) {
+        if (!text) return null;
+        const re = new RegExp(URL_RE.source, 'i');
+        const m = text.match(re);
+        return m ? trimUrl(m[0]) : null;
+    }
+
+    // Échappe le texte puis transforme les URL en liens ouverts dans un nouvel
+    // onglet.
+    function linkifyHtml(text) {
+        if (text === null || text === undefined) return '';
+        const re = new RegExp(URL_RE.source, 'gi');
+        let out = '';
+        let lastIndex = 0;
+        let m;
+        while ((m = re.exec(text)) !== null) {
+            const url = trimUrl(m[0]);
+            if (!url) continue;
+            out += escHtml(text.slice(lastIndex, m.index));
+            let href = url;
+            if (/^www\./i.test(href)) href = 'http://' + href;
+            out += '<a href="' + escHtml(href) + '" target="_blank" rel="noopener noreferrer">' + escHtml(url) + '</a>';
+            lastIndex = m.index + url.length;
+        }
+        out += escHtml(text.slice(lastIndex));
+        return out;
+    }
+
+    // Carte d'aperçu (Open Graph) affichée dans la bulle, façon WhatsApp.
+    function buildLinkCard(msg) {
+        const card = document.createElement('a');
+        card.className = 'disc-link-card';
+        card.href = msg.link_url;
+        card.target = '_blank';
+        card.rel = 'noopener noreferrer';
+
+        if (msg.link_image_url) {
+            const img = document.createElement('img');
+            img.className = 'disc-link-img';
+            img.src = msg.link_image_url;
+            img.alt = '';
+            img.loading = 'lazy';
+            card.appendChild(img);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'disc-link-body';
+        if (msg.link_site) {
+            const site = document.createElement('div');
+            site.className = 'disc-link-site';
+            site.textContent = msg.link_site;
+            body.appendChild(site);
+        }
+        if (msg.link_title) {
+            const title = document.createElement('div');
+            title.className = 'disc-link-title';
+            title.textContent = msg.link_title;
+            body.appendChild(title);
+        }
+        if (msg.link_description) {
+            const desc = document.createElement('div');
+            desc.className = 'disc-link-desc';
+            desc.textContent = msg.link_description;
+            body.appendChild(desc);
+        }
+        if (body.childNodes.length) card.appendChild(body);
+
+        // Le clic sur le lien ne doit pas déclencher les actions de la bulle
+        // (sélection, réponse au clic…).
+        card.addEventListener('click', (e) => e.stopPropagation());
+        return card;
+    }
+
+    function renderLinkPreview(preview) {
+        if (!LINK_PREVIEW_EL) return;
+        if (preview.image_url) {
+            LINK_PREVIEW_THUMB.src = preview.image_url;
+            LINK_PREVIEW_THUMB.style.display = '';
+        } else {
+            LINK_PREVIEW_THUMB.removeAttribute('src');
+            LINK_PREVIEW_THUMB.style.display = 'none';
+        }
+        LINK_PREVIEW_SITE.textContent = preview.site || preview.title || preview.url;
+        LINK_PREVIEW_TITLE.textContent = preview.title || preview.site || '';
+        LINK_PREVIEW_EL.style.display = 'flex';
+    }
+
+    function hideLinkPreview() {
+        if (LINK_PREVIEW_EL) LINK_PREVIEW_EL.style.display = 'none';
+    }
+
+    function resetLinkPreview() {
+        linkPending = null;
+        linkDismissed = false;
+        linkCheckedUrl = null;
+        hideLinkPreview();
+    }
+
+    // Détection débouncée : dès qu'une URL apparaît dans le texte, on demande son
+    // aperçu au serveur (qui met en cache le résultat pour l'envoi).
+    function scheduleLinkPreview() {
+        clearTimeout(linkTimer);
+        linkTimer = setTimeout(runLinkPreview, 600);
+    }
+
+    function runLinkPreview() {
+        const text = INPUT_EL.value.trim();
+        const url = detectUrl(text);
+        if (!url) {
+            resetLinkPreview();
+            return;
+        }
+        // Même URL déjà résolue ou refusée : ne rien refaire.
+        if (url === linkCheckedUrl && (linkPending || linkDismissed)) return;
+        linkCheckedUrl = url;
+        fetch(LINK_PREVIEW_URL + '?url=' + encodeURIComponent(url), {
+            headers: { 'Accept': 'application/json' },
+        })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (detectUrl(INPUT_EL.value.trim()) !== url) return;
+                if (!data || !data.preview) {
+                    linkPending = null;
+                    hideLinkPreview();
+                    return;
+                }
+                linkPending = data.preview;
+                linkDismissed = false;
+                renderLinkPreview(linkPending);
+            })
+            .catch(() => {});
     }
 
     /* ---------- Répondre à un message ---------- */
@@ -952,7 +1124,7 @@
                 const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + id + '"]');
                 if (wrap) {
                     const text = wrap.querySelector('.disc-bubble-text');
-                    if (text) text.textContent = data.body;
+                    if (text) text.innerHTML = linkifyHtml(data.body);
                     if (data.edited) markEdited(wrap);
                 }
                 exitSelection();
@@ -1403,8 +1575,17 @@
         if (msg.body) {
             const bodyText = document.createElement('span');
             bodyText.className = 'disc-bubble-text';
-            bodyText.textContent = msg.body;
+            bodyText.innerHTML = linkifyHtml(msg.body);
+            // Un clic sur un lien ne doit pas déclencher les actions de la bulle.
+            bodyText.addEventListener('click', (e) => {
+                if (e.target.closest('a')) e.stopPropagation();
+            });
             bubble.appendChild(bodyText);
+        }
+
+        // Aperçu de lien (façon WhatsApp) : carte Open Graph sous le texte.
+        if (msg.link_url) {
+            bubble.appendChild(buildLinkCard(msg));
         }
 
         const meta = document.createElement('div');
@@ -1478,7 +1659,15 @@
         if (!wrap) return;
         if (msg.deleted_for_all) return;
         const text = wrap.querySelector('.disc-bubble-text');
-        if (text && typeof msg.body === 'string') text.textContent = msg.body;
+        if (text && typeof msg.body === 'string') text.innerHTML = linkifyHtml(msg.body);
+        // Réconcilie la carte d'aperçu de lien (l'optimiste peut ne pas en avoir).
+        const bubble = wrap.querySelector('.disc-bubble');
+        const existingCard = bubble ? bubble.querySelector('.disc-link-card') : null;
+        if (msg.link_url && bubble && !existingCard) {
+            bubble.appendChild(buildLinkCard(msg));
+        } else if (!msg.link_url && existingCard) {
+            existingCard.remove();
+        }
         const edited = wrap.querySelector('.disc-edited');
         if (msg.edited && !edited) markEdited(wrap);
         else if (!msg.edited && edited) edited.remove();
@@ -1676,6 +1865,11 @@
         SEND_BTN.disabled = true;
 
         const payload = { body, reply_to_id: replyTarget ? replyTarget.id : null };
+        // Aperçu de lien : on joint l'aperçu déjà résolu par le composeur pour le
+        // corps envoyé, sauf si l'utilisateur l'a retiré (sans_apercu).
+        const bodyUrl = detectUrl(body);
+        const optLink = (linkPending && bodyUrl && linkPending.url === bodyUrl) ? linkPending : null;
+        if (linkDismissed && bodyUrl) payload.sans_apercu = 1;
         const hasGif = !!pendingGif;
         if (pendingGif) {
             payload.gif_url = pendingGif.url;
@@ -1718,6 +1912,11 @@
             is_gif: hasGif,
             gif_url: pendingGif ? pendingGif.url : null,
             gif_alt: pendingGif ? pendingGif.alt : null,
+            link_url: optLink ? optLink.url : null,
+            link_title: optLink ? optLink.title : null,
+            link_description: optLink ? optLink.description : null,
+            link_site: optLink ? optLink.site : null,
+            link_image_url: optLink ? optLink.image_url : null,
             is_photo: !!pendingPhoto,
             photo_url: pendingPhoto ? pendingPhoto.url : null,
             photo_w: pendingPhoto && pendingPhoto.w ? pendingPhoto.w : null,
@@ -1758,6 +1957,8 @@
         pendingVideo = null;
         hidePhotoPreview();
         closeGifPanel();
+        resetLinkPreview();
+        clearTimeout(linkTimer);
         // Envoi d'un vocal seul : on garde le texte déjà saisi (WhatsApp ne
         // l'efface pas). Sinon on vide l'input comme d'habitude.
         const voiceOnly = !!pendingAudio && !body && !hasGif && !optimistic.is_photo;
@@ -1796,6 +1997,18 @@
                     renderedIds.delete(tmpId);
                     renderedIds.add(data.id);
                     if (data.id > lastMessageId) lastMessageId = data.id;
+                    // L'aperçu de lien peut n'avoir été résolu que côté serveur
+                    // (URL envoyée avant la fin du debounce du composeur).
+                    const bubble = msg.querySelector('.disc-bubble');
+                    if (bubble && data.link_url && !bubble.querySelector('.disc-link-card')) {
+                        bubble.appendChild(buildLinkCard({
+                            link_url: data.link_url,
+                            link_title: data.link_title,
+                            link_description: data.link_description,
+                            link_site: data.link_site,
+                            link_image_url: data.link_image_url,
+                        }));
+                    }
                 } else {
                     tmpToRealId.set(tmpId, data.id);
                 }
@@ -2893,6 +3106,7 @@ function grabVideoThumb(videoEl) {
         autosize();
         refreshSendBtn();
         if (INPUT_EL.value.trim()) sendTyping();
+        scheduleLinkPreview();
     });
     INPUT_EL.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
@@ -2909,6 +3123,15 @@ function grabVideoThumb(videoEl) {
         }
     });
     SEND_BTN.addEventListener('click', sendMessage);
+
+    // Retire l'aperçu de lien du composeur (le message sera envoyé sans aperçu).
+    if (LINK_PREVIEW_CLOSE) {
+        LINK_PREVIEW_CLOSE.addEventListener('click', () => {
+            linkDismissed = true;
+            linkPending = null;
+            hideLinkPreview();
+        });
+    }
 
     // Enregistrement vocal : le micro ouvre la barre d'enregistrement.
     MIC_BTN.addEventListener('click', () => {

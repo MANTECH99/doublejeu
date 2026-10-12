@@ -72,6 +72,7 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     Route::post('/discussion/tape', [DiscussionController::class, 'typing'])->name('discussion.typing');
     Route::post('/discussion/enregistre', [DiscussionController::class, 'recording'])->name('discussion.recording');
     Route::get('/discussion/gifs', [DiscussionController::class, 'gifs'])->name('discussion.gifs');
+    Route::get('/discussion/apercu', [DiscussionController::class, 'apercu'])->middleware('throttle:30,1')->name('discussion.apercu');
     Route::get('/discussion/stickers', [DiscussionController::class, 'stickers'])->name('discussion.stickers');
     Route::get('/discussion/favoris', [DiscussionController::class, 'favorites'])->name('discussion.favorites');
     Route::post('/discussion/favoris', [DiscussionController::class, 'toggleFavorite'])->name('discussion.favorites.toggle');
@@ -82,6 +83,7 @@ Route::middleware(['auth', 'couple.linked'])->group(function () {
     // ---- Anniversaires : cadeau secret préparé à l'avance ----
     Route::get('/anniversaires/celebration', [AnniversaireController::class, 'celebrer'])->name('anniversaire.celebrer');
     Route::post('/anniversaires/celebration', [AnniversaireController::class, 'enregistrer'])->name('anniversaire.enregistrer');
+    Route::post('/anniversaires/vocal', [AnniversaireController::class, 'uploadVocal'])->name('anniversaire.vocal');
     Route::get('/anniversaires/ma-celebration', [AnniversaireController::class, 'ouvrir'])->name('anniversaire.ouvrir');
     Route::post('/anniversaires/info-vue', [AnniversaireController::class, 'infoVue'])->name('anniversaire.info.vue');
 
