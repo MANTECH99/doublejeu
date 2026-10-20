@@ -44,7 +44,7 @@ class InfoPagesTest extends TestCase
 
     public function test_public_layout_links_legal_pages_in_footer(): void
     {
-        $this->get('/')
+        $this->get('/presentation')
             ->assertSee(route('info.show', 'confidentialite'))
             ->assertSee(route('info.show', 'cgu'))
             ->assertSee(route('info.show', 'mentions-legales'))

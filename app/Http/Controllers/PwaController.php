@@ -18,7 +18,7 @@ class PwaController extends Controller
     {
         return response(
             <<<'JS'
-const CACHE = 'doublejeu-v12';
+const CACHE = 'doublejeu-v13';
 
 // Pose le badge sur l'icône de l'app installée (Android via setAppBadge,
 // iOS via setNotificationBadge dès que le Web Push arrive).
@@ -32,7 +32,7 @@ function setBadge(count) {
     }
 }
 const ASSETS = [
-    '/',
+    '/presentation',
     '/manifest.webmanifest',
     '/offscreen',
 ];
@@ -59,15 +59,19 @@ self.addEventListener('fetch', (event) => {
 
     event.respondWith(
         caches.match(request).then((cached) => {
+            const offline = request.mode === 'navigate'
+                ? () => caches.match('/presentation')
+                : () => cached;
+
             const fetched = fetch(request)
                 .then((response) => {
-                    if (response && response.ok && ['/', '/manifest.webmanifest'].includes(new URL(request.url).pathname)) {
+                    if (response && response.ok && ['/presentation', '/manifest.webmanifest'].includes(new URL(request.url).pathname)) {
                         const clone = response.clone();
                         caches.open(CACHE).then((cache) => cache.put(request, clone));
                     }
                     return response;
                 })
-                .catch(() => cached);
+                .catch(offline);
 
             return cached || fetched;
         })

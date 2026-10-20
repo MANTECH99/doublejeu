@@ -52,23 +52,21 @@ class AuthenticationTest extends TestCase
         $response->assertRedirect('/');
     }
 
-    public function test_home_page_shows_guest_actions_for_guests(): void
+    public function test_home_page_redirects_guests_to_the_login_screen(): void
     {
-        $this->get('/')
+        $this->followingRedirects()
+            ->get('/')
             ->assertOk()
             ->assertSee('Créer un compte')
             ->assertSee('Se connecter');
     }
 
-    public function test_home_page_shows_dashboard_and_logout_for_authenticated_users(): void
+    public function test_home_page_redirects_authenticated_users_to_the_dashboard(): void
     {
         $user = User::factory()->create();
 
         $this->actingAs($user)
             ->get('/')
-            ->assertOk()
-            ->assertSee('Tableau de bord')
-            ->assertSee('Se déconnecter')
-            ->assertDontSee('Créer un compte');
+            ->assertRedirect(route('dashboard', absolute: false));
     }
 }

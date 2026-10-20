@@ -26,8 +26,12 @@ use App\Http\Controllers\VeriteActionController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+    return redirect()->route('dashboard');
 });
+
+Route::get('/presentation', function () {
+    return view('welcome');
+})->name('welcome');
 
 // ---- Pages d'information publiques (légales, fonctionnelles, techniques) ----
 Route::get('/info/{slug}', [InfoController::class, 'show'])->name('info.show');

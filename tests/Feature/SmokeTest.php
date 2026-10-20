@@ -13,7 +13,7 @@ class SmokeTest extends TestCase
 
     public function test_public_pages_render(): void
     {
-        $this->get('/')->assertOk();
+        $this->get('/presentation')->assertOk();
         $this->get('/register')->assertOk();
         $this->get('/login')->assertOk();
         $this->get('/manifest.json')->assertOk();
@@ -21,9 +21,27 @@ class SmokeTest extends TestCase
         $this->get('/offscreen')->assertOk();
     }
 
-    public function test_home_affiche_la_presentation_animee(): void
+    public function test_login_page_peut_proposer_l_installation_pwa(): void
     {
-        $response = $this->get('/')->assertOk();
+        $html = $this->get('/login')
+            ->assertOk()
+            ->getContent();
+
+        // Sans manifest ni icônes dans la page, Chrome n'associe pas l'app à
+        // cette vue : le prompt d'installation n'apparaît pas (ou sans logo).
+        $this->assertStringContainsString('<link rel="manifest" href="/manifest.webmanifest">', $html);
+        $this->assertStringContainsString('<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">', $html);
+
+        // Le même script synchrone que les autres layouts construit la popup
+        // d'installation avec le logo.
+        $this->assertStringContainsString("window.addEventListener('beforeinstallprompt'", $html);
+        $this->assertStringContainsString("logo.className = 'dj-install-logo';", $html);
+        $this->assertStringContainsString("logo.src = '/icons/icon-192.png';", $html);
+    }
+
+    public function test_presentation_affiche_la_presentation_animee(): void
+    {
+        $response = $this->get('/presentation')->assertOk();
 
         $response->assertSee('id="dj-player"', false);
         $response->assertSee('Voir la présentation');
