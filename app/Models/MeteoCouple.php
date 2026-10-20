@@ -175,17 +175,48 @@ class MeteoCouple extends Model
         $nb = static::niveau($sa);
 
         if ($na === 'bon' && $nb === 'bon') {
-            return ['emoji' => '🌈', 'label' => 'Le ciel est dégagé !'];
+            return [
+                'emoji' => '🌈',
+                'label' => 'Le ciel est dégagé !',
+                'description' => "Que d'amour aujourd'hui. Vous rayonnez à deux.",
+            ];
         }
 
         if ($na === 'mauvais' && $nb === 'mauvais') {
-            return ['emoji' => '🌩️', 'label' => 'Tempête dans le couple… prenez soin de vous'];
+            return [
+                'emoji' => '🌩️',
+                'label' => 'Tempête dans le couple… prenez soin de vous',
+                'description' => 'Le temps est gris. Parlez-vous, doucement, ça passera.',
+            ];
         }
 
         if ($na === 'mauvais' || $nb === 'mauvais') {
-            return ['emoji' => '🌦️', 'label' => 'Quelques nuages, mais rien d\'insurmontable'];
+            return [
+                'emoji' => '🌦️',
+                'label' => 'Quelques nuages, mais rien d\'insurmontable',
+                'description' => 'Beaucoup d\'amour, quelques disputes mais toujours plus forts.',
+            ];
         }
 
-        return ['emoji' => '⛅', 'label' => 'Un ciel partagé, mais au chaud ensemble'];
+        return [
+            'emoji' => '⛅',
+            'label' => 'Un ciel partagé, mais au chaud ensemble',
+            'description' => 'Un peu nuageux, mais vous êtes ensemble. C\'est l\'essentiel.',
+        ];
+    }
+
+    /**
+     * Baromètre à deux : les niveaux des deux humeurs du jour donnent un
+     * taux d'amour indicatif, de 20 (deux mauvais) à 100 (deux bons).
+     */
+    public static function tauxAmour(?string $ma, ?string $sa): ?int
+    {
+        if (! $ma || ! $sa) {
+            return null;
+        }
+
+        $points = ['bon' => 5, 'mitige' => 3, 'mauvais' => 1];
+
+        return (int) round(($points[static::niveau($ma)] + $points[static::niveau($sa)]) / 10 * 100);
     }
 }

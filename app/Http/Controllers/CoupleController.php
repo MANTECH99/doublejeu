@@ -80,6 +80,7 @@ class CoupleController extends Controller
             'meteoMoi' => $meteoInfo($maHumeur),
             'meteoPartenaire' => $meteoInfo($saHumeur),
             'meteoSynthese' => MeteoCouple::synthese($maHumeur, $saHumeur),
+            'meteoTaux' => MeteoCouple::tauxAmour($maHumeur, $saHumeur),
             'annivMoi' => $anniversaire($me, $partner, true),
             'annivPartenaire' => $anniversaire($partner, $me, false),
             'octobreRose' => [

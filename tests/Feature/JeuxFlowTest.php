@@ -1353,11 +1353,11 @@ class JeuxFlowTest extends TestCase
     {
         $this->actingAs($this->alice);
 
-        // Rien de partagé : placeholders + invitation.
+        // Rien de partagé : invitations + lien de partage.
         $dash = $this->get(route('dashboard'))->assertOk();
         $this->assertStringContainsString('Météo du couple', $dash->getContent());
         $this->assertStringContainsString('Partagez votre météo du jour', $dash->getContent());
-        $this->assertStringContainsString('❓', $dash->getContent());
+        $this->assertSame(2, substr_count($dash->getContent(), 'Pas encore partagée'));
 
         // Ma météo affichée, celle du partenaire encore en attente.
         $this->postJson(route('meteo.checkin'), ['humeur' => 'heureux'])->assertOk();
@@ -1365,7 +1365,7 @@ class JeuxFlowTest extends TestCase
         $this->assertStringContainsString('😊', $dash2->getContent());
         $this->assertStringContainsString('Pas encore partagée', $dash2->getContent());
 
-        // Le partenaire répond → conseil (synthèse) visible en bas de la carte.
+        // Le partenaire répond → conseil (synthèse) + taux d'amour.
         $this->actingAs($this->bob);
         $this->postJson(route('meteo.checkin'), ['humeur' => 'stress'])->assertOk();
 
@@ -1374,16 +1374,17 @@ class JeuxFlowTest extends TestCase
         $this->assertStringContainsString('😊', $dash3->getContent());
         $this->assertStringContainsString('😰', $dash3->getContent());
         $this->assertStringContainsString('Quelques nuages, mais rien d&#039;insurmontable', $dash3->getContent());
+        $this->assertStringContainsString('meteo-gauge', $dash3->getContent());
     }
 
     public function test_dashboard_affiche_les_anniversaires_des_deux_partenaire(): void
     {
         $this->travelTo('2026-09-01 10:00:00');
 
-        // Sans date de naissance : les lignes restent, avec un rappel pour le profil.
+        // Sans date de naissance : les cartes restent, avec un rappel pour le profil.
         $dash = $this->actingAs($this->alice)->get(route('dashboard'))->assertOk();
-        $this->assertStringContainsString('Anniversaire de Alice', $dash->getContent());
-        $this->assertStringContainsString('Anniversaire de Bob', $dash->getContent());
+        $this->assertStringContainsString('data-anniversaire="Alice"', $dash->getContent());
+        $this->assertStringContainsString('data-anniversaire="Bob"', $dash->getContent());
         $this->assertStringContainsString('Date de naissance à renseigner sur le profil', $dash->getContent());
         $this->assertStringNotContainsString('Score cumulé', $dash->getContent());
         $this->assertStringNotContainsString('Jours de complicité', $dash->getContent());
@@ -1397,13 +1398,13 @@ class JeuxFlowTest extends TestCase
 
         $view = $this->get(route('dashboard'))->assertOk();
 
-        $this->assertStringContainsString('Anniversaire de Alice', $view->getContent());
+        $this->assertStringContainsString('data-anniversaire="Alice"', $view->getContent());
         $this->assertStringContainsString('mardi 20 octobre 2026', $view->getContent());
-        $this->assertStringContainsString('j-49 jours', $view->getContent());
+        $this->assertStringContainsString('J - 49 jours', $view->getContent());
 
-        $this->assertStringContainsString('Anniversaire de Bob', $view->getContent());
+        $this->assertStringContainsString('data-anniversaire="Bob"', $view->getContent());
         $this->assertStringContainsString('vendredi 15 janvier 2027', $view->getContent());
-        $this->assertStringContainsString('j-136 jours', $view->getContent());
+        $this->assertStringContainsString('J - 136 jours', $view->getContent());
     }
 
     public function test_mots_croises_flow(): void

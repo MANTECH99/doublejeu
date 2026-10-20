@@ -164,13 +164,25 @@
         <header class="topbar">
             <a href="{{ route('dashboard') }}" class="brand">
                 <span class="logo">DJ</span>
-                <span>Double Jeu</span>
+                <span class="brand-txt">
+                    <span class="brand-name">Double <em>Jeu</em></span>
+                    <span class="brand-sub">Plus qu'un jeu ❤</span>
+                </span>
             </a>
             <div class="actions">
-                <a href="{{ route('discussion.index') }}" class="icon-btn" title="Discussion">💬<span class="dj-badge" id="header-disc-badge" style="display:none"></span></a>
-                <a href="{{ route('recompenses.index') }}" class="icon-btn" title="Récompenses">🏆</a>
-                <a href="{{ route('cartes.index') }}" class="icon-btn" title="Mes cartes">🃏</a>
-                <a href="{{ route('profile.edit') }}" class="icon-btn" title="Profil">👤</a>
+                <a href="{{ route('discussion.index') }}" class="icon-btn" title="Discussion">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm5 5.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm3.5 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm3.5 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>
+                    <span class="dj-badge" id="header-disc-badge" style="display:none"></span>
+                </a>
+                <a href="{{ route('recompenses.index') }}" class="icon-btn" title="Récompenses">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/></svg>
+                </a>
+                <a href="{{ route('cartes.index') }}" class="icon-btn" title="Mes cartes">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm6 4.2l1.15 2.33 2.57.37-1.86 1.82.44 2.56L12 13.03l-2.3 1.21.44-2.56-1.86-1.82 2.57-.37L12 7.2z"/></svg>
+                </a>
+                <a href="{{ route('profile.edit') }}" class="icon-btn" title="Profil">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                </a>
             </div>
         </header>
 

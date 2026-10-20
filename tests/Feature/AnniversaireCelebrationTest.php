@@ -215,21 +215,21 @@ class AnniversaireCelebrationTest extends TestCase
         // La veille : la fiche complète avec le compte à rebours.
         $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('Anniversaire de Penda')
-            ->assertSee('j-1 jours', false);
+            ->assertSee('data-anniversaire="Penda"', false)
+            ->assertSee('J - 1 jours', false);
 
         // Le jour J : plus de fiche, une seule ligne de fête.
         $this->travelTo('2027-01-01 10:00:00');
         $jourJ = $this->get(route('dashboard'))->assertOk();
         $jourJ->assertSee('C\'est l\'anniversaire de Penda !', false);
-        $jourJ->assertDontSee('Anniversaire de Penda', false);
+        $jourJ->assertDontSee('data-anniversaire="Penda"', false);
 
         // Le lendemain, on retrouve le compte à rebours de l'année suivante.
         $this->travelTo('2027-01-02 10:00:00');
         $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('Anniversaire de Penda')
-            ->assertSee('j-364 jours', false);
+            ->assertSee('data-anniversaire="Penda"', false)
+            ->assertSee('J - 364 jours', false);
     }
 
     public function test_le_bouton_celebrer_est_absent_hors_fenetre_et_sur_sa_propre_anniversaire(): void
@@ -239,7 +239,7 @@ class AnniversaireCelebrationTest extends TestCase
 
         // L'anniversaire de Penda (1er janvier) est dans 122 jours : hors fenêtre.
         $dashboard = $this->get(route('dashboard'))->assertOk();
-        $dashboard->assertSee('j-122 jours');
+        $dashboard->assertSee('J - 122 jours');
         $dashboard->assertDontSee('Célébrer');
 
         $this->get(route('anniversaire.celebrer'))
@@ -390,8 +390,8 @@ class AnniversaireCelebrationTest extends TestCase
         $apres = $this->get(route('dashboard'))->assertOk();
         $apres->assertDontSee('C\'est l\'anniversaire de Penda !', false);
         $apres->assertDontSee('t\'a préparé quelque chose', false);
-        $apres->assertSee('Anniversaire de Penda');
-        $apres->assertSee('j-364 jours', false);
+        $apres->assertSee('data-anniversaire="Penda"', false);
+        $apres->assertSee('J - 364 jours', false);
 
         // Le cadeau reste ouvrable une fois passé, même si le dashboard ne l'annonce plus.
         $this->get(route('anniversaire.ouvrir'))

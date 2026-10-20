@@ -2,208 +2,356 @@
 
 @section('title', 'Tableau de bord')
 
+@push('head')
+    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap" rel="stylesheet">
+@endpush
+
 @section('content')
     <div class="fadeIn">
         {{-- Couple header --}}
         <div class="hero-card">
-            <div class="hero-orb hero-orb-rose"></div>
-            <div class="hero-orb hero-orb-blue"></div>
+            <span class="hero-float hero-float-1" aria-hidden="true">♥</span>
+            <span class="hero-float hero-float-2" aria-hidden="true">♥</span>
+            <span class="hero-float hero-float-3" aria-hidden="true">♥</span>
             <div class="hero-inner">
-                <div class="hero-pair">
-                    <div class="hero-avatars">
-                        <x-avatar :user="$me" class="lg hero-avatar-me" />
-                        <span class="hero-heart">💞</span>
-                        <x-avatar :user="$partner" class="lg hero-avatar-them" />
+                <div class="hero-text">
+                    <div class="hero-bienvenue">
+                        Bienvenue<span class="hero-bienvenue-dash"></span><span class="hero-bienvenue-coeur" aria-hidden="true">♡</span>
                     </div>
-                    <div class="hero-names">{{ $me->name }} <span class="hero-amp">&</span> {{ $partner->name }}</div>
-                    <div class="hero-sub tiny muted">Votre duo · votre histoire</div>
-                    @if ($annivMoi['cadeauDuJour'])
-                        <a href="{{ route('anniversaire.ouvrir') }}" class="aniv-pill aniv-pill-cadeau hero-cadeau">
-                            🎁 {{ $partner->name }} t'a préparé quelque chose
-                        </a>
-                    @elseif ($annivPartenaire['peutCelebrer'])
-                        <a href="{{ route('anniversaire.celebrer') }}" id="hero-celebrer"
-                            class="btn btn-sm btn-primary hero-celebrer pulse-glow">
-                            {{ $annivPartenaire['celebration'] ? '🎂 Modifier son cadeau' : '🎂 Célébrer son anniversaire' }}
-                        </a>
-                    @endif
+                    <div class="hero-names">
+                        {{ $me->name }}<br>
+                        <span class="hero-amp">&</span> {{ $partner->name }}
+                    </div>
+                    <div class="hero-sub">Votre duo. Votre histoire.</div>
+                </div>
+                <div class="hero-avatars">
+                    <span class="hero-ring hero-ring-moi"><x-avatar :user="$me" class="lg" /></span>
+                    <span class="hero-heart">💗</span>
+                    <span class="hero-ring hero-ring-them"><x-avatar :user="$partner" class="lg" /></span>
                 </div>
             </div>
-
-            @php $anivs = array_values(array_filter([$annivMoi, $annivPartenaire])); @endphp
-            @if ($anivs)
-                <div class="divider"></div>
-                <div class="aniv-list">
-                    @foreach ($anivs as $anniv)
-                        @if ($anniv['jours'] === 0)
-                            {{-- Jour J : une seule ligne à la place de la fiche.
-                                 Le lien cadeau, s'il y en a un, est dans le hero. --}}
-                            <div class="aniv-row aniv-row-jourj">
-                                🎉 C'est l'anniversaire de {{ $anniv['name'] }} !
-                            </div>
-                        @else
-                            <div class="aniv-row">
-                                <div class="aniv-icon">🎂</div>
-                                <div class="aniv-body grow">
-                                    <div class="aniv-name">Anniversaire de {{ $anniv['name'] }}</div>
-                                    <div class="tiny muted">
-                                        @if ($anniv['date'])
-                                            {{ $anniv['date']->translatedFormat('l j F Y') }}
-                                        @else
-                                            Date de naissance à renseigner sur le profil
-                                        @endif
-                                    </div>
-                                </div>
-                                <div class="aniv-actions">
-                                    <div class="aniv-pill">
-                                        @if ($anniv['jours'] === null)
-                                            <span class="tiny muted">—</span>
-                                        @else
-                                            j-{{ $anniv['jours'] }} jours
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-                        @endif
-                    @endforeach
-                </div>
-            @endif
         </div>
+
+        @if ($annivMoi['cadeauDuJour'])
+            <a href="{{ route('anniversaire.ouvrir') }}" class="aniv-pill aniv-pill-cadeau hero-cadeau">
+                🎁 {{ $partner->name }} t'a préparé quelque chose
+            </a>
+        @elseif ($annivPartenaire['peutCelebrer'])
+            <a href="{{ route('anniversaire.celebrer') }}" id="hero-celebrer"
+                class="btn btn-sm btn-primary hero-celebrer pulse-glow">
+                {{ $annivPartenaire['celebration'] ? '🎂 Modifier son cadeau' : '🎂 Célébrer son anniversaire' }}
+            </a>
+        @endif
+
+        @php $anivs = array_values(array_filter([$annivMoi, $annivPartenaire])); @endphp
+        @if ($anivs)
+            <div class="aniv-list">
+                @foreach ($anivs as $anniv)
+                    @if ($anniv['jours'] === 0)
+                        {{-- Jour J : une seule ligne à la place de la fiche.
+                             Le lien cadeau, s'il y en a un, est dans le hero. --}}
+                        <div class="aniv-row aniv-row-jourj">
+                            🎉 C'est l'anniversaire de {{ $anniv['name'] }} !
+                        </div>
+                    @else
+                        <div class="aniv-card {{ $loop->index % 2 === 0 ? 'aniv-card-rose' : 'aniv-card-bleu' }}"
+                            data-anniversaire="{{ $anniv['name'] }}">
+                            <div class="aniv-icon" aria-hidden="true">
+                                🎂@unless ($loop->first)<span class="aniv-icon-coeur">❤️</span>@endunless
+                            </div>
+                            <div class="aniv-body">
+                                <div class="aniv-label">Anniversaire de</div>
+                                <div class="aniv-name">{{ $anniv['name'] }}</div>
+                            </div>
+                            <div class="aniv-date">
+                                @if ($anniv['date'])
+                                    <span class="aniv-date-val">
+                                        <svg class="aniv-date-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+                                        {{ $anniv['date']->translatedFormat('l j F Y') }}
+                                    </span>
+                                @else
+                                    Date de naissance à renseigner sur le profil
+                                @endif
+                            </div>
+                            <div class="aniv-actions">
+                                <div class="aniv-pill">
+                                    @if ($anniv['jours'] === null)
+                                        <span class="tiny muted">—</span>
+                                    @else
+                                        J - {{ $anniv['jours'] }} jours
+                                    @endif
+                                </div>
+                                <span class="aniv-chevron" aria-hidden="true">›</span>
+                            </div>
+                            <span class="aniv-deco" aria-hidden="true">♡ ♡</span>
+                        </div>
+                    @endif
+                @endforeach
+            </div>
+        @endif
 
         {{-- Météo du couple --}}
         <section class="section-head">
-            <h2>Météo du couple</h2>
-            <a href="{{ route('meteo.index') }}" class="tiny">partager la mienne →</a>
+            <h2>💞 Météo du couple</h2>
+            <a href="{{ route('meteo.index') }}" class="meteo-share">Partager la mienne →</a>
         </section>
-        <div class="meteo-card">
-            <div class="meteo-orb meteo-orb-1"></div>
-            <div class="meteo-orb meteo-orb-2"></div>
-            <div class="meteo-grid">
-                <div class="meteo-cell{{ $meteoMoi ? '' : ' meteo-cell-empty' }}">
-                    <div class="meteo-cell-top">
-                        <x-avatar :user="$me" class="sm" />
-                        <span class="meteo-cell-name">{{ $me->name }}</span>
-                    </div>
-                    <div class="meteo-cell-emoji">
-                        @if ($meteoMoi)
-                            <span class="mood-anim" data-lottie="{{ $meteoMoi['lottie'] }}">{{ $meteoMoi['emoji'] }}</span>
-                        @else
-                            ❓
-                        @endif
-                    </div>
-                    <div class="meteo-cell-label tiny">
-                        @if ($meteoMoi)
-                            {{ $meteoMoi['label'] }}
-                        @else
-                            <span class="muted">Pas encore partagée</span>
-                        @endif
-                    </div>
+
+        @if ($meteoSynthese)
+            <div class="meteo-syn">
+                <div class="meteo-syn-illus" aria-hidden="true">
+                    💗<span class="meteo-syn-illus-meteo">{{ $meteoSynthese['emoji'] }}</span>
                 </div>
-                <div class="meteo-cell{{ $meteoPartenaire ? '' : ' meteo-cell-empty' }}">
-                    <div class="meteo-cell-top">
-                        <x-avatar :user="$partner" class="sm" />
-                        <span class="meteo-cell-name">{{ $partner->name }}</span>
-                    </div>
-                    <div class="meteo-cell-emoji">
-                        @if ($meteoPartenaire)
-                            <span class="mood-anim" data-lottie="{{ $meteoPartenaire['lottie'] }}">{{ $meteoPartenaire['emoji'] }}</span>
-                        @else
-                            ❓
-                        @endif
-                    </div>
-                    <div class="meteo-cell-label tiny">
-                        @if ($meteoPartenaire)
-                            {{ $meteoPartenaire['label'] }}
-                        @else
-                            <span class="muted">Pas encore partagée</span>
-                        @endif
-                    </div>
+                <div class="meteo-syn-txt">
+                    <div class="meteo-syn-kicker">Notre météo aujourd'hui</div>
+                    <div class="meteo-syn-title">{{ $meteoSynthese['label'] }}</div>
+                    <div class="meteo-syn-desc">{{ $meteoSynthese['description'] }}</div>
                 </div>
+                @if ($meteoTaux !== null)
+                    <div class="meteo-gauge" style="--pct: {{ $meteoTaux }}">
+                        <div class="meteo-gauge-inner">
+                            <strong>{{ $meteoTaux }}%</strong>
+                            <span>d'amour ❤</span>
+                        </div>
+                    </div>
+                @endif
             </div>
-            <a href="{{ route('meteo.index') }}" class="meteo-cta">
-                <span class="meteo-cta-emoji">{{ $meteoSynthese['emoji'] ?? '🌥️' }}</span>
-                <span class="meteo-cta-text grow">
-                    {{ $meteoSynthese['label']
-                        ?? ($meteoMoi || $meteoPartenaire ? "En attente de la météo de l'autre" : 'Partagez votre météo du jour') }}
-                </span>
-                <span class="meteo-cta-arrow">→</span>
-            </a>
+        @endif
+
+        <div class="meteo-duo">
+            <div class="meteo-person{{ $meteoMoi ? '' : ' meteo-person-empty' }}">
+                <div class="meteo-person-top">
+                    <x-avatar :user="$me" class="sm" />
+                    <span class="meteo-person-name">{{ $me->name }} 👑</span>
+                </div>
+                @if ($meteoMoi)
+                    <div class="meteo-person-emoji">
+                        <span class="mood-anim" data-lottie="{{ $meteoMoi['lottie'] }}">{{ $meteoMoi['emoji'] }}</span>
+                    </div>
+                    <div class="meteo-person-label">{{ $meteoMoi['label'] }}</div>
+                @else
+                    <a href="{{ route('meteo.index') }}" class="meteo-person-heart" aria-label="Partager ma météo">♡</a>
+                    <div class="meteo-person-label muted">Pas encore partagée</div>
+                @endif
+            </div>
+            <div class="meteo-person{{ $meteoPartenaire ? '' : ' meteo-person-empty' }}">
+                <div class="meteo-person-top">
+                    <x-avatar :user="$partner" class="sm" />
+                    <span class="meteo-person-name">{{ $partner->name }} 👑</span>
+                </div>
+                @if ($meteoPartenaire)
+                    <div class="meteo-person-emoji">
+                        <span class="mood-anim" data-lottie="{{ $meteoPartenaire['lottie'] }}">{{ $meteoPartenaire['emoji'] }}</span>
+                    </div>
+                    <div class="meteo-person-label">{{ $meteoPartenaire['label'] }}</div>
+                @else
+                    <a href="{{ route('meteo.index') }}" class="meteo-person-heart" aria-label="Voir la météo du couple">♡</a>
+                    <div class="meteo-person-label muted">Pas encore partagée</div>
+                @endif
+            </div>
         </div>
 
+        <a href="{{ route('meteo.index') }}" class="meteo-cta">
+            <span class="meteo-cta-emoji">⛅</span>
+            <span class="meteo-cta-txt">
+                <strong>Partagez votre météo du jour</strong>
+                <small>Découvrez comment vous vous sentez</small>
+            </span>
+            <span class="meteo-cta-arrow" aria-hidden="true">→</span>
+        </a>
+
         {{-- Les jeux --}}
-        <section class="section-head"><h2>Les jeux</h2><span class="tiny muted">Joue à tour de rôle</span></section>
-        <div class="game-grid">
-            <a href="{{ route('discussion.index') }}" class="game-tile tile-discussion fadeIn" style="animation-delay:.01s">
-                <div class="t-ico">💬</div>
-                <div class="t-name">Discussion</div>
-                <div class="t-desc">En privé, à deux</div>
-            </a>
-            <a href="{{ route('vo.index') }}" class="game-tile tile-vo fadeIn" style="animation-delay:.02s">
-                <div class="t-ico">🎭</div>
-                <div class="t-name">Vérité ou Action</div>
-                <div class="t-desc">Doux, chaud ou brûlant</div>
-            </a>
-            <a href="{{ route('ouinon.index') }}" class="game-tile tile-ouinon fadeIn" style="animation-delay:.06s">
-                <div class="t-ico">⚖️</div>
-                <div class="t-name">Oui ou Non</div>
-                <div class="t-desc">10 questions test</div>
-            </a>
-            <a href="{{ route('mission.index') }}" class="game-tile tile-mission fadeIn" style="animation-delay:.10s">
-                <div class="t-ico">🕵️</div>
-                <div class="t-name">Mission secrète</div>
-                <div class="t-desc">Il/elle ne saura jamais</div>
-            </a>
-            <a href="{{ route('enveloppe.index') }}" class="game-tile tile-enveloppe fadeIn" style="animation-delay:.14s">
-                <div class="t-ico">💌</div>
-                <div class="t-name">Enveloppes</div>
-                <div class="t-desc">Rouge, bleue, verte</div>
-            </a>
-            <a href="{{ route('quiz.index') }}" class="game-tile tile-quiz fadeIn" style="animation-delay:.18s">
-                <div class="t-ico">❓</div>
-                <div class="t-name">Tu me connais ?</div>
-                <div class="t-desc">Réponds à ma place</div>
-            </a>
-            <a href="{{ route('qdn2.index') }}" class="game-tile tile-qui-nous-deux fadeIn" style="animation-delay:.20s">
-                <div class="t-ico">🙋</div>
-                <div class="t-name">Qui de nous deux ?</div>
-                <div class="t-desc">Accord → +5 pts</div>
-            </a>
-            <a href="{{ route('question.index') }}" class="game-tile tile-question fadeIn" style="animation-delay:.22s">
-                <div class="t-ico">🌅</div>
-                <div class="t-name">Question du jour</div>
-                <div class="t-desc">Une par jour, ensemble</div>
-            </a>
-            <a href="{{ route('meteo.index') }}" class="game-tile tile-meteo fadeIn" style="animation-delay:.26s">
-                <div class="t-ico">🌦️</div>
-                <div class="t-name">Météo du couple</div>
-                <div class="t-desc">Ton baromètre à deux</div>
-            </a>
-            <a href="{{ route('mots-croises.index') }}" class="game-tile tile-mots-croises fadeIn" style="animation-delay:.30s">
-                <div class="t-ico">🧩</div>
-                <div class="t-name">Mots croisés</div>
-                <div class="t-desc">Une grille, à deux</div>
-            </a>
-            <a href="{{ route('bucket-list.index') }}" class="game-tile tile-bucket-list fadeIn" style="animation-delay:.34s">
-                <div class="t-ico">🧳</div>
-                <div class="t-name">Bucket List</div>
-                <div class="t-desc">Vos projets, vos souvenirs</div>
-            </a>
-            <a href="{{ route('calendrier.index') }}" class="game-tile tile-calendrier fadeIn" style="animation-delay:.38s">
-                <div class="t-ico">🗓️</div>
-                <div class="t-name">Calendrier</div>
-                <div class="t-desc">Votre journée côte à côte</div>
-            </a>
-            <a href="{{ route('ludo.index') }}" class="game-tile tile-ludo fadeIn" style="animation-delay:.42s">
-                <div class="t-ico">🎲</div>
-                <div class="t-name">Ludo à deux</div>
-                <div class="t-desc">La course des pions</div>
-            </a>
-            <a href="{{ route('quoridor.index') }}" class="game-tile tile-quoridor fadeIn" style="animation-delay:.46s">
-                <div class="t-ico">🧱</div>
-                <div class="t-name">Quoridor</div>
-                <div class="t-desc">Barre la route, gagne</div>
-            </a>
-        </div>
+        <section id="jeux">
+            <div class="jeux-banner">
+                <div class="jeux-banner-txt">
+                    <div class="jeux-kicker">LES JEUX 🎮</div>
+                    <h2 class="jeux-title">Jouez, riez,<br><span class="jeux-title-accent">découvrez-vous 💕</span></h2>
+                    <p class="jeux-sub">Des jeux pensés pour vous,<br>pour des moments inoubliables.</p>
+                </div>
+                <div class="jeux-banner-deco" aria-hidden="true">
+                    <span class="jeux-script">Ensemble,<br>c'est mieux 💕</span>
+                </div>
+            </div>
+
+            <div class="jeux-filters">
+                <span class="jeux-chip is-active">🔥 Tous</span>
+                <span class="jeux-chip">❤️ Romance</span>
+                <span class="jeux-chip">😂 Drôle</span>
+                <span class="jeux-chip">🧠 Profond</span>
+                <span class="jeux-chip">🎯 Défi</span>
+                <span class="jeux-chip">🎁 Surprise</span>
+            </div>
+
+            <div class="jeux-pop-head">
+                <h3>🔥 Nos jeux populaires</h3>
+                <a href="#jeux" class="jeux-voir">Voir tout →</a>
+            </div>
+
+            <div class="jeux-grid">
+                <a href="{{ route('vo.index') }}" class="jeux-card cat-romance fadeIn" style="animation-delay:.01s">
+                    <div class="jc-emoji">🎭</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Vérité ou Action</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">❤️ Romance</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('ouinon.index') }}" class="jeux-card cat-drole fadeIn" style="animation-delay:.03s">
+                    <div class="jc-emoji">⚖️</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Oui ou Non</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">😂 Drôle</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('quiz.index') }}" class="jeux-card cat-profond fadeIn" style="animation-delay:.05s">
+                    <div class="jc-emoji">❓</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Tu me connais ?</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">🧠 Profond</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('mission.index') }}" class="jeux-card cat-defi fadeIn" style="animation-delay:.07s">
+                    <div class="jc-emoji">🕵️</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Mission secrète</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">🎯 Défi</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('bucket-list.index') }}" class="jeux-card cat-surprise fadeIn" style="animation-delay:.09s">
+                    <div class="jc-emoji">🧳</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Bucket List</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">🎁 Surprise</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('discussion.index') }}" class="jeux-card cat-discussion fadeIn" style="animation-delay:.11s">
+                    <div class="jc-emoji">💬</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Discussion</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">💬 Discussion</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('enveloppe.index') }}" class="jeux-card cat-romance fadeIn" style="animation-delay:.13s">
+                    <div class="jc-emoji">💌</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Enveloppes</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">❤️ Romance</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('qdn2.index') }}" class="jeux-card cat-drole fadeIn" style="animation-delay:.15s">
+                    <div class="jc-emoji">🙋</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Qui de nous deux ?</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">😂 Drôle</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('question.index') }}" class="jeux-card cat-profond fadeIn" style="animation-delay:.17s">
+                    <div class="jc-emoji">🌅</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Question du jour</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">🧠 Profond</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('meteo.index') }}" class="jeux-card cat-profond fadeIn" style="animation-delay:.19s">
+                    <div class="jc-emoji">🌦️</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Météo du couple</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">🧠 Profond</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('mots-croises.index') }}" class="jeux-card cat-defi fadeIn" style="animation-delay:.21s">
+                    <div class="jc-emoji">🧩</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Mots croisés</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">🎯 Défi</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('calendrier.index') }}" class="jeux-card cat-profond fadeIn" style="animation-delay:.23s">
+                    <div class="jc-emoji">🗓️</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Calendrier</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">🧠 Profond</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('ludo.index') }}" class="jeux-card cat-drole fadeIn" style="animation-delay:.25s">
+                    <div class="jc-emoji">🎲</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Ludo à deux</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">😂 Drôle</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+                <a href="{{ route('quoridor.index') }}" class="jeux-card cat-defi fadeIn" style="animation-delay:.27s">
+                    <div class="jc-emoji">🧱</div>
+                    <div class="jc-body">
+                        <div class="jc-name">Quoridor</div>
+                    </div>
+                    <div class="jc-tags">
+                        <span class="jc-tag">🎯 Défi</span>
+                        <span class="jc-tag">👥 2 joueurs</span>
+                    </div>
+                    <span class="jc-arrow" aria-hidden="true">›</span>
+                </a>
+            </div>
+
+            <div class="jeux-cta">
+                <div class="jc-cta-emoji" aria-hidden="true">🎮</div>
+                <div class="jc-cta-txt">
+                    <strong>Envie de plus de fun ?</strong>
+                    <small>Découvrez tous nos jeux et vivez des moments uniques.</small>
+                </div>
+                <a href="#jeux" class="jc-cta-btn">Explorer tous les jeux →</a>
+            </div>
+        </section>
 
         {{-- Activité du couple --}}
         <section class="section-head"><h2>Activité</h2></section>

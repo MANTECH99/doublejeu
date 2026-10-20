@@ -1,11 +1,5 @@
 @php
     $route = request()->route()?->getName();
-    $games = [
-        ['route' => 'discussion.index', 'url' => route('discussion.index'), 'ico' => '💬', 'label' => 'Discussion'],
-        ['route' => 'vo.index', 'url' => route('vo.index'), 'ico' => '🎭', 'label' => 'Vérité'],
-        ['route' => 'ouinon.index', 'url' => route('ouinon.index'), 'ico' => '⚖️', 'label' => 'Oui/Non'],
-        ['route' => 'mission.index', 'url' => route('mission.index'), 'ico' => '🕵️', 'label' => 'Mission'],
-    ];
 @endphp
 
 <nav class="bottom-nav">
@@ -13,10 +7,21 @@
         <span class="ico">🏠</span>
         <span>Accueil</span>
     </a>
-    @foreach ($games as $game)
-        <a href="{{ $game['url'] }}" class="{{ $route === $game['route'] ? 'active' : '' }}">
-            <span class="ico">{{ $game['ico'] }}@if ($game['route'] === 'discussion.index')<span class="dj-badge" id="nav-disc-badge" style="display:none"></span>@endif</span>
-            <span>{{ $game['label'] }}</span>
-        </a>
-    @endforeach
+    <a href="{{ route('discussion.index') }}" class="{{ $route === 'discussion.index' ? 'active' : '' }}">
+        <span class="ico">💬<span class="dj-badge" id="nav-disc-badge" style="display:none"></span></span>
+        <span>Discussion</span>
+    </a>
+    <a href="{{ route('vo.index') }}" class="nb-heart{{ str_starts_with((string) $route, 'vo.') ? ' active' : '' }}" aria-label="Vérité ou Action">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.51 4.04 3 5.5l7 7Z" />
+        </svg>
+    </a>
+    <a href="{{ route('ouinon.index') }}" class="{{ $route === 'ouinon.index' ? 'active' : '' }}">
+        <span class="ico">⚖️</span>
+        <span>Oui/Non</span>
+    </a>
+    <a href="{{ route('mission.index') }}" class="{{ $route === 'mission.index' ? 'active' : '' }}">
+        <span class="ico">🕵️</span>
+        <span>Mission</span>
+    </a>
 </nav>
