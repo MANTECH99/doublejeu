@@ -207,6 +207,22 @@ class AnniversaireCelebrationTest extends TestCase
             ->assertSee('id="anniv-info"', false);
     }
 
+    public function test_les_fiches_anniversaires_affichent_l_icone_calendrier(): void
+    {
+        $this->travelTo('2026-09-01 10:00:00');
+        $html = $this->actingAs($this->abdoul)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        // Les deux fiches portent l'icône calendrier de la maquette, plus le gâteau.
+        $this->assertSame(2, substr_count($html, 'aniv-ico-cal'));
+
+        // Chaque SVG a son propre dégradé : deux fois le même id = une icône invisible.
+        $this->assertStringContainsString('aniv-cal-g0', $html);
+        $this->assertStringContainsString('aniv-cal-g1', $html);
+    }
+
     public function test_le_jour_j_remplace_la_fiche_par_une_seule_ligne(): void
     {
         $this->travelTo('2026-12-31 10:00:00');

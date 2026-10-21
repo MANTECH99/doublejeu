@@ -57,7 +57,23 @@
                         <div class="aniv-card {{ $loop->index % 2 === 0 ? 'aniv-card-rose' : 'aniv-card-bleu' }}"
                             data-anniversaire="{{ $anniv['name'] }}">
                             <div class="aniv-icon" aria-hidden="true">
-                                🎂@unless ($loop->first)<span class="aniv-icon-coeur">❤️</span>@endunless
+                                <svg class="aniv-ico-cal" viewBox="0 0 96 96">
+                                    <defs>
+                                        <linearGradient id="aniv-cal-g{{ $loop->index }}" x1="0" y1="0" x2="1" y2="1">
+                                            <stop offset="0" stop-color="#f0a6be"/>
+                                            <stop offset=".55" stop-color="#c94168"/>
+                                            <stop offset="1" stop-color="#8e0f3c"/>
+                                        </linearGradient>
+                                    </defs>
+                                    {{-- Carré plein, découpé aux angles par .aniv-icon (overflow:hidden) :
+                                         la boîte est peinte de bord à bord, aucun fond ne dépasse. --}}
+                                    <rect width="96" height="96" fill="url(#aniv-cal-g{{ $loop->index }})"/>
+                                    <rect x="30" y="12" width="7" height="16" rx="3.5" fill="#fff"/>
+                                    <rect x="59" y="12" width="7" height="16" rx="3.5" fill="#fff"/>
+                                    <rect x="20" y="22" width="56" height="58" rx="11" fill="#fdf2f6"/>
+                                    <rect x="20" y="37" width="56" height="3" fill="#f0c2d2"/>
+                                    <path d="M48 73C48 73 33.5 64 33.5 55.3C33.5 50.9 37.2 47.5 41.7 47.5C44.5 47.5 46.8 49 48 51.1C49.2 49 51.5 47.5 54.3 47.5C58.8 47.5 62.5 50.9 62.5 55.3C62.5 64 48 73 48 73Z" fill="#d2245e"/>
+                                </svg>
                             </div>
                             <div class="aniv-body">
                                 <div class="aniv-label">Anniversaire de</div>

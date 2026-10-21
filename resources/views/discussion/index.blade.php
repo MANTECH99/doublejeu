@@ -436,6 +436,7 @@
             <div class="disc-send-caption">
                 <input type="text" id="disc-send-caption" placeholder="Ajouter une légende…" maxlength="2000" autocomplete="off" enterkeyhint="send" />
             </div>
+            <button type="button" class="disc-send-sheet-once" id="disc-send-sheet-once" aria-pressed="false" aria-label="Envoyer en vue unique" title="Vue unique : le média ne s'ouvre qu'une seule fois" style="display:none">1×</button>
             <button type="button" class="disc-send-sheet-send" id="disc-send-sheet-send" aria-label="Envoyer">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
@@ -450,6 +451,7 @@
         <button class="disc-photo-viewer-nav disc-photo-viewer-prev" id="disc-photo-viewer-prev" aria-label="Photo précédente" hidden>‹</button>
         <button class="disc-photo-viewer-nav disc-photo-viewer-next" id="disc-photo-viewer-next" aria-label="Photo suivante" hidden>›</button>
         <img id="disc-photo-viewer-img" alt="Photo agrandie">
+        <video id="disc-photo-viewer-video" playsinline controls style="display:none"></video>
         <div class="disc-photo-viewer-counter" id="disc-photo-viewer-counter"></div>
         <div class="disc-photo-viewer-actions">
             <a class="disc-photo-viewer-download" id="disc-photo-viewer-download" download>⬇ Télécharger</a>
@@ -491,10 +493,12 @@
     const SEND_SHEET_IMG = document.getElementById('disc-send-sheet-img');
     const SEND_SHEET_VIDEO = document.getElementById('disc-send-sheet-video');
     const SEND_SHEET_CHIP = document.getElementById('disc-send-sheet-chip');
+    const SEND_SHEET_ONCE = document.getElementById('disc-send-sheet-once');
     const SEND_SHEET_CAPTION = document.getElementById('disc-send-caption');
     const SEND_SHEET_SEND = document.getElementById('disc-send-sheet-send');
     const PHOTO_VIEWER = document.getElementById('disc-photo-viewer');
     const PHOTO_VIEWER_IMG = document.getElementById('disc-photo-viewer-img');
+    const PHOTO_VIEWER_VIDEO = document.getElementById('disc-photo-viewer-video');
     const PHOTO_VIEWER_CLOSE = document.getElementById('disc-photo-viewer-close');
     const PHOTO_VIEWER_DOWNLOAD = document.getElementById('disc-photo-viewer-download');
     const PHOTO_VIEWER_PREV = document.getElementById('disc-photo-viewer-prev');
@@ -539,6 +543,7 @@
     const STATE_URL = '{{ route("discussion.fetch") }}';
     const SEND_URL = '{{ route("discussion.send") }}';
     const PHOTO_URL = '{{ route("discussion.photo") }}';
+    const MEDIA_ONCE_URL = '{{ route("discussion.media.once", ["id" => "__ID__"]) }}';
     const VIDEO_URL = '{{ route("discussion.video") }}';
     const AUDIO_URL = '{{ route("discussion.audio") }}';
     const TYPING_URL = '{{ route("discussion.typing") }}';
@@ -586,7 +591,7 @@
     // le serveur avait interrogé la base, et les lectures survenues entre les deux
     // n'étaient vues par aucun poll. D'où des ✓✓ aléatoires. Tant que le serveur
     // n'a pas répondu, on n'envoie rien : il renverra alors tout l'état « lu ».
-    let curseurSync = { lus: '', modifies: '' };
+    let curseurSync = { lus: '', modifies: '', vus: '' };
     let sending = false;
     let replyTarget = null; // {id, sender_name, body, is_gif, gif_url, is_photo, photo_url, is_video, video_url, video_poster_url}
     let pendingGif = null; // {url, alt} sélectionné dans le panneau GIF
@@ -883,6 +888,7 @@
             is_gif: !!msg.is_gif,
             gif_url: msg.gif_url || null,
             is_photo: !!msg.is_photo,
+            view_once: !!msg.view_once,
             photo_url: msg.photo_url || null,
             is_video: !!msg.is_video,
             video_url: msg.video_url || null,
@@ -897,8 +903,8 @@
     function quoteLabel(q) {
         if (q && q.body) return q.body;
         if (q && q.is_gif) return 'Sticker';
-        if (q && q.is_photo) return '📷 Photo';
-        if (q && q.is_video) return '🎬 Vidéo';
+        if (q && q.is_photo) return q.view_once ? '📷 Photo vue unique' : '📷 Photo';
+        if (q && q.is_video) return q.view_once ? '🎬 Vidéo vue unique' : '🎬 Vidéo';
         if (q && q.is_audio) return '🎤 Vocal : ' + formatAudioTime(q.audio_duration);
         return '';
     }
@@ -1433,6 +1439,13 @@
             bubble.appendChild(imgWrap);
         }
 
+        // Message photo/vidéo vue unique (façon WhatsApp) : jamais le média dans
+        // le fil, seulement un pavé verrouillé. Le destinataire l'ouvre une
+        // unique fois, ensuite le pavé bascule en « Vu » pour les deux côtés.
+        if ((msg.is_photo || msg.is_video) && msg.view_once) {
+            bubble.appendChild(buildOnceNode(msg));
+        }
+
         // Message photo : image hébergée localement. La taille native étant connue,
         // on réserve width/height en pixels (compatibles avec les navigateurs
         // mobiles qui n'ont pas aspect-ratio) → le chargement ne peut plus
@@ -1704,6 +1717,7 @@
             const params = new URLSearchParams({ after: lastMessageId, _: Date.now() });
             if (curseurSync.lus) params.set('lusSince', curseurSync.lus);
             if (curseurSync.modifies) params.set('modifiesSince', curseurSync.modifies);
+            if (curseurSync.vus) params.set('vusSince', curseurSync.vus);
             const url = STATE_URL + '?' + params.toString();
             const res = await fetch(url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -1730,6 +1744,7 @@
                 curseurSync = {
                     lus: data.curseur.lus || curseurSync.lus,
                     modifies: data.curseur.modifies || curseurSync.modifies,
+                    vus: data.curseur.vus || curseurSync.vus,
                 };
             }
 
@@ -1753,9 +1768,10 @@
                 }
             }
 
-            // Accusés de lecture (✓✓) et éditions des messages déjà affichés.
+            // Accusés de lecture (✓✓), éditions et photos vue unique ouvertes.
             syncReadReceipts(data.lus);
             for (const msg of data.modifies || []) syncMessage(msg);
+            for (const msg of data.vus || []) markOnceOpened(msg);
 
             if (data.hasAnciens === false) {
                 const box = document.getElementById('disc-loadmore');
@@ -1877,6 +1893,7 @@
         }
         if (pendingPhoto) {
             payload.photo_path = pendingPhoto.path;
+            if (pendingPhoto.once) payload.view_once = 1;
             if (pendingPhoto.w && pendingPhoto.h) {
                 payload.photo_w = pendingPhoto.w;
                 payload.photo_h = pendingPhoto.h;
@@ -1884,6 +1901,7 @@
         }
         if (pendingVideo) {
             payload.video_path = pendingVideo.path;
+            if (pendingVideo.once) payload.view_once = 1;
             if (pendingVideo.w && pendingVideo.h) {
                 payload.video_w = pendingVideo.w;
                 payload.video_h = pendingVideo.h;
@@ -1917,15 +1935,17 @@
             link_description: optLink ? optLink.description : null,
             link_site: optLink ? optLink.site : null,
             link_image_url: optLink ? optLink.image_url : null,
-            is_photo: !!pendingPhoto,
-            photo_url: pendingPhoto ? pendingPhoto.url : null,
+                is_photo: !!pendingPhoto,
+                view_once: !!(pendingPhoto && pendingPhoto.once) || !!(pendingVideo && pendingVideo.once),
+                view_once_viewed: false,
+                photo_url: (pendingPhoto && pendingPhoto.once) ? null : (pendingPhoto ? pendingPhoto.url : null),
             photo_w: pendingPhoto && pendingPhoto.w ? pendingPhoto.w : null,
             photo_h: pendingPhoto && pendingPhoto.h ? pendingPhoto.h : null,
             is_video: !!pendingVideo,
-            video_url: pendingVideo ? pendingVideo.url : null,
+            video_url: (pendingVideo && pendingVideo.once) ? null : (pendingVideo ? pendingVideo.url : null),
             video_w: pendingVideo && pendingVideo.w ? pendingVideo.w : null,
             video_h: pendingVideo && pendingVideo.h ? pendingVideo.h : null,
-            video_poster_url: pendingVideo ? (pendingVideo.posterUrl || null) : null,
+            video_poster_url: (pendingVideo && pendingVideo.once) ? null : (pendingVideo ? (pendingVideo.posterUrl || null) : null),
             is_audio: !!pendingAudio,
             audio_url: pendingAudio ? pendingAudio.url : null,
             audio_duration: pendingAudio ? pendingAudio.duration : null,
@@ -1941,6 +1961,7 @@
                 is_gif: replyTarget.is_gif,
                 gif_url: replyTarget.gif_url,
                 is_photo: replyTarget.is_photo,
+                view_once: replyTarget.view_once,
                 photo_url: replyTarget.photo_url,
                 is_video: replyTarget.is_video,
                 video_url: replyTarget.video_url,
@@ -2182,6 +2203,9 @@
         pendingPhoto = null;
         pendingVideo = null;
         pendingCaption = null;
+        SEND_SHEET_ONCE.style.display = 'none';
+        SEND_SHEET_ONCE.classList.remove('is-armed');
+        SEND_SHEET_ONCE.setAttribute('aria-pressed', 'false');
         SEND_SHEET_VIDEO.pause();
         SEND_SHEET_IMG.removeAttribute('src');
         SEND_SHEET_VIDEO.removeAttribute('src');
@@ -2569,10 +2593,99 @@
     // Photos visibles dans la discussion : la visionneuse défile entre elles.
     let photoList = [];   // [{src, alt}]
     let photoIndex = -1;
+    let onceMode = false; // média vue unique en cours : pas de téléchargement ni de navigation
+    let onceObjectUrl = null; // blob temporaire de la vue unique en cours
     let swiped = false;   // un swipe a eu lieu → ne pas fermer la visionneuse au clic
     let swipeStartX = 0;
     let swipeStartY = 0;
     let swipeTracking = false;
+
+    /* ---------- Média vue unique (photo ou vidéo, façon WhatsApp) ---------- */
+    // Pavé verrouillé remplacant le média dans le fil : le destinataire l'ouvre
+    // une seule fois (le serveur ne sert le fichier qu'une fois), ensuite il
+    // affiche « Vu ». L'expéditeur voit « Envoyée » puis « Ouverte » dès que
+    // le partenaire l'a ouverte (delta `vus` du poll).
+    function buildOnceNode(msg) {
+        const mine = String(msg.sender_id) === String(MY_ID);
+        const ouvert = !!msg.view_once_viewed;
+        const vu = mine || ouvert;
+        const el = document.createElement('div');
+        el.className = 'disc-once' + (vu ? ' disc-once-vu' : '');
+        const svg = vu
+            ? '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'
+            : '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>';
+        const statut = mine
+            ? (ouvert ? 'Ouverte' : 'Envoyée')
+            : (ouvert ? 'Vu' : 'Appuie pour ouvrir');
+        el.innerHTML = svg
+            + '<span>' + (msg.is_video ? 'Vidéo vue unique' : 'Photo vue unique') + '</span>'
+            + '<small>' + statut + '</small>';
+        if (!vu && !mine) {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openOnce(msg, el);
+            });
+        }
+        return el;
+    }
+
+    async function openOnce(msg, el) {
+        if (el.dataset.opening) return;
+        el.dataset.opening = '1';
+        try {
+            const res = await fetch(MEDIA_ONCE_URL.replace('__ID__', msg.id), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (!res.ok) {
+                toast(res.status === 410 ? 'Ce média a déjà été ouvert.' : 'Média indisponible.', 'error');
+                markOnceOpened(msg);
+                return;
+            }
+            const blob = await res.blob();
+            onceObjectUrl = URL.createObjectURL(blob);
+            openOnceViewer(onceObjectUrl, !!msg.is_video);
+            markOnceOpened(msg);
+        } catch (err) {
+            toast('Connexion perdue.', 'error');
+        } finally {
+            delete el.dataset.opening;
+        }
+    }
+
+    // Repasse le pavé en état « Vu » : après ouverture locale, ou via le delta
+    // `vus` du poll côté expéditeur (même id, message déjà rendu).
+    function markOnceOpened(msg) {
+        const wrap = MESSAGES_EL.querySelector('.disc-bubble-wrap[data-id="' + msg.id + '"]');
+        if (!wrap) return;
+        const bubble = wrap.querySelector('.disc-bubble');
+        const old = bubble ? bubble.querySelector('.disc-once') : null;
+        if (old) old.replaceWith(buildOnceNode(Object.assign({}, msg, { view_once_viewed: true })));
+    }
+
+    function openOnceViewer(url, estVideo) {
+        onceMode = true;
+        photoList = [];
+        photoIndex = -1;
+        if (estVideo) {
+            PHOTO_VIEWER_IMG.style.display = 'none';
+            PHOTO_VIEWER_IMG.removeAttribute('src');
+            PHOTO_VIEWER_VIDEO.style.display = 'block';
+            PHOTO_VIEWER_VIDEO.src = url;
+        } else {
+            PHOTO_VIEWER_VIDEO.style.display = 'none';
+            PHOTO_VIEWER_VIDEO.removeAttribute('src');
+            PHOTO_VIEWER_IMG.style.display = '';
+            PHOTO_VIEWER_IMG.src = url;
+            PHOTO_VIEWER_IMG.alt = 'Média vue unique';
+        }
+        // Pas de téléchargement ni de navigation sur une vue unique.
+        PHOTO_VIEWER_DOWNLOAD.style.display = 'none';
+        PHOTO_VIEWER_PREV.hidden = true;
+        PHOTO_VIEWER_NEXT.hidden = true;
+        PHOTO_VIEWER_COUNTER.textContent = 'Vue unique';
+        PHOTO_VIEWER.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
 
     function showPhoto(i) {
         if (!photoList.length) return;
@@ -2580,6 +2693,11 @@
         if (i >= photoList.length) i = 0;
         photoIndex = i;
         const p = photoList[i];
+        onceMode = false;
+        PHOTO_VIEWER_VIDEO.style.display = 'none';
+        PHOTO_VIEWER_VIDEO.removeAttribute('src');
+        PHOTO_VIEWER_IMG.style.display = '';
+        PHOTO_VIEWER_DOWNLOAD.style.display = '';
         // Petit fondu à chaque changement de photo.
         PHOTO_VIEWER_IMG.style.animation = 'none';
         void PHOTO_VIEWER_IMG.offsetWidth;
@@ -2620,6 +2738,16 @@
     function closePhotoViewer() {
         PHOTO_VIEWER.style.display = 'none';
         PHOTO_VIEWER_IMG.removeAttribute('src');
+        PHOTO_VIEWER_VIDEO.pause && PHOTO_VIEWER_VIDEO.pause();
+        PHOTO_VIEWER_VIDEO.removeAttribute('src');
+        PHOTO_VIEWER_VIDEO.style.display = 'none';
+        PHOTO_VIEWER_IMG.style.display = '';
+        if (onceObjectUrl) {
+            try { URL.revokeObjectURL(onceObjectUrl); } catch (e) { /* ignore */ }
+            onceObjectUrl = null;
+        }
+        onceMode = false;
+        PHOTO_VIEWER_DOWNLOAD.style.display = '';
         photoList = [];
         photoIndex = -1;
         PHOTO_VIEWER_COUNTER.textContent = '';
@@ -2918,6 +3046,24 @@ function grabVideoThumb(videoEl) {
     });
 }
 
+    // POST multipart vers un endpoint d'upload (photo / vidéo / poster).
+    async function uploadMedia(url, fd) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: fd,
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || 'Fichier invalide.');
+        }
+        return res.json();
+    }
+
     // Envoie la miniature (poster) au serveur pour la stocker et la joindre au
     // message vidéo. Sans conséquences en cas d'échec : la vidéo part quand même.
     async function uploadVideoPoster(blob, pending) {
@@ -2971,22 +3117,7 @@ function grabVideoThumb(videoEl) {
         SEND_SHEET_VIDEO.removeAttribute('poster');
         setSheetMediaLoading(true);
 
-        const upload = async (fd) => {
-            const res = await fetch(isVideo ? VIDEO_URL : PHOTO_URL, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json',
-                },
-                body: fd,
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.message || (isVideo ? 'Vidéo invalide.' : 'Photo invalide.'));
-            }
-            return res.json();
-        };
+        const upload = async (fd) => uploadMedia(isVideo ? VIDEO_URL : PHOTO_URL, fd);
 
         if (isVideo) {
             pendingPhoto = null;
@@ -2998,8 +3129,12 @@ function grabVideoThumb(videoEl) {
                 durationLabel: '',
                 posterPath: null, posterUrl: null,
                 uploading: true, posterPending: true,
+                once: false,
             };
             pendingVideo = v;
+            SEND_SHEET_ONCE.style.display = 'inline-flex';
+            SEND_SHEET_ONCE.classList.remove('is-armed');
+            SEND_SHEET_ONCE.setAttribute('aria-pressed', 'false');
             SEND_SHEET_VIDEO.style.display = 'block';
             SEND_SHEET_VIDEO.onloadedmetadata = async () => {
                 if (pendingVideo !== v) return;
@@ -3041,8 +3176,14 @@ function grabVideoThumb(videoEl) {
                 });
         } else {
             pendingVideo = null;
-            const p = { localUrl, path: null, url: null, w: 0, h: 0, uploading: true };
+            // La photo part sur le disque public : le 1× de l'aperçu n'est qu'un
+            // drapeau, le serveur la transfère vers le disque privé au moment de
+            // l'envoi (aucun ré-envoi).
+            const p = { localUrl, path: null, url: null, w: 0, h: 0, uploading: true, once: false };
             pendingPhoto = p;
+            SEND_SHEET_ONCE.style.display = 'inline-flex';
+            SEND_SHEET_ONCE.classList.remove('is-armed');
+            SEND_SHEET_ONCE.setAttribute('aria-pressed', 'false');
             SEND_SHEET_IMG.style.display = 'block';
             SEND_SHEET_IMG.onload = () => {
                 // On retient les dimensions natives : elles réservent la hauteur
@@ -3070,6 +3211,15 @@ function grabVideoThumb(videoEl) {
                     if (pendingPhoto === p) hidePhotoPreview();
                 });
         }
+    });
+    // Bascule « vue unique » (1×) dans l'aperçu : simple drapeau local, sans
+    // ré-envoi — c'est `send()` qui transfère le fichier vers le disque privé.
+    SEND_SHEET_ONCE.addEventListener('click', () => {
+        const media = pendingPhoto || pendingVideo;
+        if (!media) return;
+        media.once = !media.once;
+        SEND_SHEET_ONCE.classList.toggle('is-armed', !!media.once);
+        SEND_SHEET_ONCE.setAttribute('aria-pressed', media.once ? 'true' : 'false');
     });
     SEND_SHEET_BACK.addEventListener('click', () => {
         restoreCaptionToComposer();

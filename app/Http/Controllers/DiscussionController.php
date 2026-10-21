@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use InvalidArgumentException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class DiscussionController extends Controller
 {
@@ -29,6 +30,18 @@ class DiscussionController extends Controller
      * envoyé en un seul bloc.
      */
     public const PAGINATION = 50;
+
+    /**
+     * Dossiers (disque privé `local`) des médias envoyés en « vue unique » :
+     * jamais d'URL publique, le fichier n'est servi qu'une seule fois par la
+     * route discussion.media.once. Le transfert depuis le disque public est
+     * déclenché par send() au moment de l'envoi.
+     */
+    public const DOSSIER_PHOTO_ONCE = 'discussion-photos-once';
+
+    public const DOSSIER_VIDEO_ONCE = 'discussion-videos-once';
+
+    public const DOSSIER_POSTER_ONCE = 'discussion-video-posters-once';
 
     /**
      * URL racine-relative d'une photo de discussion (ex. `/storage/discussion-photos/x.png`).
@@ -73,7 +86,7 @@ class DiscussionController extends Controller
     {
         return Message::where('couple_id', $couple->id)
             ->whereDoesntHave('deletions', fn ($q) => $q->where('user_id', $userId))
-            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,video_path,video_poster_path,audio_path,audio_duration']);
+            ->with(['sender:id,name,avatar_url', 'replyTo:id,body,sender_id,gif_url,photo_path,view_once,video_path,video_poster_path,audio_path,audio_duration']);
     }
 
     /**
@@ -156,13 +169,15 @@ class DiscussionController extends Controller
                 'link_description' => $deletedForAll ? null : $m->link_description,
                 'link_site' => $deletedForAll ? null : $m->link_site,
                 'link_image_url' => $deletedForAll ? null : $this->photoUrl($m->link_image_path),
-                'photo_url' => $deletedForAll ? null : $this->photoUrl($m->photo_path),
+                'photo_url' => ($deletedForAll || $m->isViewOnce()) ? null : $this->photoUrl($m->photo_path),
                 'photo_w' => $deletedForAll ? null : $m->photo_w,
                 'photo_h' => $deletedForAll ? null : $m->photo_h,
-                'video_url' => $deletedForAll ? null : $this->videoUrl($m->video_path),
+                'view_once' => $deletedForAll ? false : $m->isViewOnce(),
+                'view_once_viewed' => $m->isViewOnce() && $m->viewed_at !== null,
+                'video_url' => ($deletedForAll || $m->isViewOnce()) ? null : $this->videoUrl($m->video_path),
                 'video_w' => $deletedForAll ? null : $m->video_w,
                 'video_h' => $deletedForAll ? null : $m->video_h,
-                'video_poster_url' => $deletedForAll ? null : $this->photoUrl($m->video_poster_path),
+                'video_poster_url' => ($deletedForAll || $m->isViewOnce()) ? null : $this->photoUrl($m->video_poster_path),
                 'audio_url' => $deletedForAll ? null : $this->audioUrl($m->audio_path),
                 'audio_duration' => $deletedForAll ? null : $m->audio_duration,
                 'audio_bars' => $deletedForAll ? null : $m->audio_bars,
@@ -184,10 +199,11 @@ class DiscussionController extends Controller
                     'is_gif' => $m->replyTo->isGif(),
                     'gif_url' => $m->replyTo->gif_url,
                     'is_photo' => $m->replyTo->isPhoto(),
-                    'photo_url' => $this->photoUrl($m->replyTo->photo_path),
+                    'view_once' => $m->replyTo->isViewOnce(),
+                    'photo_url' => $m->replyTo->isViewOnce() ? null : $this->photoUrl($m->replyTo->photo_path),
                     'is_video' => $m->replyTo->isVideo(),
-                    'video_url' => $this->videoUrl($m->replyTo->video_path),
-                    'video_poster_url' => $this->photoUrl($m->replyTo->video_poster_path),
+                    'video_url' => $m->replyTo->isViewOnce() ? null : $this->videoUrl($m->replyTo->video_path),
+                    'video_poster_url' => $m->replyTo->isViewOnce() ? null : $this->photoUrl($m->replyTo->video_poster_path),
                     'is_audio' => $m->replyTo->isAudio(),
                     'audio_duration' => $m->replyTo->audio_duration,
                 ] : null,
@@ -275,8 +291,10 @@ class DiscussionController extends Controller
         $curseur = $this->curseurSync($couple, $userId);
         $lusDepuis = $this->parseCurseur($request->query('lusSince'));
         $modifiesDepuis = $this->parseCurseur($request->query('modifiesSince'));
+        $vusDepuis = $this->parseCurseur($request->query('vusSince'));
         $lus = [];
         $modifies = [];
+        $vus = [];
 
         if ($curseur['lus']) {
             $lus = Message::where('couple_id', $couple->id)
@@ -304,6 +322,24 @@ class DiscussionController extends Controller
                 ->values());
         }
 
+        // Photos vue unique ouvertes par le partenaire depuis le dernier poll :
+        // MES messages uniquement (c'est mon « Vu » à afficher), même mécanique
+        // de curseur que les éditions, basée sur viewed_at.
+        if ($curseur['vus']) {
+            $vus = $this->mapMessages($couple, $userId, (clone $query)
+                ->where('sender_id', $userId)
+                ->where('view_once', true)
+                ->whereNotNull('viewed_at')
+                ->when($vusDepuis, fn ($q) => $q->where('viewed_at', '>', $vusDepuis))
+                ->where('viewed_at', '<=', $this->parseCurseur($curseur['vus']))
+                ->orderByDesc('viewed_at')
+                ->orderByDesc('id')
+                ->limit(200)
+                ->get()
+                ->sortBy('id')
+                ->values());
+        }
+
         $partenaire = $couple->partnerOf($request->user())?->fresh();
 
         return response()->json([
@@ -311,6 +347,7 @@ class DiscussionController extends Controller
             'hasAnciens' => $hasAnciens,
             'lus' => $lus,
             'modifies' => $modifies,
+            'vus' => $vus,
             // Curseur de synchronisation des ✓✓ et des éditions : c'est celui
             // CAPTURÉ AVANT le calcul des deltas ci-dessus, donc l'état réel de la
             // base au moment où le delta a été figé. Le renvoyer tel quel garantit
@@ -519,22 +556,56 @@ class DiscussionController extends Controller
             'audio_bars' => ['nullable', 'string', 'max:2048'],
             'reply_to_id' => ['nullable', 'integer'],
             'sans_apercu' => ['nullable', 'boolean'],
+            'view_once' => ['nullable', 'boolean'],
         ]);
+
+        $viewOnce = $request->boolean('view_once');
+
+        // La vue unique ne s'applique qu'à une photo ou une vidéo.
+        if ($viewOnce && blank($data['photo_path'] ?? null) && blank($data['video_path'] ?? null)) {
+            return response()->json(['error' => 'La vue unique s\'applique aux photos et vidéos.'], 422);
+        }
 
         // Un message doit contenir du texte, un GIF, une photo, une vidéo ou un vocal.
         if (blank($data['body'] ?? null) && blank($data['gif_url'] ?? null) && blank($data['photo_path'] ?? null) && blank($data['video_path'] ?? null) && blank($data['audio_path'] ?? null)) {
             return response()->json(['error' => 'Le message est vide.'], 422);
         }
 
-        // Vérifier que le fichier existe sur le disque public.
-        if (! blank($data['photo_path'] ?? null) && ! Storage::disk('public')->exists($data['photo_path'])) {
-            return response()->json(['error' => 'Photo introuvable.'], 422);
+        // Le transfert vers le disque privé a lieu ICI, au moment de l'envoi :
+        // l'upload reste sur le disque public, donc basculer le 1× dans l'aperçu
+        // est instantané même pour une vidéo de 100 Mo (aucun ré-envoi).
+        if (! blank($data['photo_path'] ?? null)) {
+            if ($viewOnce) {
+                $transfert = $this->transfertVersPrive($data['photo_path'], 'discussion-photos', self::DOSSIER_PHOTO_ONCE);
+                if ($transfert === null) {
+                    return response()->json(['error' => 'Photo introuvable.'], 422);
+                }
+                $data['photo_path'] = $transfert;
+            } elseif (! Storage::disk('public')->exists($data['photo_path'])) {
+                return response()->json(['error' => 'Photo introuvable.'], 422);
+            }
         }
-        if (! blank($data['video_path'] ?? null) && ! Storage::disk('public')->exists($data['video_path'])) {
-            return response()->json(['error' => 'Vidéo introuvable.'], 422);
+        if (! blank($data['video_path'] ?? null)) {
+            if ($viewOnce) {
+                $transfert = $this->transfertVersPrive($data['video_path'], 'discussion-videos', self::DOSSIER_VIDEO_ONCE);
+                if ($transfert === null) {
+                    return response()->json(['error' => 'Vidéo introuvable.'], 422);
+                }
+                $data['video_path'] = $transfert;
+            } elseif (! Storage::disk('public')->exists($data['video_path'])) {
+                return response()->json(['error' => 'Vidéo introuvable.'], 422);
+            }
         }
-        if (! blank($data['video_poster_path'] ?? null) && ! Storage::disk('public')->exists($data['video_poster_path'])) {
-            return response()->json(['error' => 'Miniature de vidéo introuvable.'], 422);
+        if (! blank($data['video_poster_path'] ?? null)) {
+            if ($viewOnce) {
+                $transfert = $this->transfertVersPrive($data['video_poster_path'], 'discussion-video-posters', self::DOSSIER_POSTER_ONCE);
+                if ($transfert === null) {
+                    return response()->json(['error' => 'Miniature de vidéo introuvable.'], 422);
+                }
+                $data['video_poster_path'] = $transfert;
+            } elseif (! Storage::disk('public')->exists($data['video_poster_path'])) {
+                return response()->json(['error' => 'Miniature de vidéo introuvable.'], 422);
+            }
         }
         if (! blank($data['audio_path'] ?? null) && ! Storage::disk('public')->exists($data['audio_path'])) {
             return response()->json(['error' => 'Vocal introuvable.'], 422);
@@ -574,6 +645,7 @@ class DiscussionController extends Controller
             'photo_path' => $data['photo_path'] ?? null,
             'photo_w' => $data['photo_w'] ?? null,
             'photo_h' => $data['photo_h'] ?? null,
+            'view_once' => $viewOnce,
             'video_path' => $data['video_path'] ?? null,
             'video_w' => $data['video_w'] ?? null,
             'video_h' => $data['video_h'] ?? null,
@@ -591,9 +663,9 @@ class DiscussionController extends Controller
             $notifBody = ! empty($data['audio_path'] ?? null)
                 ? '🎤 Message vocal'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
                 : (! empty($data['photo_path'] ?? null)
-                    ? '📷 Envoie une photo'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                    ? ($viewOnce ? '📷 Photo vue unique' : '📷 Envoie une photo').($data['body'] ?? '' ? ' : '.$data['body'] : '')
                     : (! empty($data['video_path'] ?? null)
-                        ? '📹 Envoie une vidéo'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
+                        ? ($viewOnce ? '📹 Vidéo vue unique' : '📹 Envoie une vidéo').($data['body'] ?? '' ? ' : '.$data['body'] : '')
                         : (! empty($data['gif_url'] ?? null)
                             ? '📷 Envoie un GIF'.($data['body'] ?? '' ? ' : '.$data['body'] : '')
                             : ($data['body'] ?? 'Nouveau message'))));
@@ -625,7 +697,8 @@ class DiscussionController extends Controller
 
     /**
      * Envoie une photo dans la discussion. Le fichier est stocké sur le disque
-     * public puis référencé par le message envoyé via `send()`.
+     * public puis référencé par le message envoyé via `send()` — qui le transfère
+     * vers le disque privé si le drapeau vue unique est posé.
      */
     public function uploadPhoto(Request $request): JsonResponse
     {
@@ -641,6 +714,46 @@ class DiscussionController extends Controller
             'ok' => true,
             'path' => $path,
             'url' => $this->photoUrl($path),
+        ]);
+    }
+
+    /**
+     * Sert un média « vue unique » (photo OU vidéo) UNE seule fois (façon
+     * WhatsApp). Seul le destinataire peut l'ouvrir, et la revendication de
+     * viewed_at est atomique : la seconde requête reçoit 410, quel que soit
+     * l'écart entre les deux.
+     */
+    public function ouvrirMediaOnce(Request $request, int $id): BinaryFileResponse|JsonResponse
+    {
+        $couple = $request->user()->coupleModel;
+        $message = Message::where('id', $id)->where('couple_id', $couple?->id)->first();
+
+        if (! $message || ! $message->isViewOnce()) {
+            return response()->json(['error' => 'Média introuvable.'], 404);
+        }
+
+        // L'expéditeur connaît déjà son média : la vue unique n'est pas pour lui.
+        if ($message->sender_id === $request->user()->id) {
+            return response()->json(['error' => 'Une vue unique ne se rouvre pas.'], 403);
+        }
+
+        $revendique = Message::where('id', $message->id)
+            ->whereNull('viewed_at')
+            ->update(['viewed_at' => now()]);
+
+        if (! $revendique) {
+            return response()->json(['error' => 'Média déjà ouvert.'], 410);
+        }
+
+        $chemin = $message->photo_path ?: $message->video_path;
+        $disk = Storage::disk('local');
+        if (blank($chemin) || ! $disk->exists($chemin)) {
+            return response()->json(['error' => 'Média déjà ouvert.'], 410);
+        }
+
+        return response()->file($disk->path($chemin), [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, private',
+            'Pragma' => 'no-cache',
         ]);
     }
 
@@ -819,7 +932,7 @@ class DiscussionController extends Controller
      * Curseur de synchronisation des ✓✓ et des éditions pour un couple : les
      * horodatages serveur les plus récents présents en base.
      *
-     * @return array{lus: ?string, modifies: ?string}
+     * @return array{lus: ?string, modifies: ?string, vus: ?string}
      */
     protected function curseurSync($couple, int $userId): array
     {
@@ -832,9 +945,16 @@ class DiscussionController extends Controller
             ->whereNotNull('edited_at')
             ->max('edited_at');
 
+        $vus = Message::where('couple_id', $couple->id)
+            ->where('sender_id', $userId)
+            ->where('view_once', true)
+            ->whereNotNull('viewed_at')
+            ->max('viewed_at');
+
         return [
             'lus' => $this->formatCurseur($lus),
             'modifies' => $this->formatCurseur($modifies),
+            'vus' => $this->formatCurseur($vus),
         ];
     }
 
@@ -870,5 +990,45 @@ class DiscussionController extends Controller
         } catch (InvalidArgumentException) {
             return null;
         }
+    }
+
+    /**
+     * Transfère un média du disque PUBLIC vers son dossier privé (vue unique) et
+     * renvoie le chemin retenu. Un chemin déjà privé est accepté tel quel (relance
+     * idempotente) ; sinon la source doit vivre dans le dossier public annoncé,
+     * faute de quoi on refuse (path traversal / référence étrangère). Le déplacement
+     * se fait en flux : la vidéo peut peser 100 Mo, un read+write en mémoire non.
+     */
+    protected function transfertVersPrive(string $chemin, string $dossierPublic, string $dossierPrive): ?string
+    {
+        $prive = Storage::disk('local');
+        $public = Storage::disk('public');
+
+        if (str_starts_with($chemin, $dossierPrive.'/')) {
+            return $prive->exists($chemin) ? $chemin : null;
+        }
+
+        if (! str_starts_with($chemin, $dossierPublic.'/') || ! $public->exists($chemin)) {
+            return null;
+        }
+
+        $destination = $dossierPrive.'/'.basename($chemin);
+        $flux = $public->readStream($chemin);
+        if ($flux === false) {
+            return null;
+        }
+
+        $prive->writeStream($destination, $flux);
+        if (is_resource($flux)) {
+            fclose($flux);
+        }
+
+        if (! $prive->exists($destination)) {
+            return null;
+        }
+
+        $public->delete($chemin);
+
+        return $destination;
     }
 }

@@ -585,22 +585,19 @@ body {
     place-items: center;
     font-size: 26px;
     border-radius: 15px;
+    overflow: hidden;
 }
+/* Fond de la boîte : identique au dégradé du SVG (rouge profond) — surtout
+   jamais d'orange/jaune visible sur les bords, la maquette est 100 % rouge. */
 .aniv-card-rose .aniv-icon {
-    background: linear-gradient(135deg, #ff8a6a, #e63946);
+    background: linear-gradient(135deg, #c94168, #8e0f3c);
     border: 1px solid rgba(255, 255, 255, 0.16);
 }
 .aniv-card-bleu .aniv-icon {
-    background: linear-gradient(135deg, #ff6b9d, #e6396b);
+    background: linear-gradient(135deg, #c94168, #8e0f3c);
     border: 1px solid rgba(255, 255, 255, 0.16);
 }
-.aniv-icon-coeur {
-    position: absolute;
-    top: 4px;
-    right: 5px;
-    font-size: 11px;
-    line-height: 1;
-}
+.aniv-ico-cal { width: 100%; height: 100%; display: block; }
 .aniv-body { grid-area: body; min-width: 0; }
 .aniv-label { font-size: 12px; color: rgba(255, 255, 255, 0.72); }
 .aniv-name { font-size: 17px; font-weight: 800; color: #fff; letter-spacing: -0.2px; }
@@ -3051,6 +3048,44 @@ summary.btn::-webkit-details-marker { display: none; }
     -webkit-touch-callout: none;
 }
 
+/* Photo vue unique dans une bulle : pavé verrouillé (image jamais dans le fil) */
+.disc-once {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 150px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    margin: -2px;
+    background: rgba(0, 0, 0, 0.10);
+    color: var(--text-2);
+    text-align: center;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.disc-once span {
+    font-size: 13px;
+    font-weight: 600;
+}
+.disc-once small {
+    font-size: 11px;
+    color: var(--text-3);
+}
+.disc-once svg {
+    opacity: 0.7;
+}
+.disc-once:not(.disc-once-vu) {
+    cursor: pointer;
+}
+.disc-once:not(.disc-once-vu):hover {
+    background: rgba(0, 0, 0, 0.16);
+}
+.disc-once-vu svg {
+    opacity: 0.45;
+}
+
 /* Vidéo dans une bulle : lecteur natif + bouton play central sur la vignette */
 .disc-video {
     position: relative;
@@ -3253,6 +3288,14 @@ summary.btn::-webkit-details-marker { display: none; }
     border-radius: 8px;
     box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
 }
+.disc-photo-viewer video {
+    max-width: 100%;
+    max-height: 78dvh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+    background: #000;
+}
 .disc-photo-viewer-close {
     position: absolute;
     top: calc(12px + env(safe-area-inset-top, 0px));
@@ -3444,6 +3487,37 @@ summary.btn::-webkit-details-marker { display: none; }
     text-overflow: ellipsis;
     -webkit-user-select: none;
     user-select: none;
+}
+/* Bascule « vue unique » (1×) dans le pied de l'aperçu, avant l'envoi */
+.disc-send-sheet-once {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    height: 38px;
+    padding: 0 12px;
+    border: 1.5px solid rgba(255, 255, 255, 0.45);
+    border-radius: 19px;
+    background: rgba(0, 0, 0, 0.35);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: 0.15s;
+    flex-shrink: 0;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.disc-send-sheet-once:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.disc-send-sheet-once.is-armed {
+    border-color: transparent;
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
 }
 .disc-send-sheet-foot {
     display: flex;

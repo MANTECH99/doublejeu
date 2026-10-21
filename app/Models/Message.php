@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['couple_id', 'sender_id', 'body', 'edited_at', 'reply_to_id', 'gif_url', 'gif_alt', 'link_url', 'link_title', 'link_description', 'link_site', 'link_image_path', 'photo_path', 'photo_w', 'photo_h', 'video_path', 'video_w', 'video_h', 'video_poster_path', 'audio_path', 'audio_duration', 'audio_bars', 'read_at', 'deleted_at', 'deleted_by'])]
+#[Fillable(['couple_id', 'sender_id', 'body', 'edited_at', 'reply_to_id', 'gif_url', 'gif_alt', 'link_url', 'link_title', 'link_description', 'link_site', 'link_image_path', 'photo_path', 'photo_w', 'photo_h', 'view_once', 'viewed_at', 'video_path', 'video_w', 'video_h', 'video_poster_path', 'audio_path', 'audio_duration', 'audio_bars', 'read_at', 'deleted_at', 'deleted_by'])]
 class Message extends Model
 {
     use HasFactory;
@@ -19,6 +19,8 @@ class Message extends Model
             'read_at' => 'datetime',
             'edited_at' => 'datetime',
             'deleted_at' => 'datetime',
+            'viewed_at' => 'datetime',
+            'view_once' => 'boolean',
         ];
     }
 
@@ -65,6 +67,15 @@ class Message extends Model
     public function isPhoto(): bool
     {
         return ! empty($this->photo_path);
+    }
+
+    /**
+     * Média envoyé en « vue unique » (façon WhatsApp) : photo ou vidéo sans
+     * aucune URL publique, servi une seule fois via la route dédiée.
+     */
+    public function isViewOnce(): bool
+    {
+        return $this->view_once && ($this->isPhoto() || $this->isVideo());
     }
 
     public function isVideo(): bool
